@@ -14,9 +14,10 @@ import os, json
 import numpy as np, pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OG = os.path.join(ROOT, "7. data from csv", "only_gen.csv")
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+HERE = os.path.dirname(os.path.abspath(__file__))     # .../second_dataset
+ROOT = os.path.dirname(os.path.dirname(HERE))         # repo 루트 (second_dataset→폴더1→루트)
+OG = os.path.join(ROOT, "7. data from csv", "only_gen.csv")  # TODO: 실제 only_gen.csv 위치로 지정 필요
+OUT = os.path.join(HERE, "data")
 os.makedirs(OUT, exist_ok=True)
 BASIS_YEAR = 2024
 

@@ -8,11 +8,14 @@ A0/A1 데이터 확보·분리 빌더 (PRD §5.0, §5.1)
 import os, sqlite3, json
 import pandas as pd, numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JEJU_DB = os.path.join(ROOT, "1. data_fetcher_and_db", "data", "input_data_jeju.db")
-LAND_DB = os.path.join(ROOT, "1. data_fetcher_and_db", "data", "input_data_land.db")
-CSV = os.path.join(ROOT, "7. data from csv")
-OUT = os.path.join(ROOT, "8. lng_dataset", "data")
+# 이 파일은 "1. data_fetcher_and_db/second_dataset/" 안에 위치한다.
+HERE = os.path.dirname(os.path.abspath(__file__))     # .../second_dataset
+FETCHER_DIR = os.path.dirname(HERE)                    # .../1. data_fetcher_and_db
+ROOT = os.path.dirname(FETCHER_DIR)                    # repo 루트
+JEJU_DB = os.path.join(FETCHER_DIR, "data", "input_data_jeju.db")
+LAND_DB = os.path.join(FETCHER_DIR, "data", "input_data_land.db")
+CSV = os.path.join(ROOT, "7. data from csv")  # TODO: 실제 원천 CSV 위치로 지정 필요(현재 해당 폴더 없음)
+OUT = os.path.join(HERE, "data")              # second_dataset/data (기존 stale "8. lng_dataset/data" 대체)
 os.makedirs(OUT, exist_ok=True)
 
 # 게이트 G-4(충실본): merit-order 부하수준별 분해. fit_merit_split.py 산출물 사용.
