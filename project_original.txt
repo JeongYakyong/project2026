@@ -1,0 +1,24 @@
+1. check data status and DB logic
+ - collect_data_jeju -> input_data_jeju.db
+ - collect_data_land -> input_data_land.db 
+ - > weather and electric market data. 
+  focus on jeju data, land is for futher use.
+
+2. run est_demand forecaster with DB data
+ - save this jeju_est_demand_new at DB (forecast table)
+
+3. make new patchTST model with new DB.
+ - upgrade current model 
+ - training is on the colab environment. 
+ - I'll let you know about input features
+ - target : est_solar_utilization, est_wind_utilization
+ - save these two results at DB (forecast table)
+
+4. make smp forecaster with new db
+ - tuning is needed to improve perfomance
+ - target : smp_jeju_est
+ - save result at DB (forecast table)
+
+5. streamlit structure set. 
+ discuss after step 1 to 4 done. 
+

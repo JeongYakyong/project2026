@@ -1,0 +1,191 @@
+================================================================================
+ DATA LIST  (생성일: 2026-06-03)
+ 프로젝트: 1. data_fetcher_and_db
+ 표기 규칙: [데이터명] [기간]  / 해상도(resolution) 및 컬럼 그룹 함께 표기
+================================================================================
+
+
+################################################################################
+# 1. data/  (SQLite DB)
+################################################################################
+
+==========================================================================
+ input_data_jeju.db   (제주 계통)   * 테이블 3개
+==========================================================================
+
+[historical]            2020-01-01 ~ 2026-06-01   (시간단위, 56,256행, 51컬럼)
+  └ 과거 실측 데이터. 컬럼은 "지표_지역" 접미사 구조.
+    ● 지역 접미사(suffix):  _west / _east / _south   (제주 서/동/남)
+    ● 기상(weather) 지표:
+        1. temp_c          기온
+        2. humidity        습도
+        3. total_cloud     전운량
+        4. midlow_cloud    중하층운량
+        5. wind_spd        풍속
+        6. wd_sin, wd_cos  풍향(sin/cos)
+        7. solar_rad       일사량      (west, south 만 존재)
+        8. rainfall        강수
+        9. snow_depth      적설
+    ● 계통/발전(power) 지표 (_jeju):
+        - supply_cap_jeju            공급능력
+        - real_demand_jeju          실수요
+        - real_renew_gen_jeju       실재생e발전
+        - real_solar_gen_jeju       실태양광발전   <- solar
+        - real_wind_gen_jeju        실풍력발전     <- wind
+        - real_solar_capacity_jeju / real_solar_utilization_jeju   (태양광 설비/이용률)
+        - real_wind_capacity_jeju  / real_wind_utilization_jeju    (풍력 설비/이용률)
+        - real_net_load_jeju        순부하
+    ● 가격(SMP) 지표:
+        - smp_jeju_da / smp_land_da      육지/제주 SMP (전일)
+        - jeju_est_demand_da / land_est_demand_da  추정수요(전일)
+        - smp_jeju_rt                    제주 실시간 SMP
+        - smp_rt_g1 ~ smp_rt_g4          실시간 SMP 구간
+        - smp_rt_neg_num                 음(-)SMP 횟수
+    ● 기타: day_type (holiday/weekday/weekend)
+
+[forecast]              2025-12-13 ~ 2026-06-03   (시간단위, 4,152행, 69컬럼)
+  └ 예보/예측 입력 데이터. "지표_지역" 접미사 구조.
+    ● 지역 접미사: _west / _east / _south
+    ● 기상예보(forecast weather) 지표:
+        1. temp / temp_skin            기온 / 체감(표면)기온
+        2. wind_spd_10m / wind_spd_80m 풍속 10m / 80m
+        3. wd_sin_10m,wd_cos_10m / wd_sin_80m,wd_cos_80m   풍향 10m/80m
+        4. gust                        돌풍
+        5. cape / cinn                 대기불안정(CAPE/CIN)
+        6. hpbl                        경계층고도
+        7. tcog / tcoh                 (구름/습도 관련)
+        8. reh                         상대습도
+        9. rainfall                    강수
+       10. midlow_cloud / total_cloud  중하층운량 / 전운량  (west, south)
+       11. radiation                   일사(예보)            (west, south)
+    ● 추정/예측(est) 지표 (_jeju):
+        - jeju_est_demand_da / jeju_est_demand_new   추정수요
+        - est_solar_utilization_jeju / est_solar_gen_jeju   <- solar
+        - est_wind_utilization_jeju  / est_wind_gen_jeju    <- wind
+        - est_net_load_jeju / est_net_load_da_jeju   추정 순부하
+        - est_smp_jeju                추정 SMP
+        - smp_neg_proba_jeju          음SMP 확률
+        - smp_danger_jeju             위험도
+        - smp_jeju_da / smp_land_da   SMP(전일)
+    ● 기타: day_type
+
+[patchtst_signal]       2020-01-29 ~ 2026-05-31   (시간단위, 55,560행, 2컬럼)
+  └ PatchTST 모델 타깃 신호.
+        - jeju_patchtst_target        제주 PatchTST 타깃값
+
+
+==========================================================================
+ input_data_land.db   (육지 계통)   * 테이블 2개
+==========================================================================
+
+[historical]            2020-01-01 ~ 2026-06-01   (시간단위, 56,256행, 80컬럼)
+  └ 과거 실측 데이터. "지표_지역" 접미사 구조.
+    ● 지역 접미사(suffix) — 5개 관측지점:
+        _daegwallyeong(대관령) / _wonju(원주) / _seosan(서산) /
+        _pohang(포항) / _yeonggwang(영광)
+    ● 기상(weather) 지표 (지역별 동일 세트):
+        1. temp_c          기온
+        2. humidity        습도
+        3. total_cloud     전운량
+        4. midlow_cloud    중하층운량
+        5. wind_spd        풍속
+        6. wd_sin, wd_cos  풍향(sin/cos)
+        7. solar_rad       일사량
+        8. rainfall        강수
+        9. snow_depth      적설
+    ● 계통(supply/demand) 지표 (_land / _kr):
+        - supply_cap_land            공급능력
+        - real_demand_land           실수요
+        - max_pred_demand_land       최대예측수요
+        - supply_reserve_land / supply_reserve_pct_land   공급예비력/율
+        - oper_reserve_land  / oper_reserve_pct_land      운영예비력/율
+        - land_est_demand_da         추정수요(전일)
+    ● 전국 발전원별(gen_*_kr) 발전량:
+        - gen_total_kr / renew_gen_total_kr / net_load_kr  총/재생/순부하
+        - gen_solar_btm_kr, gen_solar_ppa_kr, gen_solar_market_kr  <- solar(3종)
+        - gen_wind_kr                <- wind
+        - gen_pumped_kr              양수
+        - gen_hydro_kr               수력
+        - gen_gas_kr                 가스(LNG)
+        - gen_nre_kr                 신재생
+        - gen_oil_kr                 유류
+        - gen_localcoal_kr / gen_coal_kr   국내탄/석탄
+        - gen_nuclear_kr             원자력
+    ● 설비/이용률:
+        - gen_wind_capacity_kr  / gen_wind_utilization_kr
+        - gen_solar_capacity_kr / gen_solar_utilization_kr
+    ● 가격: smp_land_da
+    ● 기타: day_type
+
+[forecast]              2025-12-10 ~ 2026-06-03   (시간단위, 4,224행, 39컬럼)
+  └ 예보/예측 입력 데이터. "지표_지역" 접미사 구조.
+    ● 지역 접미사: _daegwallyeong / _wonju / _seosan / _pohang / _yeonggwang
+    ● 기상예보 지표 (지역별 동일 세트):
+        1. radiation                   일사(예보)
+        2. total_cloud / midlow_cloud  전운량 / 중하층운량
+        3. temp                        기온
+        4. wind_spd_10m                풍속 10m
+        5. wd_sin_10m, wd_cos_10m      풍향 10m
+    ● 계통/가격:
+        - land_est_demand_da           추정수요(전일)
+        - smp_land_da                  육지 SMP(전일)
+    ● 기타: day_type
+
+
+################################################################################
+# 2. temp_data/  (CSV 파일)
+################################################################################
+
+------------------------------------------------------------------
+ [가스(gas) 관련]  * 접두사 gas_
+------------------------------------------------------------------
+
+[gas_import_price_monthly.csv]   2010-01 ~ 2026-01   (월단위, 193행)
+  └ LNG 수입가격(MMBTU당 달러). 컬럼: 연월, 평균, 호주, 카타르,
+    말레이시아, 미국, 오만   (국가별 수입단가)
+
+[gas_tariff_2020_2026.csv]       2020-01 ~ 2026-06   (월단위, 936행)
+  └ 가스 요금(tariff). 컬럼: 연월, 단위, 구분, 항목, 값
+      · 단위:  원/GJ, 원/Nm3
+      · 구분:  일반발전, 집단
+      · 항목:  원료비, 공급비, 합계
+
+[gas_temp_effect_monthly.csv]    2007-01 ~ 2021-06   (월단위, 174행)
+  └ 가스 수요의 기온효과. 컬럼: 연월, 기온효과
+
+------------------------------------------------------------------
+ [LNG / 발전 / 유가]
+------------------------------------------------------------------
+
+[lng_supply_national_daily.csv]  2021-01-01 ~ 2026-03-31   (일단위, 1,916행)
+  └ 전국 LNG 공급량. 컬럼: date, lng_supply_nat_UNIT_UNCONFIRMED
+    (※ 단위 미확인)
+
+[oil_price_daily.csv]            2020-01-01 ~ 2026-05-13   (일단위, 2,325행)
+  └ 국제 유가(일별). 컬럼: date, Dubai, Brent, WTI, is_filled
+    (Dubai/Brent/WTI 유종별, is_filled=결측보간여부)
+
+[jeju_hvdc_hourly.csv]           2017-01-01 01:00 ~ 2025-04-01 00:00   (시간단위, 72,288행)
+  └ 제주 HVDC(연계선) 조류. 컬럼: timestamp, HVDC1, HVDC2, HVDC3,
+    HVDC_Total   (연계선로별 + 합계)
+
+[only_gen.csv]                   2020-01-01 ~ 2024-12-31   (시간단위, 43,848행)
+  └ 발전량 추출. 컬럼: timestamp, HVDC_Total, LNG_Gen, Oil_Gen
+    (HVDC합계 / LNG발전 / 유류발전)
+
+
+################################################################################
+# 요약 / 특성 메모
+################################################################################
+ · DB 2종(jeju/land) 모두 historical / forecast 의 동일 골격.
+     - historical : 2020-01-01 시작, 시간단위, 실측(real_*) 중심.
+     - forecast   : 2025-12월~ 시작, 시간단위, 예측(est_*)/예보 중심.
+ · 컬럼 네이밍 = "지표 + 지역접미사".
+     - jeju:  _west / _east / _south
+     - land:  _daegwallyeong / _wonju / _seosan / _pohang / _yeonggwang
+ · 발전원 키워드: solar(태양광), wind(풍력), gas/LNG, oil(유류),
+   coal(석탄), nuclear(원자력), hydro(수력), pumped(양수).
+ · 가격 키워드: smp (_da 전일 / _rt 실시간), neg(음SMP).
+ · CSV 해상도: monthly(gas_*) / daily(lng,oil) / hourly(hvdc,only_gen).
+ · data/ 내 input_data_jeju.db.bak_20260603 은 백업본(목록에서 제외).
+================================================================================

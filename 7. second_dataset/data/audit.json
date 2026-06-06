@@ -1,0 +1,111 @@
+{
+  "gates": {},
+  "missing": {
+    "jeju": {
+      "real_net_load_jeju": 52296,
+      "smp_rt_neg_num": 36600,
+      "smp_jeju_rt": 36576,
+      "oil_meas": 12504,
+      "lng_meas": 12504,
+      "HVDC_Total": 10343,
+      "Brent": 552,
+      "Dubai": 552,
+      "WTI": 552,
+      "real_renew_gen_jeju": 10,
+      "net_load": 10,
+      "temp_c_south": 10,
+      "temp_c_east": 10,
+      "temp_c_west": 10,
+      "real_wind_gen_jeju": 10,
+      "real_solar_gen_jeju": 10,
+      "real_demand_jeju": 10
+    },
+    "land": {
+      "real_demand_land": 300,
+      "net_load_kr": 10,
+      "renew_gen_total_kr": 10,
+      "gen_gas_kr": 10,
+      "gen_oil_kr": 10,
+      "gen_coal_kr": 10,
+      "gen_nuclear_kr": 10,
+      "gen_wind_kr": 10,
+      "temp_c_daegwallyeong": 10,
+      "temp_c_wonju": 10,
+      "temp_c_seosan": 10,
+      "temp_c_pohang": 10,
+      "temp_c_yeonggwang": 10
+    }
+  },
+  "duplicates": {
+    "jeju": 0,
+    "land": 0
+  },
+  "gaps": {
+    "jeju": {
+      "count": 0,
+      "first": null,
+      "last": null
+    },
+    "land": {
+      "count": 0,
+      "first": null,
+      "last": null
+    }
+  },
+  "target": {
+    "jeju": {
+      "measured_rows": 43848,
+      "derived_rows": 2161,
+      "none_rows": 10343,
+      "split_method": "merit_order_isotonic_2024",
+      "derive_check_2024_MAE": 44.445,
+      "derive_check_2024_MAPE_pct": 36.276,
+      "merit_backtest_random_5050x5": {
+        "scalar_MAE": 43.76,
+        "scalar_MAPE": 28.95,
+        "merit_MAE": 37.75,
+        "merit_MAPE": 23.41,
+        "MAE_improve_pct": 13.7,
+        "MAPE_improve_pp": 5.5
+      },
+      "scalar_baseline_2024": {
+        "scalar_MAE": 43.84,
+        "merit_MAE": 37.71,
+        "scalar_MAPE": 28.84,
+        "merit_MAPE": 23.31
+      }
+    },
+    "land": {
+      "measured_rows": 56342,
+      "none_rows": 10
+    }
+  },
+  "splits": {
+    "jeju": {
+      "train": 35064,
+      "unused": 10343,
+      "val": 8784,
+      "demo": 2161
+    },
+    "land": {
+      "train": 35064,
+      "test": 12494,
+      "val": 8784,
+      "unused": 10
+    }
+  },
+  "full": {
+    "jeju": {
+      "rows": 56352,
+      "cols": 29,
+      "model_usable_rows": 43848,
+      "not_usable_rows": 12504
+    },
+    "land": {
+      "rows": 56352,
+      "cols": 26,
+      "model_usable_rows": 56342,
+      "not_usable_rows": 10
+    }
+  }
+}
