@@ -1,0 +1,15 @@
+# project2026 데이터 수집 crontab (crontab -e 로 기존 줄 아래에 추가)
+# KIM 발표 00/06/12/18 UTC = KST 09/15/21/03, 데이터 가용까지 안전마진 ~3h
+#   → KST 12/18/00/06 시대에 직전 발표가 안정적으로 가용.
+# 경로의 kimjourvanne 는 실제 서버 사용자명/clone 위치에 맞게 수정.
+
+# 제주: 4회/일 (기본 동작 = forecast 최신 2발표 + historical 2일, RT SMP 포함)
+10 0,6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
+
+# 육지: 4회/일, 제주와 30분 시차 (API 동시 호출 분산)
+40 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh
+
+# 육지 00:40 실행 = 12 UTC 발표분 — G-12 결정에 따라 7일 예보 윈도우로 수집
+#   (>72h 예보는 12 UTC 발표 단일, ≤72h 는 위의 신선 발표들이 담당.
+#    06 UTC 발표는 전날 18:40 실행이 이미 수집했으므로 --bases 1 로 절약)
+40 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh --bases 1 --kimg-days 7
