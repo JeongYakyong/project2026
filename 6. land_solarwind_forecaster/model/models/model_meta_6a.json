@@ -1,0 +1,33 @@
+{
+  "solar_feats": [
+    "solar_rad",
+    "total_cloud",
+    "solar_damping",
+    "hour_sin",
+    "hour_cos",
+    "doy_sin",
+    "doy_cos"
+  ],
+  "wind_feats": [
+    "wind_spd",
+    "wd_sin",
+    "wd_cos",
+    "hour_sin",
+    "hour_cos",
+    "doy_sin",
+    "doy_cos"
+  ],
+  "solar_stations": [
+    "yeonggwang",
+    "seosan",
+    "pohang"
+  ],
+  "wind_stations": [
+    "daegwallyeong",
+    "yeonggwang",
+    "pohang"
+  ],
+  "k_damp": 0.3,
+  "solar_best_iter": 169,
+  "wind_best_iter": 169
+}

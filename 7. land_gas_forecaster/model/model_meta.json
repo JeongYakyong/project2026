@@ -1,0 +1,26 @@
+{
+  "features": [
+    "real_demand_land",
+    "renew_gen_total_kr",
+    "hour",
+    "dow",
+    "month",
+    "doy",
+    "day_type"
+  ],
+  "target": "gen_gas_kr",
+  "best_iteration": 163,
+  "window": "train 2022-2024 / val 2025 / test 2026",
+  "metrics_test_lgbm": {
+    "MAE": 2236.303,
+    "RMSE": 2819.89,
+    "MAPE": 11.428,
+    "R2": 0.784
+  },
+  "metrics_test_baseline": {
+    "MAE": 2842.575,
+    "RMSE": 3682.2,
+    "MAPE": 13.962,
+    "R2": 0.632
+  }
+}

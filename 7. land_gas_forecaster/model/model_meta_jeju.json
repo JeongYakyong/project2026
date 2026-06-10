@@ -1,0 +1,26 @@
+{
+  "features": [
+    "real_demand_jeju",
+    "real_renew_gen_jeju",
+    "hour",
+    "dow",
+    "month",
+    "doy"
+  ],
+  "target": "lng_util(정규화)→×LNG_cap 복원",
+  "train_window": "2024-01~09 / val 10 / test 11-12 (cap 492.53 안정창)",
+  "lng_cap_step": "333.734(2020-23) -> 492.530(2024-01+)",
+  "renew_pdp_slope": -0.3138464230182324,
+  "metrics_test_lgbm": {
+    "MAE": 37.726,
+    "RMSE": 49.877,
+    "R2": 0.5,
+    "MAPE_gt50": 24.875
+  },
+  "metrics_test_baseline": {
+    "MAE": 65.547,
+    "RMSE": 78.553,
+    "R2": -0.241,
+    "MAPE_gt50": 61.345
+  }
+}

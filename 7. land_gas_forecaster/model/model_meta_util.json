@@ -1,0 +1,31 @@
+{
+  "features": [
+    "real_demand_land",
+    "renew_gen_total_kr",
+    "hour",
+    "dow",
+    "month",
+    "doy",
+    "day_type"
+  ],
+  "target": "util(=gen_gas_kr/LNG_cap)",
+  "restore": "pred_util × LNG_cap",
+  "capacity_source": "kr_elec_capa.csv (월별, 끝 이후 ffill)",
+  "best_iteration": 147,
+  "window": "train 2022-2024 / val 2025 / test 2026",
+  "metrics_test": {
+    "MAE": 1807.517,
+    "RMSE": 2247.191,
+    "MAPE": 10.513,
+    "R2": 0.863,
+    "bias": 4.043
+  },
+  "metrics_test_7A_abs": {
+    "MAE": 2236.303,
+    "RMSE": 2819.89,
+    "MAPE": 11.428,
+    "R2": 0.784,
+    "bias": -5.713
+  },
+  "note": "7-A 절대 타깃의 2026 과소예측(설비증설 표류)을 이용률 정규화로 보정. 피처는 7-A 동일."
+}

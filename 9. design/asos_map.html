@@ -1,0 +1,3319 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_24b95c7a56cfe51904e5821784eaa7e2 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+<div style="position: fixed; bottom: 20px; left: 20px; z-index:9999; background:white;
+            padding:10px; border:1px solid #888; border-radius:6px; font-size:13px;
+            font-family: sans-serif; box-shadow:0 2px 4px rgba(0,0,0,0.2);">
+  <b>Solar (일사) availability</b><br>
+  <span style="color:#2ca02c;">&#9679;</span> 2020-2026 all (47)<br>
+  <span style="color:#9ecae1;">&#9679;</span> from 2022 (1)<br>
+  <span style="color:#6baed6;">&#9679;</span> from 2023 (5)<br>
+  <span style="color:#3182bd;">&#9679;</span> from 2024 (8)<br>
+  <span style="color:#08519c;">&#9679;</span> from 2025 (3)<br>
+  <span style="color:#e377c2;">&#9679;</span> 2025 only (1, anomaly)<br>
+  <span style="color:#d62728;">&#9679;</span> never (32)<br>
+  <hr style="margin:6px 0;">
+  <b>Wind (풍속)</b><br>
+  &#9679; filled = full 2020-2026<br>
+  &#9711; ring = partial (2023-)
+</div>
+    
+            <div class="folium-map" id="map_24b95c7a56cfe51904e5821784eaa7e2" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_24b95c7a56cfe51904e5821784eaa7e2 = L.map(
+                "map_24b95c7a56cfe51904e5821784eaa7e2",
+                {
+                    center: [36.5, 127.8],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 7,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_9b2d252f0efde1e2e52acc160f8d359c = L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 20,
+  "maxNativeZoom": 20,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors \u0026copy; \u003ca href=\"https://carto.com/attributions\"\u003eCARTO\u003c/a\u003e",
+  "subdomains": "abcd",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_9b2d252f0efde1e2e52acc160f8d359c.addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+            var circle_marker_c7c8dd2ae9ebecf154cf021a1f272186 = L.circleMarker(
+                [38.2509, 128.5647],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_6018e7287b4c2c93c070ad33b6909a66 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_631a292eb05e0bb5b06d8a1d7ff0c14f = $(`<div id="html_631a292eb05e0bb5b06d8a1d7ff0c14f" style="width: 100.0%; height: 100.0%;"><b>90 속초</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_6018e7287b4c2c93c070ad33b6909a66.setContent(html_631a292eb05e0bb5b06d8a1d7ff0c14f);
+            
+        
+
+        circle_marker_c7c8dd2ae9ebecf154cf021a1f272186.bindPopup(popup_6018e7287b4c2c93c070ad33b6909a66)
+        ;
+
+        
+    
+    
+            circle_marker_c7c8dd2ae9ebecf154cf021a1f272186.bindTooltip(
+                `<div>
+                     90 속초
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_337e6856feec6627c9d577ae592a2427 = L.circleMarker(
+                [37.9474, 127.7544],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3570306955430d7493d1b90384b79c01 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e4f522ead6c05e8b04aa6cc30583544b = $(`<div id="html_e4f522ead6c05e8b04aa6cc30583544b" style="width: 100.0%; height: 100.0%;"><b>93 북춘천</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3570306955430d7493d1b90384b79c01.setContent(html_e4f522ead6c05e8b04aa6cc30583544b);
+            
+        
+
+        circle_marker_337e6856feec6627c9d577ae592a2427.bindPopup(popup_3570306955430d7493d1b90384b79c01)
+        ;
+
+        
+    
+    
+            circle_marker_337e6856feec6627c9d577ae592a2427.bindTooltip(
+                `<div>
+                     93 북춘천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a907631bfcbfc211ab2a553bbaa25be8 = L.circleMarker(
+                [38.1481, 127.3042],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_8fa4f6e5901302df97282b68521cfafc = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_03790257a26270c084c248c3cad621ee = $(`<div id="html_03790257a26270c084c248c3cad621ee" style="width: 100.0%; height: 100.0%;"><b>95 철원</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_8fa4f6e5901302df97282b68521cfafc.setContent(html_03790257a26270c084c248c3cad621ee);
+            
+        
+
+        circle_marker_a907631bfcbfc211ab2a553bbaa25be8.bindPopup(popup_8fa4f6e5901302df97282b68521cfafc)
+        ;
+
+        
+    
+    
+            circle_marker_a907631bfcbfc211ab2a553bbaa25be8.bindTooltip(
+                `<div>
+                     95 철원
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_febea679694cf64b67f2e0c54bf51cb9 = L.circleMarker(
+                [37.9018, 127.0608],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_5e12716c4f27429b64cc896bb79d5fb1 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0a13ad0271a5b01df29de3de72c4357b = $(`<div id="html_0a13ad0271a5b01df29de3de72c4357b" style="width: 100.0%; height: 100.0%;"><b>98 동두천</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_5e12716c4f27429b64cc896bb79d5fb1.setContent(html_0a13ad0271a5b01df29de3de72c4357b);
+            
+        
+
+        circle_marker_febea679694cf64b67f2e0c54bf51cb9.bindPopup(popup_5e12716c4f27429b64cc896bb79d5fb1)
+        ;
+
+        
+    
+    
+            circle_marker_febea679694cf64b67f2e0c54bf51cb9.bindTooltip(
+                `<div>
+                     98 동두천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_505fb0fac201ed1024d2a9a24d1d2f04 = L.circleMarker(
+                [37.8859, 126.7665],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_85e6efff03cb6da89fca8088bc863146 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_bc2f7a319c0eeb7dcf424f7ab2ab21b0 = $(`<div id="html_bc2f7a319c0eeb7dcf424f7ab2ab21b0" style="width: 100.0%; height: 100.0%;"><b>99 파주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_85e6efff03cb6da89fca8088bc863146.setContent(html_bc2f7a319c0eeb7dcf424f7ab2ab21b0);
+            
+        
+
+        circle_marker_505fb0fac201ed1024d2a9a24d1d2f04.bindPopup(popup_85e6efff03cb6da89fca8088bc863146)
+        ;
+
+        
+    
+    
+            circle_marker_505fb0fac201ed1024d2a9a24d1d2f04.bindTooltip(
+                `<div>
+                     99 파주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_efcee153c1616dd289fbf47a86715331 = L.circleMarker(
+                [37.6772, 128.7185],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_2f5d21ab2834dfd22cca1e626ff28681 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_78e0b6aa72cc435947fab0d230c982a9 = $(`<div id="html_78e0b6aa72cc435947fab0d230c982a9" style="width: 100.0%; height: 100.0%;"><b>100 대관령</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_2f5d21ab2834dfd22cca1e626ff28681.setContent(html_78e0b6aa72cc435947fab0d230c982a9);
+            
+        
+
+        circle_marker_efcee153c1616dd289fbf47a86715331.bindPopup(popup_2f5d21ab2834dfd22cca1e626ff28681)
+        ;
+
+        
+    
+    
+            circle_marker_efcee153c1616dd289fbf47a86715331.bindTooltip(
+                `<div>
+                     100 대관령
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_e34fa50adea820668cbfa3baf7f674e7 = L.circleMarker(
+                [37.9026, 127.7357],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_39e76840329f63c83cc66da09cbd0719 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_10ead3abdb372f1fb595aa40d55cabfa = $(`<div id="html_10ead3abdb372f1fb595aa40d55cabfa" style="width: 100.0%; height: 100.0%;"><b>101 춘천</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_39e76840329f63c83cc66da09cbd0719.setContent(html_10ead3abdb372f1fb595aa40d55cabfa);
+            
+        
+
+        circle_marker_e34fa50adea820668cbfa3baf7f674e7.bindPopup(popup_39e76840329f63c83cc66da09cbd0719)
+        ;
+
+        
+    
+    
+            circle_marker_e34fa50adea820668cbfa3baf7f674e7.bindTooltip(
+                `<div>
+                     101 춘천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_36f8bcf9c33503e983a281cc90433826 = L.circleMarker(
+                [37.974, 124.714],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_d9573dbe4a35d6de4bfe2169f9c01f5a = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_51c7da2092e75323450437650d2c9b47 = $(`<div id="html_51c7da2092e75323450437650d2c9b47" style="width: 100.0%; height: 100.0%;"><b>102 백령도</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_d9573dbe4a35d6de4bfe2169f9c01f5a.setContent(html_51c7da2092e75323450437650d2c9b47);
+            
+        
+
+        circle_marker_36f8bcf9c33503e983a281cc90433826.bindPopup(popup_d9573dbe4a35d6de4bfe2169f9c01f5a)
+        ;
+
+        
+    
+    
+            circle_marker_36f8bcf9c33503e983a281cc90433826.bindTooltip(
+                `<div>
+                     102 백령도
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1c500f6565d5db23390e3c9e884dabbd = L.circleMarker(
+                [37.8047, 128.8554],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_ebdf846dd3ca2534d268986e1afbf7a7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_4487f4d1100dbd5a49ac03da7b3f53d1 = $(`<div id="html_4487f4d1100dbd5a49ac03da7b3f53d1" style="width: 100.0%; height: 100.0%;"><b>104 북강릉</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_ebdf846dd3ca2534d268986e1afbf7a7.setContent(html_4487f4d1100dbd5a49ac03da7b3f53d1);
+            
+        
+
+        circle_marker_1c500f6565d5db23390e3c9e884dabbd.bindPopup(popup_ebdf846dd3ca2534d268986e1afbf7a7)
+        ;
+
+        
+    
+    
+            circle_marker_1c500f6565d5db23390e3c9e884dabbd.bindTooltip(
+                `<div>
+                     104 북강릉
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_334e000d8ec4f0fb0686ceed2763892a = L.circleMarker(
+                [37.7515, 128.891],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_de3701ab7f5c09b0f45e76bb84147683 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_2021afb47090715aa92115165aa74e65 = $(`<div id="html_2021afb47090715aa92115165aa74e65" style="width: 100.0%; height: 100.0%;"><b>105 강릉</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_de3701ab7f5c09b0f45e76bb84147683.setContent(html_2021afb47090715aa92115165aa74e65);
+            
+        
+
+        circle_marker_334e000d8ec4f0fb0686ceed2763892a.bindPopup(popup_de3701ab7f5c09b0f45e76bb84147683)
+        ;
+
+        
+    
+    
+            circle_marker_334e000d8ec4f0fb0686ceed2763892a.bindTooltip(
+                `<div>
+                     105 강릉
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_13f854fb2c5a556f4159b308d5fb60dc = L.circleMarker(
+                [37.5072, 129.1243],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_71bb8bebe67066ab977ac39a09e275d6 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_fca9e96f3b82acb7720bacfb36435cc0 = $(`<div id="html_fca9e96f3b82acb7720bacfb36435cc0" style="width: 100.0%; height: 100.0%;"><b>106 동해</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_71bb8bebe67066ab977ac39a09e275d6.setContent(html_fca9e96f3b82acb7720bacfb36435cc0);
+            
+        
+
+        circle_marker_13f854fb2c5a556f4159b308d5fb60dc.bindPopup(popup_71bb8bebe67066ab977ac39a09e275d6)
+        ;
+
+        
+    
+    
+            circle_marker_13f854fb2c5a556f4159b308d5fb60dc.bindTooltip(
+                `<div>
+                     106 동해
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_410faedf8c82fba1d846196b010f3e48 = L.circleMarker(
+                [37.5714, 126.9658],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_1949e91450dc38368309533238810322 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_c72ea7ff0597b34726b04c90ebc519d7 = $(`<div id="html_c72ea7ff0597b34726b04c90ebc519d7" style="width: 100.0%; height: 100.0%;"><b>108 서울</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_1949e91450dc38368309533238810322.setContent(html_c72ea7ff0597b34726b04c90ebc519d7);
+            
+        
+
+        circle_marker_410faedf8c82fba1d846196b010f3e48.bindPopup(popup_1949e91450dc38368309533238810322)
+        ;
+
+        
+    
+    
+            circle_marker_410faedf8c82fba1d846196b010f3e48.bindTooltip(
+                `<div>
+                     108 서울
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_345d2441602deb70c04782d4167b16be = L.circleMarker(
+                [37.4777, 126.6249],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_29f8ce3eef68d772a7c7d58ab9ea098b = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_2f3a1e6f7e59b1cb8ae08ef26dfa6b9d = $(`<div id="html_2f3a1e6f7e59b1cb8ae08ef26dfa6b9d" style="width: 100.0%; height: 100.0%;"><b>112 인천</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_29f8ce3eef68d772a7c7d58ab9ea098b.setContent(html_2f3a1e6f7e59b1cb8ae08ef26dfa6b9d);
+            
+        
+
+        circle_marker_345d2441602deb70c04782d4167b16be.bindPopup(popup_29f8ce3eef68d772a7c7d58ab9ea098b)
+        ;
+
+        
+    
+    
+            circle_marker_345d2441602deb70c04782d4167b16be.bindTooltip(
+                `<div>
+                     112 인천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_9456db46dd8ca03991346e2a005549ae = L.circleMarker(
+                [37.3376, 127.9466],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_fcefba70fbf54405d69113dde629ed32 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e8e8dc14946b0448fcfb3d846c14acba = $(`<div id="html_e8e8dc14946b0448fcfb3d846c14acba" style="width: 100.0%; height: 100.0%;"><b>114 원주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_fcefba70fbf54405d69113dde629ed32.setContent(html_e8e8dc14946b0448fcfb3d846c14acba);
+            
+        
+
+        circle_marker_9456db46dd8ca03991346e2a005549ae.bindPopup(popup_fcefba70fbf54405d69113dde629ed32)
+        ;
+
+        
+    
+    
+            circle_marker_9456db46dd8ca03991346e2a005549ae.bindTooltip(
+                `<div>
+                     114 원주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_bf2b33c3d196247c4f47b7a3494143be = L.circleMarker(
+                [37.4811, 130.8986],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_73b01dc518950f08f7ea6b041bc74fc6 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_c38b2b7f8cf9ec54e1ae54370fc4a46a = $(`<div id="html_c38b2b7f8cf9ec54e1ae54370fc4a46a" style="width: 100.0%; height: 100.0%;"><b>115 울릉도</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_73b01dc518950f08f7ea6b041bc74fc6.setContent(html_c38b2b7f8cf9ec54e1ae54370fc4a46a);
+            
+        
+
+        circle_marker_bf2b33c3d196247c4f47b7a3494143be.bindPopup(popup_73b01dc518950f08f7ea6b041bc74fc6)
+        ;
+
+        
+    
+    
+            circle_marker_bf2b33c3d196247c4f47b7a3494143be.bindTooltip(
+                `<div>
+                     115 울릉도
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_23cc39dbfe9b52e8f3c1112a6c778c99 = L.circleMarker(
+                [37.2723, 126.9851],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_199753e0d8cbd4539b5cccaf4b49cdf2 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_663b161b34720ea3e3399efd2a5d7a93 = $(`<div id="html_663b161b34720ea3e3399efd2a5d7a93" style="width: 100.0%; height: 100.0%;"><b>119 수원</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_199753e0d8cbd4539b5cccaf4b49cdf2.setContent(html_663b161b34720ea3e3399efd2a5d7a93);
+            
+        
+
+        circle_marker_23cc39dbfe9b52e8f3c1112a6c778c99.bindPopup(popup_199753e0d8cbd4539b5cccaf4b49cdf2)
+        ;
+
+        
+    
+    
+            circle_marker_23cc39dbfe9b52e8f3c1112a6c778c99.bindTooltip(
+                `<div>
+                     119 수원
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f84009d657b7f159f037695afbb1a8b1 = L.circleMarker(
+                [37.1812, 128.4575],
+                {"bubblingMouseEvents": true, "color": "#e377c2", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#e377c2", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_12bcda5943770ad72f6f15b1074ba831 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_022622f68b023de9b8b55a2a39f8a26f = $(`<div id="html_022622f68b023de9b8b55a2a39f8a26f" style="width: 100.0%; height: 100.0%;"><b>121 영월</b><br>Wind: 2020-2026 all available<br>Solar: 2025<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNYN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_12bcda5943770ad72f6f15b1074ba831.setContent(html_022622f68b023de9b8b55a2a39f8a26f);
+            
+        
+
+        circle_marker_f84009d657b7f159f037695afbb1a8b1.bindPopup(popup_12bcda5943770ad72f6f15b1074ba831)
+        ;
+
+        
+    
+    
+            circle_marker_f84009d657b7f159f037695afbb1a8b1.bindTooltip(
+                `<div>
+                     121 영월
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1944e217fccc00974d01421f895c25c7 = L.circleMarker(
+                [36.9706, 127.9526],
+                {"bubblingMouseEvents": true, "color": "#9ecae1", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#9ecae1", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_aaf6b9b3fa482bd509d698b806723760 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_6eefa343904fc40a1cca31007b47b297 = $(`<div id="html_6eefa343904fc40a1cca31007b47b297" style="width: 100.0%; height: 100.0%;"><b>127 충주</b><br>Wind: 2020-2026 all available<br>Solar: 2022-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_aaf6b9b3fa482bd509d698b806723760.setContent(html_6eefa343904fc40a1cca31007b47b297);
+            
+        
+
+        circle_marker_1944e217fccc00974d01421f895c25c7.bindPopup(popup_aaf6b9b3fa482bd509d698b806723760)
+        ;
+
+        
+    
+    
+            circle_marker_1944e217fccc00974d01421f895c25c7.bindTooltip(
+                `<div>
+                     127 충주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_0c506a8f31028d1e69f5d7545c6b8477 = L.circleMarker(
+                [36.7766, 126.4939],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_6adc1743d2bf50640cb41dda70aa137a = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_d95a77446326c6c9b7ba66e865cf504f = $(`<div id="html_d95a77446326c6c9b7ba66e865cf504f" style="width: 100.0%; height: 100.0%;"><b>129 서산</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_6adc1743d2bf50640cb41dda70aa137a.setContent(html_d95a77446326c6c9b7ba66e865cf504f);
+            
+        
+
+        circle_marker_0c506a8f31028d1e69f5d7545c6b8477.bindPopup(popup_6adc1743d2bf50640cb41dda70aa137a)
+        ;
+
+        
+    
+    
+            circle_marker_0c506a8f31028d1e69f5d7545c6b8477.bindTooltip(
+                `<div>
+                     129 서산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_da06e939efd953fe78fa4b0255449114 = L.circleMarker(
+                [36.9919, 129.4131],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_5b86aedbb174e01808f446227baf91d0 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_4283ad2b0f2aad8a10fe315175d74e0a = $(`<div id="html_4283ad2b0f2aad8a10fe315175d74e0a" style="width: 100.0%; height: 100.0%;"><b>130 울진</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_5b86aedbb174e01808f446227baf91d0.setContent(html_4283ad2b0f2aad8a10fe315175d74e0a);
+            
+        
+
+        circle_marker_da06e939efd953fe78fa4b0255449114.bindPopup(popup_5b86aedbb174e01808f446227baf91d0)
+        ;
+
+        
+    
+    
+            circle_marker_da06e939efd953fe78fa4b0255449114.bindTooltip(
+                `<div>
+                     130 울진
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a0294bee18d0632df893e0ef0b3ff92c = L.circleMarker(
+                [36.6392, 127.4407],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_e4a6182d4f11de928bed0ad03edb95a8 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_7d3229f6736cd1e0aba868f6b42c33b7 = $(`<div id="html_7d3229f6736cd1e0aba868f6b42c33b7" style="width: 100.0%; height: 100.0%;"><b>131 청주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_e4a6182d4f11de928bed0ad03edb95a8.setContent(html_7d3229f6736cd1e0aba868f6b42c33b7);
+            
+        
+
+        circle_marker_a0294bee18d0632df893e0ef0b3ff92c.bindPopup(popup_e4a6182d4f11de928bed0ad03edb95a8)
+        ;
+
+        
+    
+    
+            circle_marker_a0294bee18d0632df893e0ef0b3ff92c.bindTooltip(
+                `<div>
+                     131 청주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ab80badeeceaf118e0851d917d770656 = L.circleMarker(
+                [36.3724, 127.3724],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_7c9de5102f49ab002e96efcc9be82d5c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_6540de4f8272072ceca4c1a19c1a3d0a = $(`<div id="html_6540de4f8272072ceca4c1a19c1a3d0a" style="width: 100.0%; height: 100.0%;"><b>133 대전</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_7c9de5102f49ab002e96efcc9be82d5c.setContent(html_6540de4f8272072ceca4c1a19c1a3d0a);
+            
+        
+
+        circle_marker_ab80badeeceaf118e0851d917d770656.bindPopup(popup_7c9de5102f49ab002e96efcc9be82d5c)
+        ;
+
+        
+    
+    
+            circle_marker_ab80badeeceaf118e0851d917d770656.bindTooltip(
+                `<div>
+                     133 대전
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_78866269b495e3f849fd319acaf828b4 = L.circleMarker(
+                [36.2203, 127.9946],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_a773012083849619531d862fb458408e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0cd9354a9f81c53b431851b977a505e3 = $(`<div id="html_0cd9354a9f81c53b431851b977a505e3" style="width: 100.0%; height: 100.0%;"><b>135 추풍령</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_a773012083849619531d862fb458408e.setContent(html_0cd9354a9f81c53b431851b977a505e3);
+            
+        
+
+        circle_marker_78866269b495e3f849fd319acaf828b4.bindPopup(popup_a773012083849619531d862fb458408e)
+        ;
+
+        
+    
+    
+            circle_marker_78866269b495e3f849fd319acaf828b4.bindTooltip(
+                `<div>
+                     135 추풍령
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7deb2fef4c08ec8708fd1075a16d9a15 = L.circleMarker(
+                [36.5728, 128.7071],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_43bcadeac6f1e7f89ac33a3f17d928ab = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_1afa5f60426baae842fa87c9ed781ad2 = $(`<div id="html_1afa5f60426baae842fa87c9ed781ad2" style="width: 100.0%; height: 100.0%;"><b>136 안동</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_43bcadeac6f1e7f89ac33a3f17d928ab.setContent(html_1afa5f60426baae842fa87c9ed781ad2);
+            
+        
+
+        circle_marker_7deb2fef4c08ec8708fd1075a16d9a15.bindPopup(popup_43bcadeac6f1e7f89ac33a3f17d928ab)
+        ;
+
+        
+    
+    
+            circle_marker_7deb2fef4c08ec8708fd1075a16d9a15.bindTooltip(
+                `<div>
+                     136 안동
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f100a840d8616d17b12203e937aa03e1 = L.circleMarker(
+                [36.4108, 128.1572],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_ad237fbf19fe9f301b058634853d2380 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_5a0e1aae25d46d0558154710fc9662d9 = $(`<div id="html_5a0e1aae25d46d0558154710fc9662d9" style="width: 100.0%; height: 100.0%;"><b>137 상주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_ad237fbf19fe9f301b058634853d2380.setContent(html_5a0e1aae25d46d0558154710fc9662d9);
+            
+        
+
+        circle_marker_f100a840d8616d17b12203e937aa03e1.bindPopup(popup_ad237fbf19fe9f301b058634853d2380)
+        ;
+
+        
+    
+    
+            circle_marker_f100a840d8616d17b12203e937aa03e1.bindTooltip(
+                `<div>
+                     137 상주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5b28423992036e04ba5d26729bda1689 = L.circleMarker(
+                [36.0327, 129.3799],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_9e4e465ad46d5c3d44f4eca728fff9d7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_aa7eae7e92218269699ba4a0357c85aa = $(`<div id="html_aa7eae7e92218269699ba4a0357c85aa" style="width: 100.0%; height: 100.0%;"><b>138 포항</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_9e4e465ad46d5c3d44f4eca728fff9d7.setContent(html_aa7eae7e92218269699ba4a0357c85aa);
+            
+        
+
+        circle_marker_5b28423992036e04ba5d26729bda1689.bindPopup(popup_9e4e465ad46d5c3d44f4eca728fff9d7)
+        ;
+
+        
+    
+    
+            circle_marker_5b28423992036e04ba5d26729bda1689.bindTooltip(
+                `<div>
+                     138 포항
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c77c021a63fd2d14113383b8d6533a81 = L.circleMarker(
+                [36.0053, 126.7615],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_e8c2b3fcb573fe5afafaa7401b31d15c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_b08d49e6418b65711ae2cf15d1a79a0f = $(`<div id="html_b08d49e6418b65711ae2cf15d1a79a0f" style="width: 100.0%; height: 100.0%;"><b>140 군산</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_e8c2b3fcb573fe5afafaa7401b31d15c.setContent(html_b08d49e6418b65711ae2cf15d1a79a0f);
+            
+        
+
+        circle_marker_c77c021a63fd2d14113383b8d6533a81.bindPopup(popup_e8c2b3fcb573fe5afafaa7401b31d15c)
+        ;
+
+        
+    
+    
+            circle_marker_c77c021a63fd2d14113383b8d6533a81.bindTooltip(
+                `<div>
+                     140 군산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_51e29925e3aafde658f3b1f0d2f0ea5a = L.circleMarker(
+                [35.8783, 128.6526],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_0447c66c3c9538ba2eaa9c036c5afaa7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_4b13c537ade39acdd0526b87ea615738 = $(`<div id="html_4b13c537ade39acdd0526b87ea615738" style="width: 100.0%; height: 100.0%;"><b>143 대구</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_0447c66c3c9538ba2eaa9c036c5afaa7.setContent(html_4b13c537ade39acdd0526b87ea615738);
+            
+        
+
+        circle_marker_51e29925e3aafde658f3b1f0d2f0ea5a.bindPopup(popup_0447c66c3c9538ba2eaa9c036c5afaa7)
+        ;
+
+        
+    
+    
+            circle_marker_51e29925e3aafde658f3b1f0d2f0ea5a.bindTooltip(
+                `<div>
+                     143 대구
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_637f29dda48020fedd8e5b548d933447 = L.circleMarker(
+                [35.8408, 127.1191],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_f56e570aedff4fd0edfab8faf3d8ccaf = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_3c36852e7acde2b6784e5b09df121e25 = $(`<div id="html_3c36852e7acde2b6784e5b09df121e25" style="width: 100.0%; height: 100.0%;"><b>146 전주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_f56e570aedff4fd0edfab8faf3d8ccaf.setContent(html_3c36852e7acde2b6784e5b09df121e25);
+            
+        
+
+        circle_marker_637f29dda48020fedd8e5b548d933447.bindPopup(popup_f56e570aedff4fd0edfab8faf3d8ccaf)
+        ;
+
+        
+    
+    
+            circle_marker_637f29dda48020fedd8e5b548d933447.bindTooltip(
+                `<div>
+                     146 전주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1b34d60743df2ec0ef73bcd41dcaaa5c = L.circleMarker(
+                [35.5822, 129.3303],
+                {"bubblingMouseEvents": true, "color": "#6baed6", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#6baed6", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_e4acb13cc0df1f55ece711561fb4bfee = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_dd1edb2f49dbfe35ee4a79139ec544ae = $(`<div id="html_dd1edb2f49dbfe35ee4a79139ec544ae" style="width: 100.0%; height: 100.0%;"><b>152 울산</b><br>Wind: 2020-2026 all available<br>Solar: 2023-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_e4acb13cc0df1f55ece711561fb4bfee.setContent(html_dd1edb2f49dbfe35ee4a79139ec544ae);
+            
+        
+
+        circle_marker_1b34d60743df2ec0ef73bcd41dcaaa5c.bindPopup(popup_e4acb13cc0df1f55ece711561fb4bfee)
+        ;
+
+        
+    
+    
+            circle_marker_1b34d60743df2ec0ef73bcd41dcaaa5c.bindTooltip(
+                `<div>
+                     152 울산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_b6724c32faadf1043fa6178483db6eb0 = L.circleMarker(
+                [35.1703, 128.574],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_88da101a60a5b5d138b990fc1190756a = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_efca928738606702eb998407090ef126 = $(`<div id="html_efca928738606702eb998407090ef126" style="width: 100.0%; height: 100.0%;"><b>155 창원</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_88da101a60a5b5d138b990fc1190756a.setContent(html_efca928738606702eb998407090ef126);
+            
+        
+
+        circle_marker_b6724c32faadf1043fa6178483db6eb0.bindPopup(popup_88da101a60a5b5d138b990fc1190756a)
+        ;
+
+        
+    
+    
+            circle_marker_b6724c32faadf1043fa6178483db6eb0.bindTooltip(
+                `<div>
+                     155 창원
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3d0a3229d0302de6398f8ffa3ed366ea = L.circleMarker(
+                [35.1729, 126.8916],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_6b00f557d21626543f36df9b803c13bf = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e1687c09a0a5166726b1c2182d4bc47a = $(`<div id="html_e1687c09a0a5166726b1c2182d4bc47a" style="width: 100.0%; height: 100.0%;"><b>156 광주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_6b00f557d21626543f36df9b803c13bf.setContent(html_e1687c09a0a5166726b1c2182d4bc47a);
+            
+        
+
+        circle_marker_3d0a3229d0302de6398f8ffa3ed366ea.bindPopup(popup_6b00f557d21626543f36df9b803c13bf)
+        ;
+
+        
+    
+    
+            circle_marker_3d0a3229d0302de6398f8ffa3ed366ea.bindTooltip(
+                `<div>
+                     156 광주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ab5b062a60fb5e62bc0d453b7eba07eb = L.circleMarker(
+                [35.1047, 129.0319],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_ef8438e4f4b5c5e155ab855bc37f539d = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e20537bbb0c6edf2b03b0bfe09a2854b = $(`<div id="html_e20537bbb0c6edf2b03b0bfe09a2854b" style="width: 100.0%; height: 100.0%;"><b>159 부산</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_ef8438e4f4b5c5e155ab855bc37f539d.setContent(html_e20537bbb0c6edf2b03b0bfe09a2854b);
+            
+        
+
+        circle_marker_ab5b062a60fb5e62bc0d453b7eba07eb.bindPopup(popup_ef8438e4f4b5c5e155ab855bc37f539d)
+        ;
+
+        
+    
+    
+            circle_marker_ab5b062a60fb5e62bc0d453b7eba07eb.bindTooltip(
+                `<div>
+                     159 부산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_78da32ae995f93854ec25628193c152a = L.circleMarker(
+                [34.8454, 128.4357],
+                {"bubblingMouseEvents": true, "color": "#6baed6", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#6baed6", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_8661f777051253718e12205599cf65b0 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e1c90af304f83bbad3b84880f75012bd = $(`<div id="html_e1c90af304f83bbad3b84880f75012bd" style="width: 100.0%; height: 100.0%;"><b>162 통영</b><br>Wind: 2020-2026 all available<br>Solar: 2023-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_8661f777051253718e12205599cf65b0.setContent(html_e1c90af304f83bbad3b84880f75012bd);
+            
+        
+
+        circle_marker_78da32ae995f93854ec25628193c152a.bindPopup(popup_8661f777051253718e12205599cf65b0)
+        ;
+
+        
+    
+    
+            circle_marker_78da32ae995f93854ec25628193c152a.bindTooltip(
+                `<div>
+                     162 통영
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_e0a6f15abc81da777cd19b8d55288cd9 = L.circleMarker(
+                [34.8169, 126.3815],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3eb47fd99cdce6f880d2281b301459d1 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_a92541a48e6fcefa9c0d424b2977b60e = $(`<div id="html_a92541a48e6fcefa9c0d424b2977b60e" style="width: 100.0%; height: 100.0%;"><b>165 목포</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3eb47fd99cdce6f880d2281b301459d1.setContent(html_a92541a48e6fcefa9c0d424b2977b60e);
+            
+        
+
+        circle_marker_e0a6f15abc81da777cd19b8d55288cd9.bindPopup(popup_3eb47fd99cdce6f880d2281b301459d1)
+        ;
+
+        
+    
+    
+            circle_marker_e0a6f15abc81da777cd19b8d55288cd9.bindTooltip(
+                `<div>
+                     165 목포
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fd36d2e875b747b56121884ae687b8c3 = L.circleMarker(
+                [34.7393, 127.7406],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_15d405b0d00a3814ca7f1a52de34608b = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_c648665c50f7ac9aa6ba14653a25a7db = $(`<div id="html_c648665c50f7ac9aa6ba14653a25a7db" style="width: 100.0%; height: 100.0%;"><b>168 여수</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_15d405b0d00a3814ca7f1a52de34608b.setContent(html_c648665c50f7ac9aa6ba14653a25a7db);
+            
+        
+
+        circle_marker_fd36d2e875b747b56121884ae687b8c3.bindPopup(popup_15d405b0d00a3814ca7f1a52de34608b)
+        ;
+
+        
+    
+    
+            circle_marker_fd36d2e875b747b56121884ae687b8c3.bindTooltip(
+                `<div>
+                     168 여수
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_82432e511ccc67d7ac88b5837da74d7c = L.circleMarker(
+                [34.6873, 125.4513],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_506ebea3ee6b2ad1fe9725cbfb44bbfc = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_cfeb5a5706a3dd5ab26d010f43e6171f = $(`<div id="html_cfeb5a5706a3dd5ab26d010f43e6171f" style="width: 100.0%; height: 100.0%;"><b>169 흑산도</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_506ebea3ee6b2ad1fe9725cbfb44bbfc.setContent(html_cfeb5a5706a3dd5ab26d010f43e6171f);
+            
+        
+
+        circle_marker_82432e511ccc67d7ac88b5837da74d7c.bindPopup(popup_506ebea3ee6b2ad1fe9725cbfb44bbfc)
+        ;
+
+        
+    
+    
+            circle_marker_82432e511ccc67d7ac88b5837da74d7c.bindTooltip(
+                `<div>
+                     169 흑산도
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7eaf88f71d79279ce76814fa60164e42 = L.circleMarker(
+                [34.396, 126.7012],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_61bc6e5f4ff0a6712abdb4c877ca4bf8 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_44e2e01f0dab72aff15885e0b69624db = $(`<div id="html_44e2e01f0dab72aff15885e0b69624db" style="width: 100.0%; height: 100.0%;"><b>170 완도</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_61bc6e5f4ff0a6712abdb4c877ca4bf8.setContent(html_44e2e01f0dab72aff15885e0b69624db);
+            
+        
+
+        circle_marker_7eaf88f71d79279ce76814fa60164e42.bindPopup(popup_61bc6e5f4ff0a6712abdb4c877ca4bf8)
+        ;
+
+        
+    
+    
+            circle_marker_7eaf88f71d79279ce76814fa60164e42.bindTooltip(
+                `<div>
+                     170 완도
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_aa7b7d9afbcb1a0c3beaba4aaa73aac7 = L.circleMarker(
+                [35.3458, 126.5996],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_2170c9d191aa463eefe21431c0091563 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_f576e81dc3779d25f8a59cc37d9824db = $(`<div id="html_f576e81dc3779d25f8a59cc37d9824db" style="width: 100.0%; height: 100.0%;"><b>172 고창</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_2170c9d191aa463eefe21431c0091563.setContent(html_f576e81dc3779d25f8a59cc37d9824db);
+            
+        
+
+        circle_marker_aa7b7d9afbcb1a0c3beaba4aaa73aac7.bindPopup(popup_2170c9d191aa463eefe21431c0091563)
+        ;
+
+        
+    
+    
+            circle_marker_aa7b7d9afbcb1a0c3beaba4aaa73aac7.bindTooltip(
+                `<div>
+                     172 고창
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_6b3e8751c90859d10014fe521be88cf2 = L.circleMarker(
+                [34.9405, 127.2069],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_a42ab9d3e3a55d7666b2bc5bb17395f7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_29b30383e9305882ac5ea93d1afbcdbf = $(`<div id="html_29b30383e9305882ac5ea93d1afbcdbf" style="width: 100.0%; height: 100.0%;"><b>174 순천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_a42ab9d3e3a55d7666b2bc5bb17395f7.setContent(html_29b30383e9305882ac5ea93d1afbcdbf);
+            
+        
+
+        circle_marker_6b3e8751c90859d10014fe521be88cf2.bindPopup(popup_a42ab9d3e3a55d7666b2bc5bb17395f7)
+        ;
+
+        
+    
+    
+            circle_marker_6b3e8751c90859d10014fe521be88cf2.bindTooltip(
+                `<div>
+                     174 순천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3e43b453923b7770c79bb2dadaca1aef = L.circleMarker(
+                [36.658, 126.6705],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_24830963c04c59a6f59bf80d79b45cdb = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_29d49739da79c233cbf137b8adda3b3f = $(`<div id="html_29d49739da79c233cbf137b8adda3b3f" style="width: 100.0%; height: 100.0%;"><b>177 홍성</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_24830963c04c59a6f59bf80d79b45cdb.setContent(html_29d49739da79c233cbf137b8adda3b3f);
+            
+        
+
+        circle_marker_3e43b453923b7770c79bb2dadaca1aef.bindPopup(popup_24830963c04c59a6f59bf80d79b45cdb)
+        ;
+
+        
+    
+    
+            circle_marker_3e43b453923b7770c79bb2dadaca1aef.bindTooltip(
+                `<div>
+                     177 홍성
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_d93c89c64f63299357292f43a2d9e7fd = L.circleMarker(
+                [36.6396, 127.4413],
+                {"bubblingMouseEvents": true, "color": "#6baed6", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#6baed6", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_13d493d291cb43ff3a1223cf97e90276 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_a2ec53ff5a00b4d1b08c355ccd4cd6d3 = $(`<div id="html_a2ec53ff5a00b4d1b08c355ccd4cd6d3" style="width: 100.0%; height: 100.0%;"><b>181 서청주</b><br>Wind: 2023-2026<br>Solar: 2023-2026<br><small>wind pattern: ---YYYY<br>solar pattern: ---YYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_13d493d291cb43ff3a1223cf97e90276.setContent(html_a2ec53ff5a00b4d1b08c355ccd4cd6d3);
+            
+        
+
+        circle_marker_d93c89c64f63299357292f43a2d9e7fd.bindPopup(popup_13d493d291cb43ff3a1223cf97e90276)
+        ;
+
+        
+    
+    
+            circle_marker_d93c89c64f63299357292f43a2d9e7fd.bindTooltip(
+                `<div>
+                     181 서청주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fc484c95c4a622b52d3980cbf4b381b0 = L.circleMarker(
+                [33.5141, 126.5297],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_af3f2e14c5ddf770d17ed7a67d9e17a0 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_22c3d0830793714d00530e88972c5292 = $(`<div id="html_22c3d0830793714d00530e88972c5292" style="width: 100.0%; height: 100.0%;"><b>184 제주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_af3f2e14c5ddf770d17ed7a67d9e17a0.setContent(html_22c3d0830793714d00530e88972c5292);
+            
+        
+
+        circle_marker_fc484c95c4a622b52d3980cbf4b381b0.bindPopup(popup_af3f2e14c5ddf770d17ed7a67d9e17a0)
+        ;
+
+        
+    
+    
+            circle_marker_fc484c95c4a622b52d3980cbf4b381b0.bindTooltip(
+                `<div>
+                     184 제주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a614806822c07342273312ad41cacc2c = L.circleMarker(
+                [33.2938, 126.1626],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_82084a2ebfe307ab7b12f5d68400be0e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_89d514b9ca41904543a19c2a39f4d972 = $(`<div id="html_89d514b9ca41904543a19c2a39f4d972" style="width: 100.0%; height: 100.0%;"><b>185 고산</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_82084a2ebfe307ab7b12f5d68400be0e.setContent(html_89d514b9ca41904543a19c2a39f4d972);
+            
+        
+
+        circle_marker_a614806822c07342273312ad41cacc2c.bindPopup(popup_82084a2ebfe307ab7b12f5d68400be0e)
+        ;
+
+        
+    
+    
+            circle_marker_a614806822c07342273312ad41cacc2c.bindTooltip(
+                `<div>
+                     185 고산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_2cbffa0a98f8e8a39503f11df5a6b225 = L.circleMarker(
+                [33.3866, 126.88],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_8e44d260f85ae10c1ddc4ef1df2fedfc = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_60e451d3fff110715c942d01d2fce71a = $(`<div id="html_60e451d3fff110715c942d01d2fce71a" style="width: 100.0%; height: 100.0%;"><b>188 성산</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_8e44d260f85ae10c1ddc4ef1df2fedfc.setContent(html_60e451d3fff110715c942d01d2fce71a);
+            
+        
+
+        circle_marker_2cbffa0a98f8e8a39503f11df5a6b225.bindPopup(popup_8e44d260f85ae10c1ddc4ef1df2fedfc)
+        ;
+
+        
+    
+    
+            circle_marker_2cbffa0a98f8e8a39503f11df5a6b225.bindTooltip(
+                `<div>
+                     188 성산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_890e277f367be762d3544bf5c0e6088c = L.circleMarker(
+                [33.2461, 126.5653],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_124e2a7ae64d81fcdb9701434ca608f7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_1021889f0b861942982d23afa55566a0 = $(`<div id="html_1021889f0b861942982d23afa55566a0" style="width: 100.0%; height: 100.0%;"><b>189 서귀포</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_124e2a7ae64d81fcdb9701434ca608f7.setContent(html_1021889f0b861942982d23afa55566a0);
+            
+        
+
+        circle_marker_890e277f367be762d3544bf5c0e6088c.bindPopup(popup_124e2a7ae64d81fcdb9701434ca608f7)
+        ;
+
+        
+    
+    
+            circle_marker_890e277f367be762d3544bf5c0e6088c.bindTooltip(
+                `<div>
+                     189 서귀포
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1a2aa967fef79bef7dd59f430f5f1704 = L.circleMarker(
+                [35.1639, 128.0399],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_90462832cc1085390499aab268509f75 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_7c3a06007d3e3eec298a605ca6a66490 = $(`<div id="html_7c3a06007d3e3eec298a605ca6a66490" style="width: 100.0%; height: 100.0%;"><b>192 진주</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_90462832cc1085390499aab268509f75.setContent(html_7c3a06007d3e3eec298a605ca6a66490);
+            
+        
+
+        circle_marker_1a2aa967fef79bef7dd59f430f5f1704.bindPopup(popup_90462832cc1085390499aab268509f75)
+        ;
+
+        
+    
+    
+            circle_marker_1a2aa967fef79bef7dd59f430f5f1704.bindTooltip(
+                `<div>
+                     192 진주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_58d06b03fbac36e50c03e1cf9aa0a456 = L.circleMarker(
+                [37.7074, 126.4459],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_7e4ca90c697845f2ff4c004c19229632 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_a9f4f83dd658564d294065a4086a3227 = $(`<div id="html_a9f4f83dd658564d294065a4086a3227" style="width: 100.0%; height: 100.0%;"><b>201 강화</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_7e4ca90c697845f2ff4c004c19229632.setContent(html_a9f4f83dd658564d294065a4086a3227);
+            
+        
+
+        circle_marker_58d06b03fbac36e50c03e1cf9aa0a456.bindPopup(popup_7e4ca90c697845f2ff4c004c19229632)
+        ;
+
+        
+    
+    
+            circle_marker_58d06b03fbac36e50c03e1cf9aa0a456.bindTooltip(
+                `<div>
+                     201 강화
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c4e8a01ad112bf37d648d4e37bfcb761 = L.circleMarker(
+                [37.4886, 127.4915],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_62f8c4cfaf0719cfcb64737732eb62f8 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_c50b1c2fc17c3b2bf49faca77d40fcc0 = $(`<div id="html_c50b1c2fc17c3b2bf49faca77d40fcc0" style="width: 100.0%; height: 100.0%;"><b>202 양평</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_62f8c4cfaf0719cfcb64737732eb62f8.setContent(html_c50b1c2fc17c3b2bf49faca77d40fcc0);
+            
+        
+
+        circle_marker_c4e8a01ad112bf37d648d4e37bfcb761.bindPopup(popup_62f8c4cfaf0719cfcb64737732eb62f8)
+        ;
+
+        
+    
+    
+            circle_marker_c4e8a01ad112bf37d648d4e37bfcb761.bindTooltip(
+                `<div>
+                     202 양평
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_f30efbe27dfd3a8b474ee27ba0477b0e = L.circleMarker(
+                [37.2643, 127.4843],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_eee6eef97f3bda8246683965e680b80d = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_7cd8c9b81f07b6d7522b1f32a56a3493 = $(`<div id="html_7cd8c9b81f07b6d7522b1f32a56a3493" style="width: 100.0%; height: 100.0%;"><b>203 이천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_eee6eef97f3bda8246683965e680b80d.setContent(html_7cd8c9b81f07b6d7522b1f32a56a3493);
+            
+        
+
+        circle_marker_f30efbe27dfd3a8b474ee27ba0477b0e.bindPopup(popup_eee6eef97f3bda8246683965e680b80d)
+        ;
+
+        
+    
+    
+            circle_marker_f30efbe27dfd3a8b474ee27ba0477b0e.bindTooltip(
+                `<div>
+                     203 이천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3c0ef02554804db25da725ac38e2e3a9 = L.circleMarker(
+                [38.0598, 128.1672],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3b94927304483d9cafae241959fcd2ab = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_98344f33b2e477a9ecce38d6b9982baf = $(`<div id="html_98344f33b2e477a9ecce38d6b9982baf" style="width: 100.0%; height: 100.0%;"><b>211 인제</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3b94927304483d9cafae241959fcd2ab.setContent(html_98344f33b2e477a9ecce38d6b9982baf);
+            
+        
+
+        circle_marker_3c0ef02554804db25da725ac38e2e3a9.bindPopup(popup_3b94927304483d9cafae241959fcd2ab)
+        ;
+
+        
+    
+    
+            circle_marker_3c0ef02554804db25da725ac38e2e3a9.bindTooltip(
+                `<div>
+                     211 인제
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4ac353e9636aa774a296121f76231c5a = L.circleMarker(
+                [37.6837, 127.8807],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_9955eb51e408c1cca8fbbd01c9020d52 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_a721bfb7c33ae9b5c17fca22caffeaca = $(`<div id="html_a721bfb7c33ae9b5c17fca22caffeaca" style="width: 100.0%; height: 100.0%;"><b>212 홍천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_9955eb51e408c1cca8fbbd01c9020d52.setContent(html_a721bfb7c33ae9b5c17fca22caffeaca);
+            
+        
+
+        circle_marker_4ac353e9636aa774a296121f76231c5a.bindPopup(popup_9955eb51e408c1cca8fbbd01c9020d52)
+        ;
+
+        
+    
+    
+            circle_marker_4ac353e9636aa774a296121f76231c5a.bindTooltip(
+                `<div>
+                     212 홍천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_0e8eb7c25ebee89bc7cb07f1ee1bd252 = L.circleMarker(
+                [37.1734, 128.9866],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_e20f65981225d8e30bf9634cf872edb9 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_21a08a1c73131043776f8f12584dbe10 = $(`<div id="html_21a08a1c73131043776f8f12584dbe10" style="width: 100.0%; height: 100.0%;"><b>216 태백</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_e20f65981225d8e30bf9634cf872edb9.setContent(html_21a08a1c73131043776f8f12584dbe10);
+            
+        
+
+        circle_marker_0e8eb7c25ebee89bc7cb07f1ee1bd252.bindPopup(popup_e20f65981225d8e30bf9634cf872edb9)
+        ;
+
+        
+    
+    
+            circle_marker_0e8eb7c25ebee89bc7cb07f1ee1bd252.bindTooltip(
+                `<div>
+                     216 태백
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_207bd9c92ad5dbadbf0abd240e404a3f = L.circleMarker(
+                [37.3805, 128.6404],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_8d7ed98f466ac9936caa7355791c6bb7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e3c6885698763b5d59286689468ecff7 = $(`<div id="html_e3c6885698763b5d59286689468ecff7" style="width: 100.0%; height: 100.0%;"><b>217 정선군</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_8d7ed98f466ac9936caa7355791c6bb7.setContent(html_e3c6885698763b5d59286689468ecff7);
+            
+        
+
+        circle_marker_207bd9c92ad5dbadbf0abd240e404a3f.bindPopup(popup_8d7ed98f466ac9936caa7355791c6bb7)
+        ;
+
+        
+    
+    
+            circle_marker_207bd9c92ad5dbadbf0abd240e404a3f.bindTooltip(
+                `<div>
+                     217 정선군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_0eb28bbda985c8c6ac9822f7889d7aeb = L.circleMarker(
+                [37.1591, 128.1942],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_f4fe3ea8db832fec8dbf96f0d3ea2d89 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_f45ba0ff91a86a932491dd49370c498d = $(`<div id="html_f45ba0ff91a86a932491dd49370c498d" style="width: 100.0%; height: 100.0%;"><b>221 제천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_f4fe3ea8db832fec8dbf96f0d3ea2d89.setContent(html_f45ba0ff91a86a932491dd49370c498d);
+            
+        
+
+        circle_marker_0eb28bbda985c8c6ac9822f7889d7aeb.bindPopup(popup_f4fe3ea8db832fec8dbf96f0d3ea2d89)
+        ;
+
+        
+    
+    
+            circle_marker_0eb28bbda985c8c6ac9822f7889d7aeb.bindTooltip(
+                `<div>
+                     221 제천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1dd6df0ed84637f62c203d4e4acaefb4 = L.circleMarker(
+                [36.4886, 127.7372],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_cbb824fa228a364cb5b1305efa04b962 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_d0d9e973721ba68dd9b1de113d44407b = $(`<div id="html_d0d9e973721ba68dd9b1de113d44407b" style="width: 100.0%; height: 100.0%;"><b>226 보은</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_cbb824fa228a364cb5b1305efa04b962.setContent(html_d0d9e973721ba68dd9b1de113d44407b);
+            
+        
+
+        circle_marker_1dd6df0ed84637f62c203d4e4acaefb4.bindPopup(popup_cbb824fa228a364cb5b1305efa04b962)
+        ;
+
+        
+    
+    
+            circle_marker_1dd6df0ed84637f62c203d4e4acaefb4.bindTooltip(
+                `<div>
+                     226 보은
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_d9f5aaadb15dbb86d6ad3ffb6d21a79a = L.circleMarker(
+                [36.7766, 127.1207],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_cccbfba8e178238ac0b9c65364533771 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_d865205c7f1e1d086c496aa1c15aa1f2 = $(`<div id="html_d865205c7f1e1d086c496aa1c15aa1f2" style="width: 100.0%; height: 100.0%;"><b>232 천안</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_cccbfba8e178238ac0b9c65364533771.setContent(html_d865205c7f1e1d086c496aa1c15aa1f2);
+            
+        
+
+        circle_marker_d9f5aaadb15dbb86d6ad3ffb6d21a79a.bindPopup(popup_cccbfba8e178238ac0b9c65364533771)
+        ;
+
+        
+    
+    
+            circle_marker_d9f5aaadb15dbb86d6ad3ffb6d21a79a.bindTooltip(
+                `<div>
+                     232 천안
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_953c5bdb769f6403c5426316871257af = L.circleMarker(
+                [36.3274, 126.5575],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3b2c9119b30bae8fb3f356b14d36769e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_48ee36fd97a25db7ed1095981cfb03e7 = $(`<div id="html_48ee36fd97a25db7ed1095981cfb03e7" style="width: 100.0%; height: 100.0%;"><b>235 보령</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3b2c9119b30bae8fb3f356b14d36769e.setContent(html_48ee36fd97a25db7ed1095981cfb03e7);
+            
+        
+
+        circle_marker_953c5bdb769f6403c5426316871257af.bindPopup(popup_3b2c9119b30bae8fb3f356b14d36769e)
+        ;
+
+        
+    
+    
+            circle_marker_953c5bdb769f6403c5426316871257af.bindTooltip(
+                `<div>
+                     235 보령
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_763f92ce67757578d99cc6f2b2611de8 = L.circleMarker(
+                [36.2723, 126.9209],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_dcb1220cf3b835765a22ce3fd5891106 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_39f045710689a971803b889232c67e12 = $(`<div id="html_39f045710689a971803b889232c67e12" style="width: 100.0%; height: 100.0%;"><b>236 부여</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_dcb1220cf3b835765a22ce3fd5891106.setContent(html_39f045710689a971803b889232c67e12);
+            
+        
+
+        circle_marker_763f92ce67757578d99cc6f2b2611de8.bindPopup(popup_dcb1220cf3b835765a22ce3fd5891106)
+        ;
+
+        
+    
+    
+            circle_marker_763f92ce67757578d99cc6f2b2611de8.bindTooltip(
+                `<div>
+                     236 부여
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7ba7998a4c58904a2929f59d929870af = L.circleMarker(
+                [36.1057, 127.4814],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_fa5a5783355012462c59326411ba19d7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_b97206354f736c34b02f2b2dde3c181b = $(`<div id="html_b97206354f736c34b02f2b2dde3c181b" style="width: 100.0%; height: 100.0%;"><b>238 금산</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_fa5a5783355012462c59326411ba19d7.setContent(html_b97206354f736c34b02f2b2dde3c181b);
+            
+        
+
+        circle_marker_7ba7998a4c58904a2929f59d929870af.bindPopup(popup_fa5a5783355012462c59326411ba19d7)
+        ;
+
+        
+    
+    
+            circle_marker_7ba7998a4c58904a2929f59d929870af.bindTooltip(
+                `<div>
+                     238 금산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_b0f8aa6eebb1921266785c28c81fe3b3 = L.circleMarker(
+                [36.5031, 127.2624],
+                {"bubblingMouseEvents": true, "color": "#6baed6", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#6baed6", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_d9607628572c21ea292e0479df2a6523 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_bc1ef087f5f935134c707dbe579f123b = $(`<div id="html_bc1ef087f5f935134c707dbe579f123b" style="width: 100.0%; height: 100.0%;"><b>239 세종</b><br>Wind: 2020-2026 all available<br>Solar: 2023-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_d9607628572c21ea292e0479df2a6523.setContent(html_bc1ef087f5f935134c707dbe579f123b);
+            
+        
+
+        circle_marker_b0f8aa6eebb1921266785c28c81fe3b3.bindPopup(popup_d9607628572c21ea292e0479df2a6523)
+        ;
+
+        
+    
+    
+            circle_marker_b0f8aa6eebb1921266785c28c81fe3b3.bindTooltip(
+                `<div>
+                     239 세종
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3fc93d0456320605e767636e415e8b2f = L.circleMarker(
+                [35.7295, 126.7166],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3a115b710fa3f3b480e0d2021f1d9d29 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_868cb0892f36c91b186067270aa51727 = $(`<div id="html_868cb0892f36c91b186067270aa51727" style="width: 100.0%; height: 100.0%;"><b>243 부안</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3a115b710fa3f3b480e0d2021f1d9d29.setContent(html_868cb0892f36c91b186067270aa51727);
+            
+        
+
+        circle_marker_3fc93d0456320605e767636e415e8b2f.bindPopup(popup_3a115b710fa3f3b480e0d2021f1d9d29)
+        ;
+
+        
+    
+    
+            circle_marker_3fc93d0456320605e767636e415e8b2f.bindTooltip(
+                `<div>
+                     243 부안
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4446fc9d75621ee3613ac7b44bfb068a = L.circleMarker(
+                [35.6121, 127.2856],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_bd1fcf2fe17ab5704fe658f84df315d3 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_2ece5b5ebe79bce8f23cae1b86c798e3 = $(`<div id="html_2ece5b5ebe79bce8f23cae1b86c798e3" style="width: 100.0%; height: 100.0%;"><b>244 임실</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_bd1fcf2fe17ab5704fe658f84df315d3.setContent(html_2ece5b5ebe79bce8f23cae1b86c798e3);
+            
+        
+
+        circle_marker_4446fc9d75621ee3613ac7b44bfb068a.bindPopup(popup_bd1fcf2fe17ab5704fe658f84df315d3)
+        ;
+
+        
+    
+    
+            circle_marker_4446fc9d75621ee3613ac7b44bfb068a.bindTooltip(
+                `<div>
+                     244 임실
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_e0b9ed3b6a0c0bab4190e0b04dbb6cc8 = L.circleMarker(
+                [35.5639, 126.8388],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_8cfd4e27b7f78a52b0348d3b15a9cb2c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e7ff35913635c0d5424027c84513ceb0 = $(`<div id="html_e7ff35913635c0d5424027c84513ceb0" style="width: 100.0%; height: 100.0%;"><b>245 정읍</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_8cfd4e27b7f78a52b0348d3b15a9cb2c.setContent(html_e7ff35913635c0d5424027c84513ceb0);
+            
+        
+
+        circle_marker_e0b9ed3b6a0c0bab4190e0b04dbb6cc8.bindPopup(popup_8cfd4e27b7f78a52b0348d3b15a9cb2c)
+        ;
+
+        
+    
+    
+            circle_marker_e0b9ed3b6a0c0bab4190e0b04dbb6cc8.bindTooltip(
+                `<div>
+                     245 정읍
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_bb86144c80c933be18534c3013774d1b = L.circleMarker(
+                [35.4209, 127.3961],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_372aaec39c0dfc7076543007841892d1 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_9592eec6fbe621ffc9d11fcfb3e1a52a = $(`<div id="html_9592eec6fbe621ffc9d11fcfb3e1a52a" style="width: 100.0%; height: 100.0%;"><b>247 남원</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_372aaec39c0dfc7076543007841892d1.setContent(html_9592eec6fbe621ffc9d11fcfb3e1a52a);
+            
+        
+
+        circle_marker_bb86144c80c933be18534c3013774d1b.bindPopup(popup_372aaec39c0dfc7076543007841892d1)
+        ;
+
+        
+    
+    
+            circle_marker_bb86144c80c933be18534c3013774d1b.bindTooltip(
+                `<div>
+                     247 남원
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_d3da87ac69775f0ac7521d73d4577722 = L.circleMarker(
+                [35.6573, 127.5202],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_5e73d96d3cdcde800c644ae6079f896f = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_003f5ba72cb99ccfdbd9e8279220d3b7 = $(`<div id="html_003f5ba72cb99ccfdbd9e8279220d3b7" style="width: 100.0%; height: 100.0%;"><b>248 장수</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_5e73d96d3cdcde800c644ae6079f896f.setContent(html_003f5ba72cb99ccfdbd9e8279220d3b7);
+            
+        
+
+        circle_marker_d3da87ac69775f0ac7521d73d4577722.bindPopup(popup_5e73d96d3cdcde800c644ae6079f896f)
+        ;
+
+        
+    
+    
+            circle_marker_d3da87ac69775f0ac7521d73d4577722.bindTooltip(
+                `<div>
+                     248 장수
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_55db0af63865f55b77c04bf9489aedc0 = L.circleMarker(
+                [35.4348, 126.702],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_34f832f5ef1cc128d1082eff9eda118c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_8749aae6c5ea787e1f6b9af36a72bdcc = $(`<div id="html_8749aae6c5ea787e1f6b9af36a72bdcc" style="width: 100.0%; height: 100.0%;"><b>251 고창군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_34f832f5ef1cc128d1082eff9eda118c.setContent(html_8749aae6c5ea787e1f6b9af36a72bdcc);
+            
+        
+
+        circle_marker_55db0af63865f55b77c04bf9489aedc0.bindPopup(popup_34f832f5ef1cc128d1082eff9eda118c)
+        ;
+
+        
+    
+    
+            circle_marker_55db0af63865f55b77c04bf9489aedc0.bindTooltip(
+                `<div>
+                     251 고창군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c5ccf6380c79f4e3eb85f97a596ae142 = L.circleMarker(
+                [35.2807, 126.475],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_fab8355c056fd8236a6b4af58183127e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_57a127b50e1035c3c176b9d1a3d50368 = $(`<div id="html_57a127b50e1035c3c176b9d1a3d50368" style="width: 100.0%; height: 100.0%;"><b>252 영광군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_fab8355c056fd8236a6b4af58183127e.setContent(html_57a127b50e1035c3c176b9d1a3d50368);
+            
+        
+
+        circle_marker_c5ccf6380c79f4e3eb85f97a596ae142.bindPopup(popup_fab8355c056fd8236a6b4af58183127e)
+        ;
+
+        
+    
+    
+            circle_marker_c5ccf6380c79f4e3eb85f97a596ae142.bindTooltip(
+                `<div>
+                     252 영광군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_981dee7b246dc21c97851d9e85e3b643 = L.circleMarker(
+                [35.2293, 128.8893],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_ee31cc9930e797303f01e32293e3e58c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_3452cfde81ce2d167fdeaf1fe26884f7 = $(`<div id="html_3452cfde81ce2d167fdeaf1fe26884f7" style="width: 100.0%; height: 100.0%;"><b>253 김해시</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_ee31cc9930e797303f01e32293e3e58c.setContent(html_3452cfde81ce2d167fdeaf1fe26884f7);
+            
+        
+
+        circle_marker_981dee7b246dc21c97851d9e85e3b643.bindPopup(popup_ee31cc9930e797303f01e32293e3e58c)
+        ;
+
+        
+    
+    
+            circle_marker_981dee7b246dc21c97851d9e85e3b643.bindTooltip(
+                `<div>
+                     253 김해시
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_562d210d93afb0f9f6f50bf49828afb5 = L.circleMarker(
+                [35.3744, 127.1377],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_7024414c1c919f553b2503658c51af1d = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_50f22c44af2ba95ab7b4cd01a27b348a = $(`<div id="html_50f22c44af2ba95ab7b4cd01a27b348a" style="width: 100.0%; height: 100.0%;"><b>254 순창군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_7024414c1c919f553b2503658c51af1d.setContent(html_50f22c44af2ba95ab7b4cd01a27b348a);
+            
+        
+
+        circle_marker_562d210d93afb0f9f6f50bf49828afb5.bindPopup(popup_7024414c1c919f553b2503658c51af1d)
+        ;
+
+        
+    
+    
+            circle_marker_562d210d93afb0f9f6f50bf49828afb5.bindTooltip(
+                `<div>
+                     254 순창군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_381f30b065fac55a35903fa8d9b068a3 = L.circleMarker(
+                [35.244, 128.6469],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_17697172cbb860e94b4c30ffc39de792 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_c0999bd81fbaf9eb182e863575ea99d6 = $(`<div id="html_c0999bd81fbaf9eb182e863575ea99d6" style="width: 100.0%; height: 100.0%;"><b>255 북창원</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_17697172cbb860e94b4c30ffc39de792.setContent(html_c0999bd81fbaf9eb182e863575ea99d6);
+            
+        
+
+        circle_marker_381f30b065fac55a35903fa8d9b068a3.bindPopup(popup_17697172cbb860e94b4c30ffc39de792)
+        ;
+
+        
+    
+    
+            circle_marker_381f30b065fac55a35903fa8d9b068a3.bindTooltip(
+                `<div>
+                     255 북창원
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4cdba35e30c681b39f4fe0ea23ea8f15 = L.circleMarker(
+                [35.3071, 129.0327],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_878c3be1c3e4e197f6d872fa2883abba = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_03090df0cb0178328ccffa3f6f0b459e = $(`<div id="html_03090df0cb0178328ccffa3f6f0b459e" style="width: 100.0%; height: 100.0%;"><b>257 양산시</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_878c3be1c3e4e197f6d872fa2883abba.setContent(html_03090df0cb0178328ccffa3f6f0b459e);
+            
+        
+
+        circle_marker_4cdba35e30c681b39f4fe0ea23ea8f15.bindPopup(popup_878c3be1c3e4e197f6d872fa2883abba)
+        ;
+
+        
+    
+    
+            circle_marker_4cdba35e30c681b39f4fe0ea23ea8f15.bindTooltip(
+                `<div>
+                     257 양산시
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_4015cfcdb5f05e2e9a844eb743b36216 = L.circleMarker(
+                [34.7634, 127.2122],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3f5959235aa9af4d2f661cf284ae1957 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_e2d78d4e0f90af1aeb6e2cbdf2286534 = $(`<div id="html_e2d78d4e0f90af1aeb6e2cbdf2286534" style="width: 100.0%; height: 100.0%;"><b>258 보성군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3f5959235aa9af4d2f661cf284ae1957.setContent(html_e2d78d4e0f90af1aeb6e2cbdf2286534);
+            
+        
+
+        circle_marker_4015cfcdb5f05e2e9a844eb743b36216.bindPopup(popup_3f5959235aa9af4d2f661cf284ae1957)
+        ;
+
+        
+    
+    
+            circle_marker_4015cfcdb5f05e2e9a844eb743b36216.bindTooltip(
+                `<div>
+                     258 보성군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_908eed85a2398b65b0e2626ff359c5ea = L.circleMarker(
+                [34.6411, 126.8181],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_08a814fa699918a7e124a115bcae9b8b = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_1cbf8112e685a2cbea180d7b41091298 = $(`<div id="html_1cbf8112e685a2cbea180d7b41091298" style="width: 100.0%; height: 100.0%;"><b>259 강진군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_08a814fa699918a7e124a115bcae9b8b.setContent(html_1cbf8112e685a2cbea180d7b41091298);
+            
+        
+
+        circle_marker_908eed85a2398b65b0e2626ff359c5ea.bindPopup(popup_08a814fa699918a7e124a115bcae9b8b)
+        ;
+
+        
+    
+    
+            circle_marker_908eed85a2398b65b0e2626ff359c5ea.bindTooltip(
+                `<div>
+                     259 강진군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_8ef04e5189e04471a7ef952793954a56 = L.circleMarker(
+                [34.6886, 126.9197],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_b4c80cdb99100552a28bec3e8967ba12 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_88063f7f9456e416f30af5a0f0c3ad20 = $(`<div id="html_88063f7f9456e416f30af5a0f0c3ad20" style="width: 100.0%; height: 100.0%;"><b>260 장흥</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_b4c80cdb99100552a28bec3e8967ba12.setContent(html_88063f7f9456e416f30af5a0f0c3ad20);
+            
+        
+
+        circle_marker_8ef04e5189e04471a7ef952793954a56.bindPopup(popup_b4c80cdb99100552a28bec3e8967ba12)
+        ;
+
+        
+    
+    
+            circle_marker_8ef04e5189e04471a7ef952793954a56.bindTooltip(
+                `<div>
+                     260 장흥
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_1bd85afd01e5de9987d9096df7aafb85 = L.circleMarker(
+                [34.5536, 126.5694],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_bdaafbcaa3b0f3499db9a6284e4e3803 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_6e0ff9f0a88a459c44244981631dbb82 = $(`<div id="html_6e0ff9f0a88a459c44244981631dbb82" style="width: 100.0%; height: 100.0%;"><b>261 해남</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_bdaafbcaa3b0f3499db9a6284e4e3803.setContent(html_6e0ff9f0a88a459c44244981631dbb82);
+            
+        
+
+        circle_marker_1bd85afd01e5de9987d9096df7aafb85.bindPopup(popup_bdaafbcaa3b0f3499db9a6284e4e3803)
+        ;
+
+        
+    
+    
+            circle_marker_1bd85afd01e5de9987d9096df7aafb85.bindTooltip(
+                `<div>
+                     261 해남
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3cc024aa27924c64b2edeebd046c7a40 = L.circleMarker(
+                [34.6184, 127.2756],
+                {"bubblingMouseEvents": true, "color": "#3182bd", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3182bd", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_0d8ab0c9a1290912d8c5c1b4f959cc1c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_bbc83037a5b7ff0ddd0069d69568fc29 = $(`<div id="html_bbc83037a5b7ff0ddd0069d69568fc29" style="width: 100.0%; height: 100.0%;"><b>262 고흥</b><br>Wind: 2020-2026 all available<br>Solar: 2024-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_0d8ab0c9a1290912d8c5c1b4f959cc1c.setContent(html_bbc83037a5b7ff0ddd0069d69568fc29);
+            
+        
+
+        circle_marker_3cc024aa27924c64b2edeebd046c7a40.bindPopup(popup_0d8ab0c9a1290912d8c5c1b4f959cc1c)
+        ;
+
+        
+    
+    
+            circle_marker_3cc024aa27924c64b2edeebd046c7a40.bindTooltip(
+                `<div>
+                     262 고흥
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_3d3aa3f6290685bb73ac96294d3c6a35 = L.circleMarker(
+                [35.3225, 128.2867],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_ddd3f5878e9a99a86ffeddf1cef114d6 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_51ea71f028546db89b5ac1cf4532938e = $(`<div id="html_51ea71f028546db89b5ac1cf4532938e" style="width: 100.0%; height: 100.0%;"><b>263 의령군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_ddd3f5878e9a99a86ffeddf1cef114d6.setContent(html_51ea71f028546db89b5ac1cf4532938e);
+            
+        
+
+        circle_marker_3d3aa3f6290685bb73ac96294d3c6a35.bindPopup(popup_ddd3f5878e9a99a86ffeddf1cef114d6)
+        ;
+
+        
+    
+    
+            circle_marker_3d3aa3f6290685bb73ac96294d3c6a35.bindTooltip(
+                `<div>
+                     263 의령군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_8077af8796b049136e4e6c27b2d1e821 = L.circleMarker(
+                [35.5202, 127.7245],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3892986d50af9a17cbf44e6307627a3c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_fa5741942293b7480c56372861c687fa = $(`<div id="html_fa5741942293b7480c56372861c687fa" style="width: 100.0%; height: 100.0%;"><b>264 함양군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3892986d50af9a17cbf44e6307627a3c.setContent(html_fa5741942293b7480c56372861c687fa);
+            
+        
+
+        circle_marker_8077af8796b049136e4e6c27b2d1e821.bindPopup(popup_3892986d50af9a17cbf44e6307627a3c)
+        ;
+
+        
+    
+    
+            circle_marker_8077af8796b049136e4e6c27b2d1e821.bindTooltip(
+                `<div>
+                     264 함양군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_da77b5aa9299eb63d81f5f206bba3b89 = L.circleMarker(
+                [34.9404, 127.6925],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_70d532b4de3eb309142d99a4309f5cd4 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_d67efb14fb0d603adc7205590b5ad608 = $(`<div id="html_d67efb14fb0d603adc7205590b5ad608" style="width: 100.0%; height: 100.0%;"><b>266 광양시</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_70d532b4de3eb309142d99a4309f5cd4.setContent(html_d67efb14fb0d603adc7205590b5ad608);
+            
+        
+
+        circle_marker_da77b5aa9299eb63d81f5f206bba3b89.bindPopup(popup_70d532b4de3eb309142d99a4309f5cd4)
+        ;
+
+        
+    
+    
+            circle_marker_da77b5aa9299eb63d81f5f206bba3b89.bindTooltip(
+                `<div>
+                     266 광양시
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ac342f6fc5e28f09636ce979807f3d13 = L.circleMarker(
+                [34.4724, 126.3266],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_b6dd285da7f0a909209c2f92c15bb267 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_9a5de7db215356f30335e8d056d4af6d = $(`<div id="html_9a5de7db215356f30335e8d056d4af6d" style="width: 100.0%; height: 100.0%;"><b>268 진도군</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_b6dd285da7f0a909209c2f92c15bb267.setContent(html_9a5de7db215356f30335e8d056d4af6d);
+            
+        
+
+        circle_marker_ac342f6fc5e28f09636ce979807f3d13.bindPopup(popup_b6dd285da7f0a909209c2f92c15bb267)
+        ;
+
+        
+    
+    
+            circle_marker_ac342f6fc5e28f09636ce979807f3d13.bindTooltip(
+                `<div>
+                     268 진도군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_058e708e13d54c90dc73f0dd157b107f = L.circleMarker(
+                [36.9437, 128.9143],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_39591fa9aec5e192915ebd3754ec3d59 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_7c762cd66f1a190f5175d16cbee57435 = $(`<div id="html_7c762cd66f1a190f5175d16cbee57435" style="width: 100.0%; height: 100.0%;"><b>271 봉화</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_39591fa9aec5e192915ebd3754ec3d59.setContent(html_7c762cd66f1a190f5175d16cbee57435);
+            
+        
+
+        circle_marker_058e708e13d54c90dc73f0dd157b107f.bindPopup(popup_39591fa9aec5e192915ebd3754ec3d59)
+        ;
+
+        
+    
+    
+            circle_marker_058e708e13d54c90dc73f0dd157b107f.bindTooltip(
+                `<div>
+                     271 봉화
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_430b6c77a231bec0c72296cd2244b27b = L.circleMarker(
+                [36.8717, 128.5168],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3ecb608becb04d780075ff98ec30ace7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_d851fa356558c8b3dfdf666388360070 = $(`<div id="html_d851fa356558c8b3dfdf666388360070" style="width: 100.0%; height: 100.0%;"><b>272 영주</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3ecb608becb04d780075ff98ec30ace7.setContent(html_d851fa356558c8b3dfdf666388360070);
+            
+        
+
+        circle_marker_430b6c77a231bec0c72296cd2244b27b.bindPopup(popup_3ecb608becb04d780075ff98ec30ace7)
+        ;
+
+        
+    
+    
+            circle_marker_430b6c77a231bec0c72296cd2244b27b.bindTooltip(
+                `<div>
+                     272 영주
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_332a740d2ee036f7cb9642a0b6673c1c = L.circleMarker(
+                [36.6272, 128.1487],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_05285a2d58aa1063757bf83895845bbe = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_367c499bd16aac24164311596870a878 = $(`<div id="html_367c499bd16aac24164311596870a878" style="width: 100.0%; height: 100.0%;"><b>273 문경</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_05285a2d58aa1063757bf83895845bbe.setContent(html_367c499bd16aac24164311596870a878);
+            
+        
+
+        circle_marker_332a740d2ee036f7cb9642a0b6673c1c.bindPopup(popup_05285a2d58aa1063757bf83895845bbe)
+        ;
+
+        
+    
+    
+            circle_marker_332a740d2ee036f7cb9642a0b6673c1c.bindTooltip(
+                `<div>
+                     273 문경
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_ab81e039eac0fbe2b697ea9dd7d30e59 = L.circleMarker(
+                [36.4332, 129.0571],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_cb69d16dee9e37d5b74848f36b4a5e6e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0ad78bfc9f3b0ba7796bcb355113ab00 = $(`<div id="html_0ad78bfc9f3b0ba7796bcb355113ab00" style="width: 100.0%; height: 100.0%;"><b>276 청송군</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_cb69d16dee9e37d5b74848f36b4a5e6e.setContent(html_0ad78bfc9f3b0ba7796bcb355113ab00);
+            
+        
+
+        circle_marker_ab81e039eac0fbe2b697ea9dd7d30e59.bindPopup(popup_cb69d16dee9e37d5b74848f36b4a5e6e)
+        ;
+
+        
+    
+    
+            circle_marker_ab81e039eac0fbe2b697ea9dd7d30e59.bindTooltip(
+                `<div>
+                     276 청송군
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5a1595d9685f2b95f892b37f4bfc6f73 = L.circleMarker(
+                [36.5331, 129.4093],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_04c55e89deb6aa4e8640c5426f8fb6e7 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_39b5a11bca7c938a4faa40354a8528d8 = $(`<div id="html_39b5a11bca7c938a4faa40354a8528d8" style="width: 100.0%; height: 100.0%;"><b>277 영덕</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_04c55e89deb6aa4e8640c5426f8fb6e7.setContent(html_39b5a11bca7c938a4faa40354a8528d8);
+            
+        
+
+        circle_marker_5a1595d9685f2b95f892b37f4bfc6f73.bindPopup(popup_04c55e89deb6aa4e8640c5426f8fb6e7)
+        ;
+
+        
+    
+    
+            circle_marker_5a1595d9685f2b95f892b37f4bfc6f73.bindTooltip(
+                `<div>
+                     277 영덕
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_7e04a8456fd971893403abaf3bdc9c26 = L.circleMarker(
+                [36.3565, 128.6889],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_444d411b8203084d8e3f086ccdc31c7c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_8981920b8750167a6c77d6911ba58ca4 = $(`<div id="html_8981920b8750167a6c77d6911ba58ca4" style="width: 100.0%; height: 100.0%;"><b>278 의성</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_444d411b8203084d8e3f086ccdc31c7c.setContent(html_8981920b8750167a6c77d6911ba58ca4);
+            
+        
+
+        circle_marker_7e04a8456fd971893403abaf3bdc9c26.bindPopup(popup_444d411b8203084d8e3f086ccdc31c7c)
+        ;
+
+        
+    
+    
+            circle_marker_7e04a8456fd971893403abaf3bdc9c26.bindTooltip(
+                `<div>
+                     278 의성
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_757eb32870f9251034eb911bf188422d = L.circleMarker(
+                [36.1306, 128.3203],
+                {"bubblingMouseEvents": true, "color": "#08519c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#08519c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3d474ea859c745176030a5ad4ff2f15d = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0d729c1d5eeff0858b0d0a318de1b7f4 = $(`<div id="html_0d729c1d5eeff0858b0d0a318de1b7f4" style="width: 100.0%; height: 100.0%;"><b>279 구미</b><br>Wind: 2020-2026 all available<br>Solar: 2025-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3d474ea859c745176030a5ad4ff2f15d.setContent(html_0d729c1d5eeff0858b0d0a318de1b7f4);
+            
+        
+
+        circle_marker_757eb32870f9251034eb911bf188422d.bindPopup(popup_3d474ea859c745176030a5ad4ff2f15d)
+        ;
+
+        
+    
+    
+            circle_marker_757eb32870f9251034eb911bf188422d.bindTooltip(
+                `<div>
+                     279 구미
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_0159827185e277d2069a5fea90dfa36d = L.circleMarker(
+                [35.9774, 128.9514],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_47d7e92c8c4a1b1aa0f87f0fc9ef2901 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0a05dd724380cbb23ff78de9e1fc7562 = $(`<div id="html_0a05dd724380cbb23ff78de9e1fc7562" style="width: 100.0%; height: 100.0%;"><b>281 영천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_47d7e92c8c4a1b1aa0f87f0fc9ef2901.setContent(html_0a05dd724380cbb23ff78de9e1fc7562);
+            
+        
+
+        circle_marker_0159827185e277d2069a5fea90dfa36d.bindPopup(popup_47d7e92c8c4a1b1aa0f87f0fc9ef2901)
+        ;
+
+        
+    
+    
+            circle_marker_0159827185e277d2069a5fea90dfa36d.bindTooltip(
+                `<div>
+                     281 영천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_599195f5d9ed46c79322850f22c90967 = L.circleMarker(
+                [35.8242, 129.212],
+                {"bubblingMouseEvents": true, "color": "#2ca02c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#2ca02c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_837d91e89129ca61aea125222444b307 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_7eb3f027b95eec010dad62d1b38a6556 = $(`<div id="html_7eb3f027b95eec010dad62d1b38a6556" style="width: 100.0%; height: 100.0%;"><b>283 경주시</b><br>Wind: 2020-2026 all available<br>Solar: 2020-2026 all available<br><small>wind pattern: YYYYYYY<br>solar pattern: YYYYYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_837d91e89129ca61aea125222444b307.setContent(html_7eb3f027b95eec010dad62d1b38a6556);
+            
+        
+
+        circle_marker_599195f5d9ed46c79322850f22c90967.bindPopup(popup_837d91e89129ca61aea125222444b307)
+        ;
+
+        
+    
+    
+            circle_marker_599195f5d9ed46c79322850f22c90967.bindTooltip(
+                `<div>
+                     283 경주시
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a8bead9180abf7795a66b16579356394 = L.circleMarker(
+                [35.6781, 127.9128],
+                {"bubblingMouseEvents": true, "color": "#08519c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#08519c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_a3c973b0b579241eb1cb602b8b8a2a67 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_16bab95621298571fcfce975cd4f6060 = $(`<div id="html_16bab95621298571fcfce975cd4f6060" style="width: 100.0%; height: 100.0%;"><b>284 거창</b><br>Wind: 2020-2026 all available<br>Solar: 2025-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_a3c973b0b579241eb1cb602b8b8a2a67.setContent(html_16bab95621298571fcfce975cd4f6060);
+            
+        
+
+        circle_marker_a8bead9180abf7795a66b16579356394.bindPopup(popup_a3c973b0b579241eb1cb602b8b8a2a67)
+        ;
+
+        
+    
+    
+            circle_marker_a8bead9180abf7795a66b16579356394.bindTooltip(
+                `<div>
+                     284 거창
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_01ec47f3f2a5e9fe87b1204140d49f24 = L.circleMarker(
+                [35.5651, 128.1697],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_a8c219197b05a55ed0851a57686d35fc = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_21fd366b8f36ac7d5f5bb2add5951131 = $(`<div id="html_21fd366b8f36ac7d5f5bb2add5951131" style="width: 100.0%; height: 100.0%;"><b>285 합천</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_a8c219197b05a55ed0851a57686d35fc.setContent(html_21fd366b8f36ac7d5f5bb2add5951131);
+            
+        
+
+        circle_marker_01ec47f3f2a5e9fe87b1204140d49f24.bindPopup(popup_a8c219197b05a55ed0851a57686d35fc)
+        ;
+
+        
+    
+    
+            circle_marker_01ec47f3f2a5e9fe87b1204140d49f24.bindTooltip(
+                `<div>
+                     285 합천
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_c75c5690c63634f19c2e2cc00f76e891 = L.circleMarker(
+                [35.4914, 128.744],
+                {"bubblingMouseEvents": true, "color": "#08519c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#08519c", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_6e44c0e760df04a42754421e6ec058d3 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_0a4eabfbf6c5e31ac63f9d316986ea9e = $(`<div id="html_0a4eabfbf6c5e31ac63f9d316986ea9e" style="width: 100.0%; height: 100.0%;"><b>288 밀양</b><br>Wind: 2020-2026 all available<br>Solar: 2025-2026<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_6e44c0e760df04a42754421e6ec058d3.setContent(html_0a4eabfbf6c5e31ac63f9d316986ea9e);
+            
+        
+
+        circle_marker_c75c5690c63634f19c2e2cc00f76e891.bindPopup(popup_6e44c0e760df04a42754421e6ec058d3)
+        ;
+
+        
+    
+    
+            circle_marker_c75c5690c63634f19c2e2cc00f76e891.bindTooltip(
+                `<div>
+                     288 밀양
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fd983495d3c3d28a9497f25d312ee06c = L.circleMarker(
+                [35.4128, 127.8794],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_e6544982a567539c835a12f7de219479 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_bc1ce633cd43286bb6a7bbcf181f2942 = $(`<div id="html_bc1ce633cd43286bb6a7bbcf181f2942" style="width: 100.0%; height: 100.0%;"><b>289 산청</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_e6544982a567539c835a12f7de219479.setContent(html_bc1ce633cd43286bb6a7bbcf181f2942);
+            
+        
+
+        circle_marker_fd983495d3c3d28a9497f25d312ee06c.bindPopup(popup_e6544982a567539c835a12f7de219479)
+        ;
+
+        
+    
+    
+            circle_marker_fd983495d3c3d28a9497f25d312ee06c.bindTooltip(
+                `<div>
+                     289 산청
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_178e15b783d534c5bd3bcaf531be1212 = L.circleMarker(
+                [34.8888, 128.6043],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_5983499baef0c8ca501f6e4ca38b12ca = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_3dd542e0892e1efce39e4d696c9512e3 = $(`<div id="html_3dd542e0892e1efce39e4d696c9512e3" style="width: 100.0%; height: 100.0%;"><b>294 거제</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_5983499baef0c8ca501f6e4ca38b12ca.setContent(html_3dd542e0892e1efce39e4d696c9512e3);
+            
+        
+
+        circle_marker_178e15b783d534c5bd3bcaf531be1212.bindPopup(popup_5983499baef0c8ca501f6e4ca38b12ca)
+        ;
+
+        
+    
+    
+            circle_marker_178e15b783d534c5bd3bcaf531be1212.bindTooltip(
+                `<div>
+                     294 거제
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_a611cd1fdf382af4c81336c7929924bb = L.circleMarker(
+                [34.8166, 127.9263],
+                {"bubblingMouseEvents": true, "color": "#d62728", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#d62728", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_3a694fffd24454400978509a6385b60e = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_cc44ce5a5b7d66468700055b3c948016 = $(`<div id="html_cc44ce5a5b7d66468700055b3c948016" style="width: 100.0%; height: 100.0%;"><b>295 남해</b><br>Wind: 2020-2026 all available<br>Solar: never (2020-2026 not available)<br><small>wind pattern: YYYYYYY<br>solar pattern: NNNNNNN<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_3a694fffd24454400978509a6385b60e.setContent(html_cc44ce5a5b7d66468700055b3c948016);
+            
+        
+
+        circle_marker_a611cd1fdf382af4c81336c7929924bb.bindPopup(popup_3a694fffd24454400978509a6385b60e)
+        ;
+
+        
+    
+    
+            circle_marker_a611cd1fdf382af4c81336c7929924bb.bindTooltip(
+                `<div>
+                     295 남해
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fc88cd2ca7cfc711073554646512f3b1 = L.circleMarker(
+                [35.2477, 129.0858],
+                {"bubblingMouseEvents": true, "color": "#6baed6", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#6baed6", "fillOpacity": 0.85, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7, "stroke": true, "weight": 2.5}
+            ).addTo(map_24b95c7a56cfe51904e5821784eaa7e2);
+        
+    
+        var popup_6e8de989b167c45eeed64ba520851b53 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_4a2f8cf4485e7b44438e3c547dda5f6d = $(`<div id="html_4a2f8cf4485e7b44438e3c547dda5f6d" style="width: 100.0%; height: 100.0%;"><b>296 북부산</b><br>Wind: 2023-2026<br>Solar: 2023-2026<br><small>wind pattern: ---YYYY<br>solar pattern: ---YYYY<br>(2020 2021 2022 2023 2024 2025 2026)</small></div>`)[0];
+                popup_6e8de989b167c45eeed64ba520851b53.setContent(html_4a2f8cf4485e7b44438e3c547dda5f6d);
+            
+        
+
+        circle_marker_fc88cd2ca7cfc711073554646512f3b1.bindPopup(popup_6e8de989b167c45eeed64ba520851b53)
+        ;
+
+        
+    
+    
+            circle_marker_fc88cd2ca7cfc711073554646512f3b1.bindTooltip(
+                `<div>
+                     296 북부산
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+</script>
+</html>

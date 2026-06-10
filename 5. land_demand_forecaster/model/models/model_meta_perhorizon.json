@@ -1,0 +1,92 @@
+{
+  "D+1": {
+    "file": "lgbm_land_demand_D1.txt",
+    "block_hours": [
+      1,
+      24
+    ],
+    "lag_week": 168,
+    "best_iteration": 2997
+  },
+  "D+2": {
+    "file": "lgbm_land_demand_D2.txt",
+    "block_hours": [
+      25,
+      48
+    ],
+    "lag_week": 168,
+    "best_iteration": 1740
+  },
+  "D+3": {
+    "file": "lgbm_land_demand_D3.txt",
+    "block_hours": [
+      49,
+      72
+    ],
+    "lag_week": 168,
+    "best_iteration": 3000
+  },
+  "D+7": {
+    "file": "lgbm_land_demand_D7.txt",
+    "block_hours": [
+      145,
+      168
+    ],
+    "lag_week": 168,
+    "best_iteration": 1514
+  },
+  "D+12": {
+    "file": "lgbm_land_demand_D12.txt",
+    "block_hours": [
+      265,
+      288
+    ],
+    "lag_week": 336,
+    "best_iteration": 987
+  },
+  "_common": {
+    "features": [
+      "lag_week",
+      "rec24",
+      "rec168",
+      "temp_c",
+      "solar_rad",
+      "wind_spd",
+      "hour_sin",
+      "hour_cos",
+      "dow_sin",
+      "dow_cos",
+      "month_sin",
+      "month_cos",
+      "day_type"
+    ],
+    "categorical": [
+      "day_type"
+    ],
+    "target": "real_demand_land",
+    "origin_hour": 23,
+    "weather": [
+      "temp_c",
+      "solar_rad",
+      "wind_spd",
+      "5-station mean"
+    ],
+    "train": "target<=2024",
+    "val": "2025",
+    "test": "2026",
+    "params": {
+      "objective": "regression_l1",
+      "metric": "mae",
+      "learning_rate": 0.03,
+      "num_leaves": 127,
+      "min_data_in_leaf": 80,
+      "feature_fraction": 0.85,
+      "bagging_fraction": 0.8,
+      "bagging_freq": 5,
+      "lambda_l2": 0.2,
+      "verbosity": -1,
+      "random_state": 42
+    },
+    "note": "lag_dt(=day_type of lag_week) A/B 테스트했으나 효과 미미·비일관으로 미채택; 최종=base. weather=actual(perfect upper)/climatology(lower)"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "features": [
+    "true_demand",
+    "true_renew",
+    "hour",
+    "dow",
+    "month",
+    "doy",
+    "day_type"
+  ],
+  "window": "train 2024-11~2025-09 / val 2025Q4 / test 2026",
+  "measured_only": true,
+  "metrics_test": {
+    "MAE": 2128.992,
+    "RMSE": 2726.002,
+    "MAPE": 12.033,
+    "R2": 0.798
+  }
+}

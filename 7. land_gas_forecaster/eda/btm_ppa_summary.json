@@ -1,0 +1,8 @@
+{
+  "period": "2022+",
+  "rows": 38519,
+  "coef_grid": 0.105,
+  "coef_true": -0.332,
+  "coef_true_estimated": -0.319,
+  "coef_true_measured": -0.363
+}

@@ -1,0 +1,6 @@
+{
+  "bias_calib": 0.96509,
+  "derivation": "val 2025 체인입력 sum(actual gen_gas_kr)/sum(pred)  (구 7-A2 util×cap)",
+  "apply": "gen_gas_pred = util_pred × LNG_cap × bias_calib",
+  "conv_ton_per_mwh": 0.1521
+}

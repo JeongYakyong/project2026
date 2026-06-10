@@ -1,0 +1,125 @@
+{
+  "features": [
+    "est_demand",
+    "est_renew",
+    "hour",
+    "dow",
+    "month",
+    "doy",
+    "day_type"
+  ],
+  "target": "util(=gen_gas_kr/LNG_cap)",
+  "restore": "pred_util × LNG_cap",
+  "train_inputs": "chained serving (est_demand 5-A2, est_renew 6단계, 지평 stack pooled)",
+  "window": "train 2022-2024 / val 2025 / test 2026",
+  "horizons": [
+    1,
+    2,
+    3,
+    7,
+    12
+  ],
+  "best_iteration": 122,
+  "summary": {
+    "D+1": {
+      "new": {
+        "MAE": 2401.198,
+        "MAPE": 14.233,
+        "R2": 0.744,
+        "bias": 6.421
+      },
+      "old_on_chain": {
+        "MAE": 2348.059,
+        "MAPE": 13.883,
+        "R2": 0.755,
+        "bias": 6.367
+      },
+      "oracle": {
+        "MAE": 1835.642,
+        "MAPE": 10.806,
+        "R2": 0.859,
+        "bias": 4.456
+      }
+    },
+    "D+2": {
+      "new": {
+        "MAE": 2407.153,
+        "MAPE": 14.326,
+        "R2": 0.741,
+        "bias": 7.015
+      },
+      "old_on_chain": {
+        "MAE": 2351.751,
+        "MAPE": 13.932,
+        "R2": 0.752,
+        "bias": 6.911
+      },
+      "oracle": {
+        "MAE": 1835.642,
+        "MAPE": 10.806,
+        "R2": 0.859,
+        "bias": 4.456
+      }
+    },
+    "D+3": {
+      "new": {
+        "MAE": 2421.539,
+        "MAPE": 14.455,
+        "R2": 0.737,
+        "bias": 7.325
+      },
+      "old_on_chain": {
+        "MAE": 2369.15,
+        "MAPE": 14.097,
+        "R2": 0.748,
+        "bias": 7.319
+      },
+      "oracle": {
+        "MAE": 1835.642,
+        "MAPE": 10.806,
+        "R2": 0.859,
+        "bias": 4.456
+      }
+    },
+    "D+7": {
+      "new": {
+        "MAE": 2405.855,
+        "MAPE": 14.575,
+        "R2": 0.742,
+        "bias": 7.897
+      },
+      "old_on_chain": {
+        "MAE": 2343.117,
+        "MAPE": 14.165,
+        "R2": 0.756,
+        "bias": 7.91
+      },
+      "oracle": {
+        "MAE": 1835.642,
+        "MAPE": 10.806,
+        "R2": 0.859,
+        "bias": 4.456
+      }
+    },
+    "D+12": {
+      "new": {
+        "MAE": 2395.515,
+        "MAPE": 14.576,
+        "R2": 0.748,
+        "bias": 7.911
+      },
+      "old_on_chain": {
+        "MAE": 2327.252,
+        "MAPE": 14.156,
+        "R2": 0.761,
+        "bias": 7.962
+      },
+      "oracle": {
+        "MAE": 1835.642,
+        "MAPE": 10.806,
+        "R2": 0.859,
+        "bias": 4.456
+      }
+    }
+  }
+}

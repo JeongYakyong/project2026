@@ -1,0 +1,5 @@
+{
+  "k": 0.710829378537329,
+  "r": 0.3152461109619913,
+  "total_solar_cap_formula": "market_cap+k*(1+r)*ppa_cap"
+}

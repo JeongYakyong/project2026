@@ -1,0 +1,49 @@
+{
+  "features": [
+    "h",
+    "lag168",
+    "lag24",
+    "rec24",
+    "rec168",
+    "temp_c",
+    "solar_rad",
+    "wind_spd",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "day_type"
+  ],
+  "categorical": [
+    "day_type"
+  ],
+  "target": "real_demand_land",
+  "best_iteration": 2496,
+  "horizon": "1..168 direct",
+  "origin_hour": 23,
+  "weather": [
+    "temp_c",
+    "solar_rad",
+    "wind_spd",
+    "5-station spatial mean"
+  ],
+  "train": "target<=2024",
+  "val": "2025",
+  "test": "2026",
+  "params": {
+    "objective": "regression_l1",
+    "metric": "mae",
+    "learning_rate": 0.03,
+    "num_leaves": 255,
+    "min_data_in_leaf": 100,
+    "feature_fraction": 0.85,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 5,
+    "lambda_l2": 0.2,
+    "verbosity": -1,
+    "random_state": 42
+  },
+  "note": "weather=actual (perfect-weather upper bound); operational adds weather-forecast error"
+}
