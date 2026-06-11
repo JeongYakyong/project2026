@@ -131,6 +131,10 @@ BASE_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-kim_nc_pt_txt2"
 POINTS = [
     {"name": "solar_farm(south)", "lat": 33.3284, "lon": 126.8366},  # 남쪽 태양광 단지
     {"name": "West(Gosan)",       "lat": 33.4427, "lon": 126.1713},  # 서쪽(고산)
+    # East(성산) 은 KIMR 이 커버해 제외했었으나, KIMR lead 한계(120h) 이후의 장지평
+    # 구간(D+6~)은 KIMG 만 가용하므로 3지점 구조 유지를 위해 추가 (2026-06-13).
+    # 좌표는 ASOS 188(성산) -- KIMR East(553,254) 격자와 같은 일대.
+    {"name": "East(Seongsan)",    "lat": 33.3868, "lon": 126.8802},  # 동쪽(성산) -- 풍력
 ]
 
 # 발표 시각 (UTC).  KST 로는 09 / 15 / 21 / 03(익일).
@@ -145,9 +149,11 @@ FORECAST_DAYS = 2
 # API 호출에 묶을 변수 목록 (콤마 구분).  KIM 의 varn= 와 같은 패턴.
 # rh2m(2m 습도) / rainc_acc(누적 대류강수) / rainl_acc(누적 대규모강수) 는 2026-06-08
 # 추가 -- 육지 forecast 에 reh/rainfall 을 KIMG 로 채우기 위함 (api_fetchers_nouse
-# .fetch_kma_future_ncm 의 변수/varn 참조).  제주는 KIMG REH/RAIN 카테고리를 쓰지
-# 않으므로(build_wide 가 SOLAR_RAD 만 사용) 영향 없음.
-NAME_PARAM = "dswrsfc,t2m,tcld,mcld,lcld,u10m,v10m,rh2m,rainc_acc,rainl_acc"
+# .fetch_kma_future_ncm 의 변수/varn 참조).
+# u80m/v80m/gust 는 2026-06-13 추가 -- KIMR lead 한계(120h=D+5) 이후 장지평 구간의
+# 풍력 입력을 KIMG 로 잇기 위함.  cape/cinn/hpbl/tcog/tcoh 는 KIMG 에 없음
+# ("Variable not found", probe 2026-06-13).
+NAME_PARAM = "dswrsfc,t2m,tcld,mcld,lcld,u10m,v10m,rh2m,rainc_acc,rainl_acc,u80m,v80m,gust"
 
 # 응답 varn 코드 -> 내부 raw 이름.  derive_categories 가 이 dict 으로부터
 # 최종 카테고리(저장 형식)를 생성한다.  여기에 없는 varn 은 무시.
@@ -159,6 +165,9 @@ RAW_VARN_MAP = {
     34: "lcld",       # low cloud (fraction)
     20: "u10m",       # 10m U wind (m/s)
     21: "v10m",       # 10m V wind (m/s)
+    22: "u80m",       # 80m U wind (m/s)           -> WIND_U_80M
+    23: "v80m",       # 80m V wind (m/s)           -> WIND_V_80M
+    24: "gust",       # gust (m/s)                 -> GUST
     26: "rh2m",       # 2m 상대습도 (%)            -> REH
     65: "rainc_acc",  # 누적 대류 강수 (kg/m^2)     -> RAIN_CONV (누적, raw)
     66: "rainl_acc",  # 누적 대규모 강수 (kg/m^2)   -> RAIN_STRAT (누적, raw)
@@ -269,15 +278,24 @@ def collection_window(base_utc: datetime) -> tuple[datetime, datetime]:
     return next_midnight, next_midnight + timedelta(days=FORECAST_DAYS)
 
 
-def collection_hf_range(base_utc: datetime) -> range:
-    """day-aligned KST 윈도우를 hf(1시간 단위 forecast offset) range 로 환산.
-    UTC 00 / 06 / 12 / 18 발표에 대해 각각 hf=15..62 / 9..56 / 3..50 / 21..68 (각 48개).
+# KIMG 의 1h 해상도 상한 (probe 2026-06-13, 00/12 UTC 발표 동일): hf<=135 는 매시간,
+# 그 이후 ~288h 까지는 3의 배수 hf 만 데이터가 존재한다 (나머지는 빈 응답).
+KIMG_HOURLY_MAX_HF = 135
+
+def collection_hf_range(base_utc: datetime) -> list[int]:
+    """day-aligned KST 윈도우를 hf(forecast offset, 시간) 리스트로 환산.
+    UTC 00 / 06 / 12 / 18 발표에 대해 각각 hf=15.. / 9.. / 3.. / 21.. 시작 (기본 48개).
+    hf > KIMG_HOURLY_MAX_HF(135) 구간은 3h 간격만 존재하므로 3의 배수가 아닌 hf 를
+    건너뛰어 빈 호출을 만들지 않는다 (장지평 윈도우에서 호출 ~2/3 절감).
     """
     base_kst = base_utc.astimezone(KST)
     start_kst, end_kst = collection_window(base_utc)
     start_hf = int((start_kst - base_kst).total_seconds() // 3600)
     end_hf = int((end_kst - base_kst).total_seconds() // 3600)
-    return range(start_hf, end_hf)
+    return [
+        hf for hf in range(start_hf, end_hf)
+        if hf <= KIMG_HOURLY_MAX_HF or hf % 3 == 0
+    ]
 
 
 # ── DB ─────────────────────────────────────────────────────────────────
@@ -357,6 +375,12 @@ def derive_categories(raw: dict[int, float]) -> dict[str, float]:
         out["WIND_U_10M"] = round(raw[20], 3)
     if 21 in raw:
         out["WIND_V_10M"] = round(raw[21], 3)
+    if 22 in raw:
+        out["WIND_U_80M"] = round(raw[22], 3)   # KIMR 와 동일 카테고리명 (cross-join)
+    if 23 in raw:
+        out["WIND_V_80M"] = round(raw[23], 3)
+    if 24 in raw:
+        out["GUST"] = round(raw[24], 3)
     if 26 in raw:
         out["REH"] = round(raw[26], 2)          # 2m 상대습도 (%)
     # 강수: convective + 대규모 누적값(kg/m^2)을 raw 그대로 저장한다.  시간당 강수로의

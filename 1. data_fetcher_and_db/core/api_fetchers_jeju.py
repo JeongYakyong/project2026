@@ -477,6 +477,83 @@ def kimr_one_point(
     return out
 
 
+def kimg_one_point(
+    df_long: pd.DataFrame, point: str, suffix: str,
+    window_start: datetime, window_end: datetime,
+) -> pd.DataFrame:
+    """단일 point 의 KIMG long → kimr_one_point 와 동일한 컬럼 스키마의 wide.
+
+    KIMR lead 한계(120h=D+5) 이후 장지평 구간(D+6~)을 KIMG 로 잇기 위한 함수
+    (2026-06-13).  KIMG 가 제공하는 변수(TEMP_C(이미 °C)·WIND_U/V_10M/80M·GUST·
+    REH·RAIN_*(누적))를 KIMR 와 같은 변환식으로 같은 컬럼명으로 만든다.
+    KIMR 전용 변수(temp_skin/cape/cinn/hpbl/tcog/tcoh)와 구름(TCLD 등, 제주
+    스키마에 없음)은 생략 -- 해당 컬럼은 KIMG-only 구간에서 NaN 으로 남는다.
+    호출자(collect_data_jeju.build_wide)가 KIMR 우선 combine_first 로 합친다.
+
+    주의: hf>135(_common.KIMG_HOURLY_MAX_HF) 구간은 3h 간격만 존재하므로
+    rainfall diff 는 그 구간에서 시간당이 아니라 3시간 누적값이 된다 (사용 시
+    보간/배분 필요 -- 저장은 원본 그대로 정책).
+    """
+    sub = df_long[df_long["point_name"] == point]
+    if sub.empty:
+        return pd.DataFrame()
+
+    # 1) 비강수: freshest per (fcst_datetime, category), then pivot.
+    non_rain = sub[~sub["category"].isin(["RAIN_CONV", "RAIN_STRAT"])]
+    non_rain = freshest(non_rain, ["fcst_datetime", "category"])
+    wide = non_rain.pivot(index="fcst_datetime", columns="category", values="fcst_value")
+
+    # 2) 강수: per-base 누적→시간차 diff → freshest (kimr_one_point 와 동일 패턴).
+    rain = sub[sub["category"].isin(["RAIN_CONV", "RAIN_STRAT"])]
+    if not rain.empty:
+        acc = (
+            rain.groupby(["base_datetime", "fcst_datetime"], as_index=False)["fcst_value"]
+                .sum()
+                .rename(columns={"fcst_value": "acc"})
+                .sort_values(["base_datetime", "fcst_datetime"])
+        )
+        acc["hourly"] = (
+            acc.groupby("base_datetime")["acc"].diff().clip(lower=0).round(2)
+        )
+        acc = acc.dropna(subset=["hourly"])
+        acc = freshest(acc, ["fcst_datetime"])
+        rain_s = acc.set_index("fcst_datetime")["hourly"].rename("RAIN_HOURLY")
+        wide = wide.join(rain_s, how="outer")
+
+    # 3) 윈도우 트림.
+    start_s = window_start.strftime("%Y-%m-%d %H:%M")
+    end_s = window_end.strftime("%Y-%m-%d %H:%M")
+    wide = wide.loc[(wide.index >= start_s) & (wide.index < end_s)]
+    if wide.empty:
+        return wide
+
+    # 4) 후처리 -- kimr_one_point 와 동일 컬럼명/변환식.  TEMP_C 는 KIMG 가
+    #    저장 시점에 이미 °C 변환을 마쳤으므로 K→°C 변환 없음.
+    out = pd.DataFrame(index=wide.index)
+    if "TEMP_C" in wide:
+        out[f"temp_{suffix}"] = wide["TEMP_C"].round(2)
+
+    for height in ("10m", "80m"):
+        u_col = f"WIND_U_{height.upper()}"
+        v_col = f"WIND_V_{height.upper()}"
+        if u_col in wide and v_col in wide:
+            u, v = wide[u_col], wide[v_col]
+            spd = np.sqrt(u**2 + v**2)
+            wdir = (270 - np.degrees(np.arctan2(v, u))) % 360
+            out[f"wind_spd_{height}_{suffix}"] = spd.round(2)
+            out[f"wd_sin_{height}_{suffix}"]   = np.sin(np.radians(wdir)).round(4)
+            out[f"wd_cos_{height}_{suffix}"]   = np.cos(np.radians(wdir)).round(4)
+
+    if "GUST" in wide:
+        out[f"gust_{suffix}"] = wide["GUST"].round(4)
+    if "REH" in wide:
+        out[f"reh_{suffix}"] = wide["REH"].round(2)
+    if "RAIN_HOURLY" in wide:
+        out[f"rainfall_{suffix}"] = wide["RAIN_HOURLY"]
+
+    return out
+
+
 def kimg_solar(df_long: pd.DataFrame, day_ahead: bool = False) -> pd.Series:
     """KIMG SOLAR_RAD freshest → radiation_south (저장 단위 그대로, MJ/m^2/h)."""
     name = "radiation_south"

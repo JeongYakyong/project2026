@@ -223,15 +223,21 @@ def kimg_land_long_to_wide(df: pd.DataFrame) -> pd.DataFrame:
                 out[f"{prefix}_{suffix}"] = col.round(2) if cat == "TEMP_C" else col
         if "REH" in piv:
             out[f"reh_{suffix}"] = piv["REH"].round(2)
-        if "WIND_U_10M" in piv and "WIND_V_10M" in piv:
-            # 컬럼명은 제주 forecast 와 통일: wind_spd_10m / wd_sin_10m / wd_cos_10m
-            # (KIMG-land 은 10m 풍속만 있어 80m 컬럼은 없음).  분해식은 collect_input 동일.
-            u, v = piv["WIND_U_10M"], piv["WIND_V_10M"]
-            spd = np.sqrt(u**2 + v**2)
-            wdir = (270 - np.degrees(np.arctan2(v, u))) % 360
-            out[f"wind_spd_10m_{suffix}"] = spd.round(2)
-            out[f"wd_sin_10m_{suffix}"]   = np.sin(np.radians(wdir)).round(4)
-            out[f"wd_cos_10m_{suffix}"]   = np.cos(np.radians(wdir)).round(4)
+        # 컬럼명은 제주 forecast 와 통일: wind_spd_10m / wd_sin_10m / wd_cos_10m.
+        # 80m(u80m/v80m)·GUST 는 2026-06-13 NAME_PARAM 추가분 -- 그 이전 발표에는
+        # 카테고리가 없으므로 if-in 가드로 자연 생략된다.  분해식은 collect_input 동일.
+        for height in ("10m", "80m"):
+            u_col = f"WIND_U_{height.upper()}"
+            v_col = f"WIND_V_{height.upper()}"
+            if u_col in piv and v_col in piv:
+                u, v = piv[u_col], piv[v_col]
+                spd = np.sqrt(u**2 + v**2)
+                wdir = (270 - np.degrees(np.arctan2(v, u))) % 360
+                out[f"wind_spd_{height}_{suffix}"] = spd.round(2)
+                out[f"wd_sin_{height}_{suffix}"]   = np.sin(np.radians(wdir)).round(4)
+                out[f"wd_cos_{height}_{suffix}"]   = np.cos(np.radians(wdir)).round(4)
+        if "GUST" in piv:
+            out[f"gust_{suffix}"] = piv["GUST"].round(4)
 
         # 2) 강수: per-base 누적(conv+strat)->시간차 diff -> freshest -> rainfall_<지점>.
         rain = sub[sub["category"].isin(_KIMG_RAIN_CATS)]

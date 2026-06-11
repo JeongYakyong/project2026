@@ -288,17 +288,29 @@ def build_wide(
 
     출력 컬럼은 collect_input.build_csv 와 정확히 동일 (location-suffixed,
     timestamp index).  KIMG 가 비어있으면 radiation_south 만 빠진다.
+
+    지점별 KIMR + KIMG 병합 (2026-06-13, 장지평 확장):
+    KIMR(지역모델, 고해상도)이 있는 시간은 KIMR 값을 쓰고, KIMR lead 한계(120h)
+    이후나 결손 시간은 kimg_one_point 가 만든 동일 스키마 컬럼으로 채운다
+    (combine_first).  KIMR 전용 변수(cape 등)는 KIMG-only 구간에서 NaN.
     """
     parts: list[pd.DataFrame] = []
     for point, suffix in ci.POINT_SUFFIX.items():
-        part = ci.kimr_one_point(kimr_long, point, suffix, window_start, window_end)
-        if part.empty:
-            print(f"  [WARN] no KIMR rows for {point} in window -- column group skipped")
+        kimr_part = ci.kimr_one_point(kimr_long, point, suffix, window_start, window_end)
+        kimg_part = ci.kimg_one_point(kimg_long, point, suffix, window_start, window_end)
+        if kimr_part.empty and kimg_part.empty:
+            print(f"  [WARN] no KIMR/KIMG rows for {point} in window -- column group skipped")
             continue
+        if kimr_part.empty:
+            part = kimg_part
+        elif kimg_part.empty:
+            part = kimr_part
+        else:
+            part = kimr_part.combine_first(kimg_part)  # KIMR 우선, KIMG 는 빈 곳만
         parts.append(part)
 
     if not parts:
-        raise NoUsableForecastRows("no usable KIMR rows after pivoting")
+        raise NoUsableForecastRows("no usable KIMR/KIMG rows after pivoting")
 
     wide = pd.concat(parts, axis=1)
 
@@ -415,9 +427,11 @@ def forecast_days_override(days: int | None):
     (_common: collection_window/collection_hf_range).  둘 다 바꿔야 윈도우가
     일관되게 늘어난다.  days=None 이면 no-op (기본 2일 유지).
 
-    KIMR 지역모델의 lead 한계는 120h=D+5 (00/12 UTC 발표 probe, 2026-06-12).
-    5 초과를 줘도 KIMR 컬럼은 D+5 이후 비므로 의미가 없다.  KIMG(radiation)는
-    00/12 UTC 발표 기준 288h 까지 따라온다.
+    소스별 lead 한계 (00/12 UTC 발표 probe, 2026-06-12~13):
+    - KIMR(지역): 120h=D+5 까지, 전 구간 1h.
+    - KIMG(전구): 288h=D+12 까지, 단 1h 는 135h 까지고 이후는 3h 간격만 존재.
+    D+5 초과 윈도우에서는 build_wide 가 KIMG 변수(kimg_one_point)로 빈 구간을
+    채운다 (KIMR 전용 변수는 NaN, D+6~ 는 3h 행만).
     """
     if days is None:
         yield
@@ -468,8 +482,8 @@ def build(
     - save: True 면 db_path 의 forecast 테이블에 UPSERT.  False 면 메모리 DF 만 반환.
     - db_path: 출력 SQLite 경로 (기본 data/input_data_jeju.db).
     - kim_workers: KIMR fetch 병렬 수 (1 = sequential).  KIMG 는 항상 hf workers=6.
-    - forecast_days: 윈도우 길이(일).  None=기본 2일.  KIMR lead 한계가 120h 라
-      최대 5 (12 UTC 발표 기준 D+5 21 KST 까지 -- 마지막 2~3h 는 빈 값으로 남음).
+    - forecast_days: 윈도우 길이(일).  None=기본 2일.  7 이면 D+1~D+5 는
+      KIMR 1h + D+6~D+7 은 KIMG 3h 행으로 채워진다 (forecast_days_override 참조).
     """
     with forecast_days_override(forecast_days):
         if forecast_days is not None:
@@ -887,9 +901,9 @@ def main() -> None:
     p.add_argument(
         "--forecast-days", type=int, default=None, metavar="N",
         help=(
-            "forecast window length in days (default 2=48h).  KIMR lead caps at "
-            "120h so max useful value is 5 (use with the 00:10 KST cron run = "
-            "12 UTC publish; D+5 last 2-3h stay empty).  Not applied to --backfill."
+            "forecast window length in days (default 2=48h).  7 = long-horizon: "
+            "D+1~D+5 from KIMR (1h), D+6~D+7 from KIMG (3h rows only).  Use with "
+            "the 00:10 KST cron run (= 12 UTC publish).  Not applied to --backfill."
         ),
     )
     p.add_argument(
