@@ -4,7 +4,12 @@
 # 경로의 kimjourvanne 는 실제 서버 사용자명/clone 위치에 맞게 수정.
 
 # 제주: 4회/일 (기본 동작 = forecast 최신 2발표 + historical 2일, RT SMP 포함)
-10 0,6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
+10 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
+
+# 제주 00:10 실행 = 12 UTC 발표분 — 5일 예보 윈도우로 수집 (2-A 장지평 모델용)
+#   KIMR 지역모델 lead 한계 = 120h (probe 2026-06-12) → 최대 D+5, 마지막 2~3h 빈 값.
+#   KIMG(radiation)는 같은 윈도우를 그대로 따라옴. ≤48h 는 위의 신선 발표들이 담당.
+10 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh --bases 1 --forecast-days 5
 
 # 육지: 4회/일, 제주와 30분 시차 (API 동시 호출 분산)
 40 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh

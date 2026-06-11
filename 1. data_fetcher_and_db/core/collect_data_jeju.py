@@ -87,6 +87,7 @@ import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -405,6 +406,30 @@ def write_to_historical(wide: pd.DataFrame, db_path: Path) -> int:
 
 
 # ── public entry ────────────────────────────────────────────────────────
+@contextmanager
+def forecast_days_override(days: int | None):
+    """forecast 수집 윈도우 길이를 임시로 바꾼다 (api_fetchers_land 의 동형).
+
+    제주 forecast 는 두 모듈의 FORECAST_DAYS 글로벌을 호출 시점에 읽는다 --
+    KIMR 쪽(api_fetchers_jeju: collection_window/ef_param_for)과 KIMG 쪽
+    (_common: collection_window/collection_hf_range).  둘 다 바꿔야 윈도우가
+    일관되게 늘어난다.  days=None 이면 no-op (기본 2일 유지).
+
+    KIMR 지역모델의 lead 한계는 120h=D+5 (00/12 UTC 발표 probe, 2026-06-12).
+    5 초과를 줘도 KIMR 컬럼은 D+5 이후 비므로 의미가 없다.  KIMG(radiation)는
+    00/12 UTC 발표 기준 288h 까지 따라온다.
+    """
+    if days is None:
+        yield
+        return
+    prev_kim, prev_kimg = kim.FORECAST_DAYS, kimg.FORECAST_DAYS
+    kim.FORECAST_DAYS = kimg.FORECAST_DAYS = days
+    try:
+        yield
+    finally:
+        kim.FORECAST_DAYS, kimg.FORECAST_DAYS = prev_kim, prev_kimg
+
+
 def _pick_bases(base: datetime | None, n_bases: int) -> list[datetime]:
     """--base 주어졌으면 그것 한 개, 아니면 최근 n_bases 발표 (오래된→최신)."""
     if base is not None:
@@ -433,6 +458,7 @@ def build(
     save: bool = True,
     db_path: Path = DEFAULT_DB,
     kim_workers: int = 1,
+    forecast_days: int | None = None,
 ) -> pd.DataFrame:
     """API 호출 → 후처리 → (선택) forecast 테이블 UPSERT.  wide DataFrame 반환.
 
@@ -442,37 +468,42 @@ def build(
     - save: True 면 db_path 의 forecast 테이블에 UPSERT.  False 면 메모리 DF 만 반환.
     - db_path: 출력 SQLite 경로 (기본 data/input_data_jeju.db).
     - kim_workers: KIMR fetch 병렬 수 (1 = sequential).  KIMG 는 항상 hf workers=6.
+    - forecast_days: 윈도우 길이(일).  None=기본 2일.  KIMR lead 한계가 120h 라
+      최대 5 (12 UTC 발표 기준 D+5 21 KST 까지 -- 마지막 2~3h 는 빈 값으로 남음).
     """
-    bases = _pick_bases(base, n_bases)
-    window_start, window_end = _window_for(bases)
+    with forecast_days_override(forecast_days):
+        if forecast_days is not None:
+            print(f"  [kim-jeju] FORECAST_DAYS override = {forecast_days} day(s)")
+        bases = _pick_bases(base, n_bases)
+        window_start, window_end = _window_for(bases)
 
-    print(
-        f"[collect_data_jeju] bases={len(bases)} "
-        f"({bases[0].strftime('%Y%m%d%H')} ~ {bases[-1].strftime('%Y%m%d%H')} UTC), "
-        f"window=[{window_start:%Y-%m-%d %H:%M} ~ {window_end:%Y-%m-%d %H:%M}) KST, "
-        f"target table='{FORECAST_TABLE}' (UPSERT)"
-    )
-
-    print("\n[1/3] fetch KIMR (regional)")
-    kimr_long = fetch_kimr_long(bases, workers=kim_workers)
-    print(
-        f"  KIMR long: {len(kimr_long):,} rows, "
-        f"{kimr_long['point_name'].nunique()} points, "
-        f"{kimr_long['category'].nunique()} categories, "
-        f"{kimr_long['base_datetime'].nunique()} bases"
-    )
-
-    print("\n[2/3] fetch KIMG (global)")
-    kimg_long = fetch_kimg_long(bases)
-    if kimg_long.empty:
-        print("  KIMG long: empty (radiation_south will be MISSING from output)")
-    else:
         print(
-            f"  KIMG long: {len(kimg_long):,} rows, "
-            f"{kimg_long['point_name'].nunique()} points, "
-            f"{kimg_long['category'].nunique()} categories, "
-            f"{kimg_long['base_datetime'].nunique()} bases"
+            f"[collect_data_jeju] bases={len(bases)} "
+            f"({bases[0].strftime('%Y%m%d%H')} ~ {bases[-1].strftime('%Y%m%d%H')} UTC), "
+            f"window=[{window_start:%Y-%m-%d %H:%M} ~ {window_end:%Y-%m-%d %H:%M}) KST, "
+            f"target table='{FORECAST_TABLE}' (UPSERT)"
         )
+
+        print("\n[1/3] fetch KIMR (regional)")
+        kimr_long = fetch_kimr_long(bases, workers=kim_workers)
+        print(
+            f"  KIMR long: {len(kimr_long):,} rows, "
+            f"{kimr_long['point_name'].nunique()} points, "
+            f"{kimr_long['category'].nunique()} categories, "
+            f"{kimr_long['base_datetime'].nunique()} bases"
+        )
+
+        print("\n[2/3] fetch KIMG (global)")
+        kimg_long = fetch_kimg_long(bases)
+        if kimg_long.empty:
+            print("  KIMG long: empty (radiation_south will be MISSING from output)")
+        else:
+            print(
+                f"  KIMG long: {len(kimg_long):,} rows, "
+                f"{kimg_long['point_name'].nunique()} points, "
+                f"{kimg_long['category'].nunique()} categories, "
+                f"{kimg_long['base_datetime'].nunique()} bases"
+            )
 
     print("\n[3/3] pivot to wide + post-processing")
     try:
@@ -854,6 +885,14 @@ def main() -> None:
         help="KIMR fetch parallelism (default: 6 if --backfill>3, else 1)",
     )
     p.add_argument(
+        "--forecast-days", type=int, default=None, metavar="N",
+        help=(
+            "forecast window length in days (default 2=48h).  KIMR lead caps at "
+            "120h so max useful value is 5 (use with the 00:10 KST cron run = "
+            "12 UTC publish; D+5 last 2-3h stay empty).  Not applied to --backfill."
+        ),
+    )
+    p.add_argument(
         "--no-save", action="store_true",
         help="skip DB write (dry-run, prints summary). Ignored with --backfill.",
     )
@@ -891,6 +930,7 @@ def main() -> None:
         build(
             base=base, n_bases=args.bases, save=not args.no_save,
             db_path=args.db, kim_workers=kim_workers,
+            forecast_days=args.forecast_days,
         )
     if not args.no_historical:
         print(f"\n=== historical build (last {args.historical_days} days) ===")
