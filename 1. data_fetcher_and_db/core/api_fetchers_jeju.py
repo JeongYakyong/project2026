@@ -486,9 +486,12 @@ def kimg_one_point(
     KIMR lead 한계(120h=D+5) 이후 장지평 구간(D+6~)을 KIMG 로 잇기 위한 함수
     (2026-06-13).  KIMG 가 제공하는 변수(TEMP_C(이미 °C)·WIND_U/V_10M/80M·GUST·
     REH·RAIN_*(누적))를 KIMR 와 같은 변환식으로 같은 컬럼명으로 만든다.
-    KIMR 전용 변수(temp_skin/cape/cinn/hpbl/tcog/tcoh)와 구름(TCLD 등, 제주
-    스키마에 없음)은 생략 -- 해당 컬럼은 KIMG-only 구간에서 NaN 으로 남는다.
-    호출자(collect_data_jeju.build_wide)가 KIMR 우선 combine_first 로 합친다.
+    KIMR 전용 변수(temp_skin/cape/cinn/hpbl/tcog/tcoh)는 생략 -- 해당 컬럼은
+    KIMG-only 구간에서 NaN 으로 남는다.  구름(total_cloud/midlow_cloud)은 KIMR 에
+    없어 legacy 적재가 끊긴 2026-06-01 이후 죽어 있던 컬럼인데, 여기서 되살린다
+    (serve_jeju_demand_lh 의 구름 4 feature 가 이 컬럼을 읽는다).
+    호출자(collect_data_jeju.build_wide)가 KIMR 우선 combine_first 로 합친다
+    (KIMR part 에 없는 컬럼은 전 구간 KIMG 값이 그대로 쓰임).
 
     주의: hf>135(_common.KIMG_HOURLY_MAX_HF) 구간은 3h 간격만 존재하므로
     rainfall diff 는 그 구간에서 시간당이 아니라 3시간 누적값이 된다 (사용 시
@@ -548,6 +551,10 @@ def kimg_one_point(
         out[f"gust_{suffix}"] = wide["GUST"].round(4)
     if "REH" in wide:
         out[f"reh_{suffix}"] = wide["REH"].round(2)
+    if "TCLD" in wide:
+        out[f"total_cloud_{suffix}"] = wide["TCLD"].round(4)
+    if "MIDLOW_CLOUD" in wide:
+        out[f"midlow_cloud_{suffix}"] = wide["MIDLOW_CLOUD"].round(4)
     if "RAIN_HOURLY" in wide:
         out[f"rainfall_{suffix}"] = wide["RAIN_HOURLY"]
 
