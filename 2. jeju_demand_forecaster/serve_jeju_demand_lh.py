@@ -136,13 +136,18 @@ def load_target_weather(targets: pd.DatetimeIndex, clim: dict) -> pd.DataFrame:
         pre, sts = FORE[w]; cc = [f'{pre}_{s}' for s in sts]
         fmean = (fc[cc].apply(pd.to_numeric, errors='coerce').mean(axis=1).reindex(targets)
                  if len(fc) else pd.Series(np.nan, index=targets))
+        # D+5.5(135h) 이후 forecast 는 3h 행만 존재(KIMG 1h 해상도 한계) -- 그 사이
+        # 1~2h 구멍은 양옆 실예보의 시간 보간이 기후값보다 정확하므로 먼저 메운다.
+        # limit=2 로 3h 간격 내부만, limit_area='inside' 로 예보 범위 밖 외삽 금지.
+        fmean = fmean.interpolate(method='time', limit=2, limit_area='inside')
         cl = pd.Series([clim[w].get((t.month, t.hour), np.nan) for t in targets], index=targets)
         out[w] = fmean.where(fmean.notna(), cl)
         out[w + '_src'] = np.where(fmean.notna(), 'forecast', 'climatology')
-    # 구름 4종 (raw west/south): forecast 우선, 없으면 기후값
+    # 구름 4종 (raw west/south): forecast 우선(3h 구멍은 위와 같이 보간), 없으면 기후값
     for c in CLOUD:
         fv = (pd.to_numeric(fc[c], errors='coerce').reindex(targets)
               if c in fc.columns else pd.Series(np.nan, index=targets))
+        fv = fv.interpolate(method='time', limit=2, limit_area='inside')
         cl = pd.Series([clim[c].get((t.month, t.hour), np.nan) for t in targets], index=targets)
         out[c] = fv.where(fv.notna(), cl)
     # day_type: forecast 우선, 없으면 dow 로 추정

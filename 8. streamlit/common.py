@@ -39,6 +39,14 @@ def query(region: str, sql: str, params: tuple = ()) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=CACHE_TTL)
+def land_date_range() -> tuple[str, str]:
+    """예측 적재 범위(est_demand_land 기준) — 표시 가능 날짜 한계(G-15 ④)."""
+    df = query("land", "SELECT MIN(timestamp) AS lo, MAX(timestamp) AS hi "
+                       "FROM forecast WHERE est_demand_land IS NOT NULL")
+    return str(df.loc[0, "lo"])[:10], str(df.loc[0, "hi"])[:10]
+
+
+@st.cache_data(ttl=CACHE_TTL)
 def land_forecast(start: str, end: str) -> pd.DataFrame:
     """전국 forecast — 체인 예측 + 기상(5지점 평균)."""
     weather = []
@@ -48,7 +56,8 @@ def land_forecast(start: str, end: str) -> pd.DataFrame:
     sql = f"""
         SELECT timestamp,
                est_demand_land, est_market_renew_land, est_net_load_land,
-               est_gas_gen_land, est_gas_sendout_ton_land,
+               est_gas_gen_land, est_gas_sendout_ton_land, est_true_demand_land,
+               land_est_demand_da,
                {', '.join(weather)}
         FROM forecast WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
     """
@@ -67,10 +76,10 @@ def land_actual(start: str, end: str) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------- KPX 실시간 수급
+# ---------------------------------------------------------------- KPX 실시간 (표시 전용, DB에 쓰지 않음)
 @st.cache_data(ttl=300, show_spinner="KPX 실시간 수급을 불러오는 중...")
 def live_sukub_land(day: str) -> pd.DataFrame:
-    """KPX sukub 당일 실시간 수급(표시 전용, DB에 쓰지 않음). 실패 시 빈 DF."""
+    """KPX sukub 수급(real_demand_land 등 7컬럼). 실패 시 빈 DF."""
     if str(CORE) not in sys.path:
         sys.path.insert(0, str(CORE))
     try:
@@ -79,6 +88,238 @@ def live_sukub_land(day: str) -> pd.DataFrame:
         return df.reset_index() if not df.empty else pd.DataFrame()
     except Exception:
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=300, show_spinner="KPX 발전실적을 불러오는 중...")
+def live_power_land(day: str) -> pd.DataFrame:
+    """KPX 발전원별 실적(gen_gas_kr·gen_solar_market_kr·gen_wind_kr 등). 실패 시 빈 DF."""
+    if str(CORE) not in sys.path:
+        sys.path.insert(0, str(CORE))
+    try:
+        from api_fetchers_land import fetch_land_power
+        df = fetch_land_power(day, day, progress=False)
+        return df.reset_index() if not df.empty else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def clear_live_caches():
+    live_sukub_land.clear()
+    live_power_land.clear()
+
+
+# ---------------------------------------------------------------- 비교 프레임 (예측 vs 실측, 하루/구간)
+def land_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
+                       use_live: bool = True) -> pd.DataFrame:
+    """[start_day 00시, end_day 23시] 예측(DB) + 실측(DB historical, 최근 날짜는 live 보강).
+
+    실측 net_load는 예측과 같은 기준(수요 − 시장신재생)으로 재구성한다.
+    KPX 수요예측(land_est_demand_da)도 포함(전력거래소 비교용 — D+1까지만 발표됨).
+    """
+    s = start_day.strftime("%Y-%m-%d 00:00:00")
+    e = end_day.strftime("%Y-%m-%d 23:00:00")
+    base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
+
+    est = land_forecast(s, e)[["timestamp", "est_demand_land", "est_market_renew_land",
+                               "est_net_load_land", "est_gas_gen_land",
+                               "est_gas_sendout_ton_land", "est_true_demand_land",
+                               "land_est_demand_da"]]
+    act = query("land", """
+        SELECT timestamp, real_demand_land, renew_gen_total_kr, gen_gas_kr
+        FROM historical WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
+    """, (s, e))
+    df = base.merge(est, on="timestamp", how="left").merge(act, on="timestamp", how="left")
+
+    # DB가 못 따라온 최근 구간(오늘 포함 3일 이내, 미래 제외)은 live fetch로 보강 (live 값 우선)
+    if use_live:
+        today = pd.Timestamp.now().normalize()
+        for day in pd.date_range(start_day.normalize(), end_day.normalize(), freq="D"):
+            if not (0 <= (today - day).days <= 3):
+                continue
+            d = day.strftime("%Y-%m-%d")
+            sk = live_sukub_land(d)
+            if not sk.empty and "real_demand_land" in sk.columns:
+                sk = sk.assign(timestamp=pd.to_datetime(sk["timestamp"]))
+                df = df.merge(sk[["timestamp", "real_demand_land"]], on="timestamp",
+                              how="left", suffixes=("", "_live"))
+                df["real_demand_land"] = df["real_demand_land_live"].combine_first(df["real_demand_land"])
+                df = df.drop(columns=["real_demand_land_live"])
+            pw = live_power_land(d)
+            if not pw.empty and "gen_gas_kr" in pw.columns:
+                pw = pw.assign(timestamp=pd.to_datetime(pw["timestamp"]))
+                pw["renew_live"] = pw.get("gen_solar_market_kr", 0) + pw.get("gen_wind_kr", 0)
+                df = df.merge(pw[["timestamp", "gen_gas_kr", "renew_live"]], on="timestamp",
+                              how="left", suffixes=("", "_live"))
+                df["gen_gas_kr"] = df["gen_gas_kr_live"].combine_first(df["gen_gas_kr"])
+                df["renew_gen_total_kr"] = df["renew_live"].combine_first(df["renew_gen_total_kr"])
+                df = df.drop(columns=["gen_gas_kr_live", "renew_live"])
+
+    df["real_net_load"] = df["real_demand_land"] - df["renew_gen_total_kr"]
+    return df
+
+
+def land_day_compare(day: pd.Timestamp, use_live: bool = True) -> pd.DataFrame:
+    """선택일 00~23시 비교 프레임 (land_range_compare의 하루 버전)."""
+    return land_range_compare(day, day, use_live=use_live)
+
+
+# ---------------------------------------------------------------- 지평 모드 (과거를 "k일 전 발행 예측"으로)
+CHAINED_PARQUET = ROOT / "7. land_gas_forecaster" / "training" / "chained_gas_dataset.parquet"
+GAS_SERVE_PY = ROOT / "7. land_gas_forecaster" / "serve_land_gas.py"
+CHAIN_HORIZONS = (1, 2, 3, 7, 12)
+
+
+@st.cache_resource
+def _gas_assets():
+    """7단계 서빙 자산 재사용 — serve_land_gas 모듈(모델·LNG 용량·bias 보정·변환계수)."""
+    import importlib.util
+    import lightgbm as lgb
+    spec = importlib.util.spec_from_file_location("serve_land_gas", str(GAS_SERVE_PY))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    booster = lgb.Booster(model_file=m.MODEL)
+    calib, conv = m._load_calib()
+    lng = m._lng_cap_series()
+    return m, booster, calib, conv, lng
+
+
+@st.cache_resource
+def _chained() -> pd.DataFrame:
+    """7-A2-A 체인 데이터셋 — 지평별(D+1/2/3/7/12) 수요·신재생 예측, 2022-01~적재말."""
+    return pd.read_parquet(CHAINED_PARQUET)
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_horizon_compare(start: str, end: str, horizon: int) -> pd.DataFrame:
+    """[start, end] 구간을 "horizon일 전 발행" 예측으로 구성 + 실측 — 지평 평평(7-A2-A) 입증용.
+
+    수요·신재생 = chained parquet(5-A2·6단계 지평별 산출), 가스 = 7-A2 모델 즉석 계산.
+    """
+    s_day, e_day = pd.Timestamp(start), pd.Timestamp(end)
+    df = land_range_compare(s_day, e_day)
+    df = df.drop(columns=["est_demand_land", "est_market_renew_land", "est_net_load_land",
+                          "est_gas_gen_land", "est_gas_sendout_ton_land", "est_true_demand_land"])
+
+    ch = _chained()
+    sub = ch[(ch["horizon"] == horizon)
+             & (ch["timestamp"] >= s_day)
+             & (ch["timestamp"] <= e_day + pd.Timedelta(hours=23))].copy()
+    if sub.empty:
+        for c in ["est_demand_land", "est_market_renew_land", "est_net_load_land",
+                  "est_gas_gen_land", "est_gas_sendout_ton_land"]:
+            df[c] = float("nan")
+        return df
+
+    m, booster, calib, conv, lng = _gas_assets()
+    idx = pd.DatetimeIndex(sub["timestamp"])
+    feats = pd.DataFrame({
+        "real_demand_land": sub["est_demand"].astype(float).values,
+        "renew_gen_total_kr": sub["est_renew"].astype(float).values,
+        "hour": idx.hour, "dow": idx.dayofweek, "month": idx.month, "doy": idx.dayofyear,
+        "day_type": pd.Categorical(sub["day_type"].astype(str).values, categories=m.DTCATS),
+    })
+    cap = m._lng_cap_for(idx, lng)
+    gen = booster.predict(feats[m.FEATS]) * cap * calib
+
+    est = pd.DataFrame({
+        "timestamp": sub["timestamp"].values,
+        "est_demand_land": feats["real_demand_land"].values,
+        "est_market_renew_land": feats["renew_gen_total_kr"].values,
+        "est_gas_gen_land": gen,
+        "est_gas_sendout_ton_land": gen * conv,
+    })
+    est["est_net_load_land"] = est["est_demand_land"] - est["est_market_renew_land"]
+    return df.merge(est, on="timestamp", how="left")
+
+
+MIX_GEN_COLS = ["gen_nuclear_kr", "gen_coal_kr", "gen_localcoal_kr", "gen_oil_kr",
+                "gen_hydro_kr", "gen_pumped_kr", "gen_nre_kr", "gen_gas_kr",
+                "gen_solar_market_kr", "gen_wind_kr", "gen_solar_btm_kr", "gen_solar_ppa_kr"]
+
+
+def land_day_mix(day: pd.Timestamp, use_live: bool = True) -> pd.DataFrame:
+    """선택일 발전 믹스 6그룹(누적용 실측) + 수요선. DB historical, 최근 날짜는 live 보강.
+
+    그룹: 원전 / 기타발전(석탄·국내탄·유류·수력·양수·기타신재생, 양수 펌핑은 음수 그대로 합산) /
+          가스 / 태양광+풍력(시장) / BTM+PPA(추정). 수요선 = 계량수요·총수요(+BTM/PPA).
+    """
+    s = day.strftime("%Y-%m-%d 00:00:00")
+    e = day.strftime("%Y-%m-%d 23:00:00")
+    base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
+    cols = ", ".join(MIX_GEN_COLS)
+    df = base.merge(query("land", f"""
+        SELECT timestamp, real_demand_land, {cols}
+        FROM historical WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
+    """, (s, e)), on="timestamp", how="left")
+
+    if use_live and (pd.Timestamp.now().normalize() - day).days <= 3:
+        pw = live_power_land(day.strftime("%Y-%m-%d"))
+        if not pw.empty:
+            pw = pw.assign(timestamp=pd.to_datetime(pw["timestamp"]))
+            keep = [c for c in MIX_GEN_COLS if c in pw.columns]
+            df = df.merge(pw[["timestamp"] + keep], on="timestamp", how="left", suffixes=("", "_lv"))
+            for c in keep:
+                df[c] = df[f"{c}_lv"].combine_first(df[c])
+            df = df.drop(columns=[f"{c}_lv" for c in keep])
+        sk = live_sukub_land(day.strftime("%Y-%m-%d"))
+        if not sk.empty and "real_demand_land" in sk.columns:
+            sk = sk.assign(timestamp=pd.to_datetime(sk["timestamp"]))
+            df = df.merge(sk[["timestamp", "real_demand_land"]], on="timestamp",
+                          how="left", suffixes=("", "_lv"))
+            df["real_demand_land"] = df["real_demand_land_lv"].combine_first(df["real_demand_land"])
+            df = df.drop(columns=["real_demand_land_lv"])
+
+    out = pd.DataFrame({"timestamp": df["timestamp"]})
+    out["원전"] = df["gen_nuclear_kr"]
+    out["기타발전"] = df[["gen_coal_kr", "gen_localcoal_kr", "gen_oil_kr",
+                       "gen_hydro_kr", "gen_pumped_kr", "gen_nre_kr"]].sum(axis=1, min_count=1)
+    out["가스"] = df["gen_gas_kr"]
+    out["태양광+풍력"] = df[["gen_solar_market_kr", "gen_wind_kr"]].sum(axis=1, min_count=2)
+    out["BTM+PPA"] = df[["gen_solar_btm_kr", "gen_solar_ppa_kr"]].sum(axis=1, min_count=2)
+    out["계량수요"] = df["real_demand_land"]
+    out["총수요"] = df["real_demand_land"] + out["BTM+PPA"]
+    return out
+
+
+def error_metrics(est: pd.Series, act: pd.Series) -> dict | None:
+    """겹치는 시간만으로 MAPE(%)·MAE·bias(%). 겹침 없으면 None."""
+    m = pd.concat([est, act], axis=1, keys=["e", "a"]).dropna()
+    m = m[m["a"].abs() > 1e-6]
+    if m.empty:
+        return None
+    err = m["e"] - m["a"]
+    return {"mape": float((err.abs() / m["a"].abs()).mean() * 100),
+            "nmae": float(err.abs().mean() / m["a"].abs().mean() * 100),  # 분모 작은 시간대에 강건
+            "mae": float(err.abs().mean()),
+            "bias": float(err.sum() / m["a"].sum() * 100),
+            "n": len(m)}
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_daily_error_history(end_day: str, days: int = 30) -> pd.DataFrame:
+    """최근 N일 일별 MAPE 추이 (수요/신재생/net_load/가스). DB 적재분만 사용."""
+    end = pd.Timestamp(end_day)
+    s = (end - pd.Timedelta(days=days - 1)).strftime("%Y-%m-%d 00:00:00")
+    e = end.strftime("%Y-%m-%d 23:00:00")
+    est = land_forecast(s, e)
+    act = land_actual(s, e)
+    df = est.merge(act, on="timestamp", how="inner")
+    pairs = {"수요": ("est_demand_land", "real_demand_land", "mape"),
+             "신재생": ("est_market_renew_land", "renew_gen_total_kr", "nmae"),
+             "net_load": ("est_net_load_land", "net_load_actual", "mape"),
+             "가스": ("est_gas_gen_land", "gen_gas_kr", "mape")}
+    out = {}
+    grp = df.groupby(df["timestamp"].dt.date)
+    for name, (ec, ac, kind) in pairs.items():
+        def _daily(g, ec=ec, ac=ac, kind=kind):
+            v = g[[ec, ac]].dropna()
+            if len(v) < 12:
+                return float("nan")
+            err = (v[ec] - v[ac]).abs()
+            return float(err.mean() / v[ac].abs().mean() * 100) if kind == "nmae" \
+                else float((err / v[ac].abs()).mean() * 100)
+        out[name] = grp.apply(_daily, include_groups=False)
+    return pd.DataFrame(out)
 
 
 # ---------------------------------------------------------------- 단가 환산
@@ -122,6 +363,38 @@ COVERAGE = {
         ("historical", "실시간 SMP", "smp_jeju_rt"),
     ],
 }
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def table_columns(region: str, table: str) -> list[str]:
+    con = sqlite3.connect(str(DB[region]))
+    try:
+        return [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
+    finally:
+        con.close()
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def table_range(region: str, table: str) -> tuple[str, str]:
+    df = query(region, f"SELECT MIN(timestamp) AS lo, MAX(timestamp) AS hi FROM {table}")
+    return str(df.loc[0, "lo"]), str(df.loc[0, "hi"])
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def coverage_heat(region: str, table: str, start: str, end: str) -> pd.DataFrame:
+    """6시간 블록별 컬럼 적재율(0~1) — index=컬럼(DB 순서), columns=블록 시작 시각.
+
+    기간 전체를 시간 격자로 reindex — 행 자체가 없는 구간도 0%로 드러난다.
+    """
+    df = query(region, f"SELECT * FROM {table} WHERE timestamp BETWEEN ? AND ? "
+                       "ORDER BY timestamp", (start, end))
+    grid = pd.date_range(start, end, freq="h")
+    if df.empty:
+        return pd.DataFrame(0.0, index=[c for c in table_columns(region, table)
+                                        if c != "timestamp"],
+                            columns=pd.date_range(start, end, freq="6h"))
+    df = df.set_index("timestamp").reindex(grid)
+    return df.notna().resample("6h").mean().T
 
 
 @st.cache_data(ttl=CACHE_TTL)
