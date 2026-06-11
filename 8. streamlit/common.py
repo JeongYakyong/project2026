@@ -7,6 +7,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.io as pio
 
 ROOT = Path(__file__).resolve().parent.parent
 CORE = ROOT / "1. data_fetcher_and_db" / "core"
@@ -418,6 +419,24 @@ def coverage_table(region: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- 차트 헬퍼
+# 전 차트 공용 템플릿 — 기상개황 지도와 같은 토큰(Pretendard·ink/slate·line #e2e8f0).
+# pio 기본값으로 등록해 make_fig 외(make_subplots·go.Figure 직접 생성)에도 일괄 적용.
+pio.templates["briefing"] = go.layout.Template(layout=go.Layout(
+    font=dict(family="Pretendard, 'Segoe UI', sans-serif", size=13, color="#334155"),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(gridcolor="#eef2f7", linecolor="#e2e8f0", zerolinecolor="#e2e8f0",
+               tickfont=dict(size=11.5, color="#64748b")),
+    yaxis=dict(gridcolor="#eef2f7", linecolor="#e2e8f0", zerolinecolor="#e2e8f0",
+               tickfont=dict(size=11.5, color="#64748b"),
+               title=dict(font=dict(size=12, color="#64748b"))),
+    legend=dict(font=dict(size=12, color="#475569")),
+    hoverlabel=dict(bgcolor="#0f172a", bordercolor="rgba(15,23,42,0)",
+                    font=dict(family="Pretendard, 'Segoe UI', sans-serif",
+                              size=12.5, color="#f1f5f9")),
+))
+pio.templates.default = "briefing"
+
+
 def make_fig(height: int = 420, ytitle: str = "MW") -> go.Figure:
     fig = go.Figure()
     fig.update_layout(height=height, margin=dict(t=30, b=10, l=10, r=10),
@@ -431,3 +450,146 @@ def add_actual(fig: go.Figure, ts, y, name: str, color: str, **kw):
 
 def add_forecast(fig: go.Figure, ts, y, name: str, color: str, **kw):
     fig.add_trace(go.Scatter(x=ts, y=y, name=name, line=dict(color=color, dash="dot", width=2), **kw))
+
+
+# ---------------------------------------------------------------- UI 레이어 (8-A 디자인)
+# 디자인 토큰 = 기상개황 지도(weather_map.py)와 동일: ink #0f172a / sub #64748b /
+# line #e2e8f0 / green #059669. 캔버스·사이드바 색은 .streamlit/config.toml 테마가 담당.
+_CSS = """
+<style>
+/* ---- 지표 카드 ---- */
+[data-testid="stMetric"]{
+  background:#fff; border:1px solid #cbd5e1; border-radius:14px;
+  padding:.85rem 1.05rem .8rem; box-shadow:0 1px 2px rgba(15,23,42,.05); }
+[data-testid="stMetricLabel"] p{
+  font-size:.78rem; font-weight:700; color:#64748b; letter-spacing:.01em; }
+[data-testid="stMetricValue"]{
+  font-family:'IBM Plex Mono','Pretendard',monospace; font-size:1.5rem;
+  font-weight:600; color:#0f172a; letter-spacing:-.03em; }
+[data-testid="stMetricDelta"]{ font-size:.78rem; }
+
+/* ---- 차트·지도 임베드를 흰 카드로 ---- */
+[data-testid="stPlotlyChart"]{
+  background:#fff; border:1px solid #cbd5e1; border-radius:14px;
+  padding:.6rem .7rem .3rem; box-shadow:0 1px 2px rgba(15,23,42,.05); }
+[data-testid="stIFrame"], iframe[title="st.iframe"]{
+  border:1px solid #cbd5e1; border-radius:14px;
+  box-shadow:0 1px 2px rgba(15,23,42,.05); }
+
+/* ---- 탭 — 알약 버튼(선택 가능해 보이게, 지도 패널 mchip 과 동일 문법) ---- */
+[data-testid="stTabs"] [role="tablist"]{ gap:6px; border-bottom:none; }
+[data-testid="stTabs"] [role="tab"]{
+  background:#fff; border:1px solid #94a3b8; border-radius:999px;
+  padding:.15rem 1.05rem; margin-bottom:6px; transition:border-color .12s; }
+[data-testid="stTabs"] [role="tab"]:hover{ border-color:#475569; }
+[data-testid="stTabs"] [role="tab"] p{ font-size:.9rem; font-weight:700; color:#64748b; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
+  background:#0f172a; border-color:#0f172a; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] p{ color:#fff; }
+[data-testid="stTabs"] [data-baseweb="tab-highlight"]{ display:none; }
+[data-testid="stTabs"] [data-baseweb="tab-border"]{ display:none; }
+
+/* ---- 작은 지표(보조 수치 — 가스비 등): container(key=*_metric_sm) 로 감싸 적용 ---- */
+[class*="metric_sm"] [data-testid="stMetricValue"]{ font-size:1.05rem; }
+[class*="metric_sm"] [data-testid="stMetric"]{ padding:.7rem .9rem; }
+
+/* ---- 버튼·캡션 ---- */
+.stButton button p{ font-weight:700; font-size:.88rem; }
+[data-testid="stCaptionContainer"]{ color:#64748b; }
+
+/* ---- 사이드바: 페이지 링크(전국/제주) — 더 크게 ---- */
+[data-testid="stSidebarNav"] a{ padding:.45rem .75rem; border-radius:10px; }
+[data-testid="stSidebarNav"] a span{ font-size:1.05rem; font-weight:700; }
+[data-testid="stSidebarNav"] a span[data-testid="stIconMaterial"]{ font-size:1.35rem; }
+
+/* ---- date_input: 박스 안 날짜 중앙 정렬 (전 페이지 공통) ---- */
+.stDateInput input{ text-align:center; }
+
+/* ---- 사이드바: radio 를 내비게이션 메뉴처럼 ---- */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p{
+  font-size:.7rem; font-weight:800; letter-spacing:.16em; color:#94a3b8;
+  text-transform:uppercase; }
+section[data-testid="stSidebar"] [role="radiogroup"]{ gap:3px; }
+section[data-testid="stSidebar"] [role="radiogroup"] label{
+  width:100%; margin:0; padding:.5rem .8rem; border-radius:10px;
+  transition:background .12s; }
+section[data-testid="stSidebar"] [role="radiogroup"] label:hover{
+  background:rgba(148,163,184,.14); }
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){
+  background:rgba(52,211,153,.16); }
+section[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p{
+  color:#6ee7b7; font-weight:800; }
+section[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child{
+  display:none; }   /* 라디오 동그라미 숨김 — 메뉴처럼 보이게 */
+
+/* ---- 페이지 헤더 ---- */
+.bf-head{ margin:0 0 .9rem; }
+.bf-eyebrow{ font-size:.7rem; font-weight:800; letter-spacing:.2em; color:#059669; }
+.bf-titlerow{ display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin:.15rem 0 .3rem; }
+.bf-title{ font-size:1.85rem; font-weight:800; letter-spacing:-.02em;
+  color:#0f172a; line-height:1.15; }
+.bf-chain{ display:inline-flex; align-items:center; gap:.45rem; background:#fff;
+  border:1px solid #cbd5e1; border-radius:999px; padding:.38rem .9rem;
+  box-shadow:0 1px 2px rgba(15,23,42,.05); }
+.bf-step{ display:inline-flex; align-items:center; gap:.34rem; font-size:.8rem;
+  font-weight:700; color:#334155; white-space:nowrap; }
+.bf-step i{ width:.55rem; height:.55rem; border-radius:50%; display:inline-block; }
+.bf-arrow{ color:#94a3b8; font-size:.78rem; }
+.bf-sub{ font-size:.88rem; color:#64748b; }
+</style>"""
+
+
+def inject_style():
+    """전역 CSS — app.py(엔트리)에서 매 rerun마다 호출(전 페이지 공통)."""
+    st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def day_navigator(prefix: str, ndays: tuple[int, int, int] | None = None,
+                  refresh: bool = True):
+    """8단계 표준 날짜 컨트롤 — ◀ 어제 | 날짜 | 내일 ▶ | (새로고침) | (표시 기간) | 캡션.
+
+    탭/메뉴마다 독립 배치(prefix 별 session 키). ndays=(최소, 최대, 기본)이면
+    표시 기간(일) 슬라이더 포함, refresh=False면 새로고침 버튼 없는 슬림 버전.
+    반환: (선택일 Timestamp, 표시일수 n | None, 캡션용 column). 기본 = 오늘.
+    """
+    key = f"{prefix}_day"
+    if key not in st.session_state:
+        st.session_state[key] = pd.Timestamp.now().normalize().date()
+
+    def _shift(delta: int):
+        st.session_state[key] = st.session_state[key] + pd.Timedelta(days=delta)
+
+    ratios = [0.8, 1.6, 0.8]
+    if refresh:
+        ratios.append(1.5)
+    if ndays:
+        ratios.append(2.1)
+    ratios.append(2.5 if ndays else 4.6)
+    cols = st.columns(ratios, vertical_alignment="center")
+    cols[0].button("◀ 어제", key=f"{prefix}_prev", on_click=_shift, args=(-1,), width="stretch")
+    cols[1].date_input("날짜", key=key, label_visibility="collapsed")
+    cols[2].button("내일 ▶", key=f"{prefix}_next", on_click=_shift, args=(1,), width="stretch")
+    i = 3
+    if refresh:
+        if cols[i].button("실시간 새로고침", key=f"{prefix}_refresh", width="stretch",
+                          help="실측(KPX sukub·발전실적)을 다시 불러옵니다 (표시 전용)"):
+            clear_live_caches()
+        i += 1
+    n = None
+    if ndays:
+        n = cols[i].slider("표시 기간(일)", ndays[0], ndays[1], ndays[2],
+                           key=f"{prefix}_ndays",
+                           help="시작일부터 N일 — 사전 적재된 예측을 읽기만 하므로 지연 없음")
+    return pd.Timestamp(st.session_state[key]), n, cols[-1]
+
+
+def page_header(eyebrow: str, title: str, sub: str, chain: list[tuple[str, str]]):
+    """페이지 헤더 — eyebrow + 제목 + 체인 pill(단계 점 색 = 차트 COLOR 규약과 동일)."""
+    steps = '<span class="bf-arrow">→</span>'.join(
+        f'<span class="bf-step"><i style="background:{c}"></i>{label}</span>'
+        for label, c in chain)
+    st.markdown(
+        f'<div class="bf-head"><div class="bf-eyebrow">{eyebrow}</div>'
+        f'<div class="bf-titlerow"><div class="bf-title">{title}</div>'
+        f'<div class="bf-chain">{steps}</div></div>'
+        f'<div class="bf-sub">{sub}</div></div>', unsafe_allow_html=True)

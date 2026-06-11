@@ -127,32 +127,38 @@ def sky_of(cloud: float | None, rain: float | None, temp: float | None,
 
 
 # ---------------------------------------------------------------- 데이터 레이어
-_VARS = ("temp_", "radiation_", "wind_spd_10m_", "rainfall_", "total_cloud_")
+# 테이블별 컬럼 접두사 — forecast(KIMG 예보)와 historical(ASOS·제주 관측)은 이름만 다름.
+# 일사는 둘 다 MJ/m²h 스케일(청천 P97도 historical 산출) — 같은 활성도 bin 적용 가능.
+_PREFIX = {
+    "forecast":   {"temp": "temp_", "rad": "radiation_", "wind": "wind_spd_10m_",
+                   "rain": "rainfall_", "cloud": "total_cloud_"},
+    "historical": {"temp": "temp_c_", "rad": "solar_rad_", "wind": "wind_spd_",
+                   "rain": "rainfall_", "cloud": "total_cloud_"},
+}
 
 
-def _station_means(region: str, suffixes: list[str], date: str) -> dict[str, dict]:
+def _station_means(region: str, suffixes: list[str], date: str,
+                   table: str = "forecast") -> dict[str, dict]:
     """지점별 09–15시 평균 {suffix: {temp, rad, wind, rain, cloud}} — 결측 컬럼은 NaN."""
+    px = _PREFIX[table]
     s, e = f"{date} {HOURS[0]}", f"{date} {HOURS[1]}"
-    cols = [f"{v}{sx}" for sx in suffixes for v in _VARS]
-    df = C.query(region, f"SELECT {', '.join(cols)} FROM forecast "
+    cols = [f"{p}{sx}" for sx in suffixes for p in px.values()]
+    df = C.query(region, f"SELECT {', '.join(cols)} FROM {table} "
                          "WHERE timestamp BETWEEN ? AND ?", (s, e))
     out = {}
     for sx in suffixes:
         if df.empty:
-            out[sx] = {v: float("nan") for v in ("temp", "rad", "wind", "rain", "cloud")}
+            out[sx] = {k: float("nan") for k in px}
             continue
         m = df.mean(numeric_only=True)
-        out[sx] = {"temp": m.get(f"temp_{sx}"), "rad": m.get(f"radiation_{sx}"),
-                   "wind": m.get(f"wind_spd_10m_{sx}"), "rain": m.get(f"rainfall_{sx}"),
-                   "cloud": m.get(f"total_cloud_{sx}")}
+        out[sx] = {k: m.get(f"{p}{sx}") for k, p in px.items()}
     return out
 
 
-@st.cache_data(ttl=C.CACHE_TTL)
-def zone_day(date: str) -> dict[str, dict]:
-    """선택일 8권역 기상(09–15시 평균)·하늘상태·활성도. 제주는 jeju DB 실데이터."""
-    land = _station_means("land", C.STATIONS_LAND, date)
-    jeju = _station_means("jeju", ["west"], date)
+def _build_zones(date: str, table: str) -> dict[str, dict]:
+    """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산."""
+    land = _station_means("land", C.STATIONS_LAND, date, table)
+    jeju = _station_means("jeju", ["west"], date, table)
     clear = CLEARSKY_0915[int(date[5:7])]
 
     zones = {}
@@ -177,6 +183,36 @@ def zone_day(date: str) -> dict[str, dict]:
             "wa": wind_act(w["wind"]),
         }
     return zones
+
+
+@st.cache_data(ttl=C.CACHE_TTL)
+def zone_day(date: str) -> dict[str, dict]:
+    """선택일 8권역 — KIMG 예보 기준. 제주는 jeju DB 실데이터."""
+    return _build_zones(date, "forecast")
+
+
+@st.cache_data(ttl=C.CACHE_TTL)
+def zone_actual(date: str) -> dict[str, dict]:
+    """과거 날짜 8권역 실측(ASOS·제주 관측) — 예보와 같은 계산·같은 bin."""
+    return _build_zones(date, "historical")
+
+
+@st.cache_data(ttl=C.CACHE_TTL)
+def national_util_actual(date: str) -> dict:
+    """전국 이용률 실측(KPX 역산 gen_*_utilization_kr) — 예측과 같은 집계 기준."""
+    day = C.query("land", "SELECT timestamp, gen_solar_utilization_kr AS s, "
+                          "gen_wind_utilization_kr AS w FROM historical "
+                          "WHERE timestamp BETWEEN ? AND ?",
+                  (f"{date} 00:00:00", f"{date} 23:00:00"))
+    if day.empty:
+        return {"solar": None, "wind": None}
+    h = day["timestamp"].dt.hour
+
+    def pct(v):
+        return None if pd.isna(v) else round(float(v) * 100, 1)
+
+    return {"solar": pct(day.loc[h.between(9, 15), "s"].mean()),
+            "wind": pct(day["w"].mean())}
 
 
 @st.cache_data(ttl=C.CACHE_TTL)
@@ -363,11 +399,22 @@ const gj = L.geoJSON(GEO, {
   }
 }).addTo(map);
 
-/* 대한민국 전체(제주 포함)에 화면 맞춤 — 좌측 패널만큼 패딩, 한국 밖 이동·축소 잠금 */
+/* 대한민국 전체(제주 포함)에 화면 맞춤 — 좌측 패널만큼 패딩, 한국 밖 이동·축소 잠금.
+   숨은 탭에서 크기 0으로 초기화되면 지도가 비어 보이므로, 컨테이너가 실제 크기를
+   가질 때까지 맞춤을 미루고(ResizeObserver) 보이는 순간 invalidateSize 후 fit한다. */
 const KOREA = gj.getBounds().pad(0.02);
-map.fitBounds(KOREA, {paddingTopLeft:[300,8], paddingBottomRight:[8,8]});
 map.setMaxBounds(KOREA.pad(0.35));
-map.setMinZoom(map.getZoom());
+const mapEl = document.getElementById("map");
+let needFit = true;
+function fitKorea(){
+  if (!needFit || !mapEl.clientWidth || !mapEl.clientHeight) return;
+  map.invalidateSize();
+  map.fitBounds(KOREA, {paddingTopLeft:[300,8], paddingBottomRight:[8,8]});
+  map.setMinZoom(map.getZoom());
+  needFit = false;
+}
+fitKorea();
+new ResizeObserver(()=>{ map.invalidateSize(); fitKorea(); }).observe(mapEl);
 
 /* 권역 라벨 — 하늘상태 이모지 + 권역명·기온 */
 const labelLayer = L.layerGroup().addTo(map);

@@ -98,10 +98,11 @@ def load_target_weather(targets: pd.DatetimeIndex, clim: dict) -> pd.DataFrame:
         have = fc[cols].apply(pd.to_numeric, errors='coerce') if len(fc) else pd.DataFrame()
         fmean = have.mean(axis=1).reindex(targets) if len(have) else pd.Series(np.nan, index=targets)
         # D+5.5(135h) 이후 forecast 는 3h 행만 존재(KIMG 1h 해상도 한계) -- 그 사이
-        # 1~2h 구멍은 양옆 실예보의 시간 보간이 기후값보다 정확하므로 먼저 메운다.
-        # limit=2 로 3h 간격 내부만 보간, limit_area='inside' 로 예보 범위 밖 외삽은
+        # 구멍은 양옆 실예보의 시간 보간이 기후값보다 정확하므로 먼저 메운다.
+        # 신뢰성 한계: limit=3 (연속 결측 3h = 앵커 간격 4h 까지만 보간, 그 이상
+        # 벌어진 구멍은 보간하지 않음).  limit_area='inside' 로 예보 범위 밖 외삽
         # 금지 -> 진짜 예보가 없는 지평만 기후값 폴백으로 남는다.
-        fmean = fmean.interpolate(method='time', limit=2, limit_area='inside')
+        fmean = fmean.interpolate(method='time', limit=3, limit_area='inside')
         cl = pd.Series([clim[w].get((t.month, t.hour), np.nan) for t in targets], index=targets)
         out[w] = fmean.where(fmean.notna(), cl)
         out[w + '_src'] = np.where(fmean.notna(), 'forecast', 'climatology')

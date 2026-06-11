@@ -139,7 +139,14 @@ def _day_weather(con, day, A):
         fmap[f'midlow_cloud_{st}'] = f'midlow_cloud_{st}'; fmap[f'rainfall_{st}'] = f'rainfall_{st}'
     for st in WIND_ST:
         fmap[f'wind_spd_10m_{st}'] = f'wind_spd_{st}'; fmap[f'wd_sin_10m_{st}'] = f'wd_sin_{st}'; fmap[f'wd_cos_10m_{st}'] = f'wd_cos_{st}'
-    f = _read(con, 'forecast', _S(idx[0]), _S(idx[-1]), list(fmap)).rename(columns=fmap).reindex(idx)
+    # D+5.5(135h) 이후 forecast 는 3h 행만 존재(KIMG 1h 해상도 한계).  4h 이내
+    # 구멍은 양옆 실예보의 시간 보간이 기후값보다 정확하므로 기후값 폴백 전에
+    # 먼저 메운다 (limit=3 = 앵커 간격 4h 까지만, 신뢰성 한계.  limit_area=
+    # 'inside' 로 예보 범위 밖 외삽 금지).  경계 시간(00시/23시)도 보간되도록
+    # ±3h 확장 조회 후 대상일로 트림.
+    ext = pd.date_range(idx[0] - pd.Timedelta(hours=3), idx[-1] + pd.Timedelta(hours=3), freq='h')
+    f = _read(con, 'forecast', _S(ext[0]), _S(ext[-1]), list(fmap)).rename(columns=fmap).reindex(ext)
+    f = f.interpolate(method='time', limit=3, limit_area='inside').reindex(idx)
     need = A['canon']; src = 'forecast'
     if len(f) < PL or f[need].isna().any().any():
         fill = pd.DataFrame({c: [A['wx_clim'].loc[(t.month, t.hour), c] for t in idx] for c in need}, index=idx)

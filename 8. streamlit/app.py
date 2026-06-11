@@ -9,9 +9,16 @@
 G-15(PROJECT.md §7): 자체 서버 호스팅 / DB 직접 읽기 / 사전 적재 기본 + 시연 버튼 /
 제주 페이지에 SMP 메뉴 포함(2026-06-10 설계 개편으로 ⑤ 번복).
 """
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-st.set_page_config(page_title="신재생→잔여부하→가스 브리핑", layout="wide")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common as C
+
+st.set_page_config(page_title="전국 가스송출량 예측 대쉬보드", page_icon="⚡", layout="wide")
+C.inject_style()
 
 pg = st.navigation([
     st.Page("page_land.py", title="전국", icon=":material/public:", default=True),

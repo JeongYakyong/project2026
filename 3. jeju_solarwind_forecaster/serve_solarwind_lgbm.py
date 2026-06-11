@@ -114,10 +114,16 @@ def _conn():
 def _day_weather(con, day, wx_clim):
     idx = pd.date_range(day, periods=24, freq='h')
     sel = ', '.join(f'"{c}"' for c in ['timestamp'] + list(FORE_MAP))
+    # D+5.5(135h) 이후 forecast 는 3h 행만 존재(KIMG 1h 해상도 한계).  4h 이내
+    # 구멍은 양옆 실예보의 시간 보간이 기후값보다 정확하므로 기후값 폴백 전에
+    # 먼저 메운다 (limit=3 = 앵커 간격 4h 까지, 신뢰성 한계.  limit_area='inside'
+    # 로 외삽 금지).  경계 시간도 보간되도록 ±3h 확장 조회 후 대상일로 트림.
+    ext = pd.date_range(idx[0] - pd.Timedelta(hours=3), idx[-1] + pd.Timedelta(hours=3), freq='h')
     f = pd.read_sql(f'SELECT {sel} FROM forecast WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp', con,
-                    params=(idx[0].strftime('%Y-%m-%d %H:%M:%S'), idx[-1].strftime('%Y-%m-%d %H:%M:%S')),
+                    params=(ext[0].strftime('%Y-%m-%d %H:%M:%S'), ext[-1].strftime('%Y-%m-%d %H:%M:%S')),
                     parse_dates=['timestamp']).set_index('timestamp')
-    f = f.apply(pd.to_numeric, errors='coerce').rename(columns=FORE_MAP).reindex(idx)
+    f = f.apply(pd.to_numeric, errors='coerce').rename(columns=FORE_MAP).reindex(ext)
+    f = f.interpolate(method='time', limit=3, limit_area='inside').reindex(idx)
     src = 'forecast'
     need = f[CANON]
     if len(f) < 24 or need.isna().any().any():

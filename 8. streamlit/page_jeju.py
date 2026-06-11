@@ -8,7 +8,11 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
 
-st.title("제주 — 신재생 → 잔여부하 → SMP 브리핑")
+C.page_header(
+    "JEJU · DAILY BRIEFING", "제주 발전 브리핑",
+    "신재생이 만든 잔여부하가 SMP를 흔든다 — 2→3→4 서빙 체인의 사전 적재 예측",
+    [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
+     ("net_load", C.COLOR["net_load"]), ("SMP", "#d62728")])
 menu = st.sidebar.radio("메뉴", ["종합", "수요 예측", "데이터 현황", "SMP 예측"])
 
 if menu == "데이터 현황":
