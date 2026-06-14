@@ -97,6 +97,10 @@ from _common import (
     KPX_BASE_HEADERS,
     MAX_CHUNK_DAYS,
     DEFAULT_SLEEP_SEC,
+    current_kma_key,
+    kma_quota_exceeded,
+    rotate_kma_key,
+    _log_http_error_once,
 )
 
 load_dotenv()
@@ -105,7 +109,7 @@ load_dotenv()
 KST = ZoneInfo("Asia/Seoul")
 UTC = timezone.utc
 
-AUTH_KEY = os.getenv("KMA_API_KEY")
+# KMA 키는 _common 의 키 풀(current_kma_key)로 일원화 (main + sub 자동 전환).
 
 BASE_URL = "https://apihub.kma.go.kr/api/typ06/url/kim_grib_pt_tmfc.php"
 
@@ -191,12 +195,13 @@ _kma_session.mount(
 
 def warmup() -> None:
     """병렬 burst 전에 TCP+TLS handshake 를 미리 확보.  실패는 무시."""
-    if not AUTH_KEY:
+    key = current_kma_key()
+    if not key:
         return
     try:
         _kma_session.get(
             BASE_URL,
-            params={"help": "1", "authKey": AUTH_KEY},
+            params={"help": "1", "authKey": key},
             timeout=10,
         )
     except Exception:
@@ -295,8 +300,9 @@ def fetch_one(base_utc: datetime, x: int, y: int) -> list[tuple[str, int, int, s
     """단일 (publish, point) 호출.  멀티 varn 으로 13 변수 한 번에 가져옴.
 
     내부에서 5xx + timeout/connection error 에 대해 exponential backoff (2s, 4s)
-    로 최대 RETRY_MAX 회 재시도.  4xx 는 즉시 raise.  최종 실패 시 raise -- 호출자
-    (run_backfill / collect) 의 except 가 failed pair 로 카운트.
+    로 최대 RETRY_MAX 회 재시도.  4xx 는 즉시 raise.  한도 초과 응답이면
+    rotate_kma_key 후 즉시 재시도, 예비 키마저 없으면 raise.  최종 실패 시
+    raise -- 호출자 (run_backfill / collect) 의 except 가 failed pair 로 카운트.
     """
     params = {
         "group": "KIMR",
@@ -307,13 +313,19 @@ def fetch_one(base_utc: datetime, x: int, y: int) -> list[tuple[str, int, int, s
         "ef":    ef_param_for(base_utc),
         "X":     x,
         "Y":     y,
-        "authKey": AUTH_KEY,
     }
     for attempt in range(RETRY_MAX):
+        key = current_kma_key()
+        params["authKey"] = key
         try:
             r = _kma_session.get(BASE_URL, params=params, timeout=60)
+            if kma_quota_exceeded(r.status_code, r.text):
+                if rotate_kma_key(key):
+                    continue  # 새 키로 즉시 재시도
+                raise RuntimeError("KMA API 일일 한도 초과 (모든 키 소진)")
             if r.status_code == 200:
                 return parse_response(r.text)
+            _log_http_error_once(r.status_code, r.text)
             # 5xx -> backoff & retry.  4xx -> 즉시 raise.
             if 500 <= r.status_code < 600 and attempt < RETRY_MAX - 1:
                 time.sleep(2 ** (attempt + 1))
@@ -602,7 +614,7 @@ def fetch_asos(
     solar_rad 는 센서가 있는 지점만 (west/south).  성산(east)은 컬럼 자체가 없다.
     결측 정책: rainfall->0, solar_rad 는 센서 가동일의 야간 결측만 0, 그 외 NaN 유지.
     """
-    key = auth_key or KMA_API_KEY
+    key = auth_key or current_kma_key()
     if not key:
         sys.exit("KMA_API_KEY is not set (check .env)")
 

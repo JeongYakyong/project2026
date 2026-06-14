@@ -97,6 +97,7 @@ from __future__ import annotations
 import io
 import os
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -122,6 +123,64 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 KMA_API_KEY = os.getenv("KMA_API_KEY")
 AUTH_KEY = KMA_API_KEY
 KPX_API_KEY = os.getenv("KPX_API_KEY")
+
+# ── KMA 키 풀: main + sub(여러 개), 일일 한도 초과 감지 시 자동 전환 ──────
+# .env 에 KMA_API_KEY_SUB / _SUB2 / _SUB3(예비 키, 모두 선택)를 추가하면 현재
+# 키가 한도 초과 응답을 내는 순간 다음 예비 키로 넘어가고, 그 키도 소진되면
+# 또 다음 키로 순차 전환한다(main -> SUB -> SUB2 -> SUB3).  전환은 프로세스
+# 단위 상태라 다음 실행은 다시 main 부터 시작한다.  요청 지점은 모듈 전역
+# KMA_API_KEY 대신 current_kma_key() 를 요청 직전마다 호출해야 전환이 즉시 반영된다.
+_KMA_KEYS: list[str] = []
+for _k in (
+    KMA_API_KEY,
+    os.getenv("KMA_API_KEY_SUB"),
+    os.getenv("KMA_API_KEY_SUB2"),
+    os.getenv("KMA_API_KEY_SUB3"),
+):
+    if _k and _k not in _KMA_KEYS:  # 빈 값/중복 제외, 순서 보존
+        _KMA_KEYS.append(_k)
+_kma_key_idx = 0
+_kma_key_lock = threading.Lock()
+
+
+def current_kma_key() -> str | None:
+    """현재 활성 KMA 키.  키 미설정 시 None (기존 KMA_API_KEY None 동작과 동일)."""
+    return _KMA_KEYS[_kma_key_idx] if _KMA_KEYS else None
+
+
+def kma_quota_exceeded(status_code: int, body: str | None) -> bool:
+    """한도 초과 응답 휴리스틱: HTTP 403, 또는 짧은 에러 body 의 마커 문자열.
+
+    정상 body 최소치는 KIMG 단일 hf ~1,500자 (2026-06-11 실측) -- 임계 1,000자는
+    그 아래라 정상 응답엔 마커 검사가 아예 안 걸린다.  (정확한 초과 응답 포맷이
+    미확인이라 보수적 휴리스틱 -- 실제 초과를 한번 겪으면 그 문구로 좁힐 것.)
+    """
+    if status_code == 403:
+        return True
+    if body and len(body) < 1000:
+        low = body.lower()
+        return any(m in low for m in ("exceed", "초과", "quota", "limit"))
+    return False
+
+
+def rotate_kma_key(bad_key: str | None) -> bool:
+    """bad_key 가 여전히 현재 키일 때만 다음 키로 전환.  남은 키 없으면 False.
+
+    병렬 hf 워커 여럿이 동시에 한도 초과를 감지해도 lock + bad_key 비교로 전환은
+    한 번만 일어난다 (이미 전환됐으면 True 만 반환 -- 새 키로 재시도하면 됨).
+    """
+    global _kma_key_idx
+    with _kma_key_lock:
+        if current_kma_key() != bad_key:
+            return True
+        if _kma_key_idx + 1 >= len(_KMA_KEYS):
+            return False
+        _kma_key_idx += 1
+        print(
+            f"  [kma-key] 한도 초과 감지 -> 예비 키로 전환 "
+            f"({_kma_key_idx + 1}/{len(_KMA_KEYS)})"
+        )
+        return True
 
 BASE_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-kim_nc_pt_txt2"
 
@@ -191,12 +250,13 @@ _kma_session.mount(
 
 def warmup() -> None:
     """병렬 burst 전에 TCP+TLS handshake 를 미리 확보.  실패는 무시."""
-    if not AUTH_KEY:
+    key = current_kma_key()
+    if not key:
         return
     try:
         _kma_session.get(
             BASE_URL,
-            params={"help": "1", "authKey": AUTH_KEY},
+            params={"help": "1", "authKey": key},
             timeout=10,
         )
     except Exception:
@@ -398,7 +458,8 @@ def fetch_one_hf(base_utc: datetime, point: dict, hf: int) -> str | None:
 
     내부에서 5xx + timeout/connection error 에 대해 exponential backoff (2s, 4s)
     로 최대 RETRY_MAX 회 재시도.  4xx 는 즉시 포기 (transient 가 아님).
-    워커 스레드에서 호출돼도 안전 (DB / 공유 mutable state 없음).
+    한도 초과 응답이면 rotate_kma_key 후 즉시 재시도 (예비 키 없으면 포기).
+    워커 스레드에서 호출돼도 안전 (키 전환은 rotate_kma_key 가 lock 으로 직렬화).
     """
     params = {
         "group":   "KIMG",
@@ -411,13 +472,19 @@ def fetch_one_hf(base_utc: datetime, point: dict, hf: int) -> str | None:
         "lon":     f"{point['lon']:.4f}",
         "disp":    "A",
         "help":    "0",
-        "authKey": AUTH_KEY,
     }
     for attempt in range(RETRY_MAX):
+        key = current_kma_key()
+        params["authKey"] = key
         try:
             r = _kma_session.get(BASE_URL, params=params, timeout=30)
+            if kma_quota_exceeded(r.status_code, r.text):
+                if rotate_kma_key(key):
+                    continue  # 새 키로 즉시 재시도 (backoff 불필요)
+                return None   # 모든 키 소진
             if r.status_code == 200:
                 return r.text
+            _log_http_error_once(r.status_code, r.text)
             # 5xx -> backoff then retry.  4xx -> 즉시 포기.
             if 500 <= r.status_code < 600 and attempt < RETRY_MAX - 1:
                 time.sleep(2 ** (attempt + 1))
@@ -429,6 +496,22 @@ def fetch_one_hf(base_utc: datetime, point: dict, hf: int) -> str | None:
                 continue
             return None
     return None
+
+
+# quota 로 감지 못한 비-200 응답을 프로세스당 한 번만 덤프 -- 한도 초과 응답의
+# 실제 포맷이 미확인이라 (2026-06-12 probe 때 키가 이미 리셋돼 포착 실패),
+# 다음 실패 사태 때 이 로그로 kma_quota_exceeded 마커를 캘리브레이션한다.
+_http_error_logged = False
+
+
+def _log_http_error_once(status_code: int, body: str | None) -> None:
+    global _http_error_logged
+    if _http_error_logged:
+        return
+    _http_error_logged = True
+    snippet = (body or "")[:300].replace("\n", " | ")
+    print(f"  [kma-http] unexpected status={status_code} body[:300]={snippet!r} "
+          f"(이번 실행 첫 1회만 출력 -- 한도초과 마커 캘리브레이션용)")
 
 
 # ── 수집 본체 ─────────────────────────────────────────────────────────

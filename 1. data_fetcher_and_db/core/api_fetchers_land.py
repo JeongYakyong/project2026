@@ -53,6 +53,7 @@ import requests
 import _common as ckg  # FORECAST_DAYS 글로벌을 임시 오버라이드하기 위한 모듈 핸들
 from _common import (
     KMA_API_KEY,
+    current_kma_key,
     KPX_API_KEY,
     KPX_BASE_HEADERS,
     MAX_CHUNK_DAYS,
@@ -132,7 +133,7 @@ def fetch_asos_land(
         solar_rad : 센서 가동일의 야간 결측만 -> 0, 무센서/비가동 구간은 NaN
         그 외      : NaN 유지 (보간은 downstream)
     """
-    key = KMA_API_KEY
+    key = current_kma_key()
     if not key:
         sys.exit("KMA_API_KEY is not set (check .env)")
 
