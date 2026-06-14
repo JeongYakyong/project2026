@@ -338,15 +338,24 @@ def collection_window(base_utc: datetime) -> tuple[datetime, datetime]:
     return next_midnight, next_midnight + timedelta(days=FORECAST_DAYS)
 
 
-# KIMG 의 1h 해상도 상한 (probe 2026-06-13, 00/12 UTC 발표 동일): hf<=135 는 매시간,
-# 그 이후 ~288h 까지는 3의 배수 hf 만 데이터가 존재한다 (나머지는 빈 응답).
+# KIMG 의 hf 해상도/상한 (probe 2026-06-13 + KMA 명세): hf<=135 는 매시간,
+# 그 이후 KIMG_MAX_HF(372h=15.5일) 까지는 3의 배수 hf 만 데이터가 존재한다(나머지는
+# 빈 응답).  372h 초과는 데이터 자체가 없으므로 상한으로 둔다(--kimg-days 16 으로
+# 윈도우를 넓혀도 여기서 372h 에 잘림).
 KIMG_HOURLY_MAX_HF = 135
+KIMG_MAX_HF = 372
+
+# 장지평 증분 백필용 하한: 이 값 이상 hf 만 수집(기본 0 = 전체).  이미 받은 D+1~N 을
+# 다시 호출하지 않고 새 꼬리(예: --min-hf 288 -> 288~372h, D+13~)만 받을 때 설정한다.
+# collect_forecast_runs --min-hf 가 이 모듈 글로벌을 세팅(forecast_days_override 와 동류).
+MIN_HF = 0
 
 def collection_hf_range(base_utc: datetime) -> list[int]:
     """day-aligned KST 윈도우를 hf(forecast offset, 시간) 리스트로 환산.
     UTC 00 / 06 / 12 / 18 발표에 대해 각각 hf=15.. / 9.. / 3.. / 21.. 시작 (기본 48개).
     hf > KIMG_HOURLY_MAX_HF(135) 구간은 3h 간격만 존재하므로 3의 배수가 아닌 hf 를
     건너뛰어 빈 호출을 만들지 않는다 (장지평 윈도우에서 호출 ~2/3 절감).
+    MIN_HF 이상 / KIMG_MAX_HF 이하로 잘라 증분 백필·데이터 상한을 함께 처리한다.
     """
     base_kst = base_utc.astimezone(KST)
     start_kst, end_kst = collection_window(base_utc)
@@ -354,7 +363,7 @@ def collection_hf_range(base_utc: datetime) -> list[int]:
     end_hf = int((end_kst - base_kst).total_seconds() // 3600)
     return [
         hf for hf in range(start_hf, end_hf)
-        if hf <= KIMG_HOURLY_MAX_HF or hf % 3 == 0
+        if MIN_HF <= hf <= KIMG_MAX_HF and (hf <= KIMG_HOURLY_MAX_HF or hf % 3 == 0)
     ]
 
 

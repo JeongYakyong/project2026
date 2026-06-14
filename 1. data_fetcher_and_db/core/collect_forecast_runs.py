@@ -62,6 +62,7 @@ if str(CORE) not in sys.path:
 
 import collect_data_jeju as cj
 import collect_data_land as cl
+import _common as ckg
 from _common import PUBLISH_DELAY_HOURS
 
 KST = ZoneInfo("Asia/Seoul")
@@ -375,7 +376,17 @@ def main() -> None:
         "--no-kpx", action="store_true",
         help="(이제 기본 동작 -- 항상 KMA 전용) 하위호환용 no-op 플래그",
     )
+    p.add_argument(
+        "--min-hf", type=int, default=0, metavar="H",
+        help="이 hf(시간) 이상만 수집 -- 장지평 증분 백필용. 예: 육지 기존 D+1~12(=hf288) "
+             "위에 D+13~15.5 만 추가할 때 `--region land --min-hf 288`. 기존 hf 재호출 생략.",
+    )
     args = p.parse_args()
+
+    if args.min_hf:
+        ckg.MIN_HF = args.min_hf
+        print(f"[collect_forecast_runs] 증분 모드: hf >= {args.min_hf} 만 수집 "
+              f"(기존 짧은 지평 재호출 생략 -- --region land 와 함께 쓸 것)")
 
     # forecast_horizon_kma 는 KMA 기상 전용이라 KPX(*_da)는 저장하지 않는다 ->
     # 호출 자체를 항상 끈다 (불필요한 data.go.kr 호출/429 회피).  --no-kpx 는 이제
