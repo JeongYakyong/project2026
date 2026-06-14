@@ -20,7 +20,8 @@
 #   06 UTC 발표는 전날 18:40 실행이 이미 수집했으므로 --bases 1 로 절약.
 40 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh --bases 1 --kimg-days 12
 
-# 지평별 누적(forecast_runs): 같은 12 UTC 발표를 (base, timestamp) 복합키로 별도 적재.
-#   제주 7일 + 육지 12일 윈도우, 기존 forecast(freshest)와 독립 — 지평별 백테스트용.
+# 지평별 누적(forecast_horizon_kma): 같은 12 UTC 발표를 (base, timestamp) 복합키로 별도 적재.
+#   KMA 기상 예보 전용(KPX *_da·day_type 제외). 제주 7일 + 육지 12일 윈도우,
+#   기존 forecast(freshest)와 독립 — 지평별 백테스트용.
 #   01:30 = 위 두 수집과 API 호출 시간대 분리.
 30 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_runs.sh
