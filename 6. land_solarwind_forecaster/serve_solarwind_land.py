@@ -30,8 +30,8 @@ DEVICE  = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 SOLAR_ST = ['yeonggwang', 'seosan', 'pohang']
 WIND_ST  = ['daegwallyeong', 'yeonggwang', 'pohang']
-SOLAR_PT_HORIZONS = [1, 2, 3, 4, 5, 6, 7, 12]    # 학습된 PatchTST 가중치
-LAND_HORIZONS = (1, 2, 3, 4, 5, 6, 7, 12)
+SOLAR_PT_HORIZONS = [1, 2, 3, 4, 5, 6, 7, 12, 14, 15]    # 학습된 PatchTST 가중치(D14·D15 추가)
+LAND_HORIZONS = tuple(range(1, 16))    # D+1..D+15 연속 — PatchTST 있는 지평={1-7,12,14,15}, 나머지(8-11,13)=LGBM 폴백
 DEMAND_COLS = ['est_demand_land', 'land_est_demand_da']   # 5단계 우선 → KPX 폴백
 PL = 24
 

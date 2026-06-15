@@ -1,9 +1,9 @@
 """
 migrate_forecast_horizon.py -- bf_<region>.db 의 forecast_runs 를 본 DB 의
-forecast_horizon_kma (KMA 예보 전용 아카이브) 로 통합.
+forecast_horizon (KMA 예보 전용 아카이브) 로 통합.
 
 설계 결정 (2026-06-14, 사용자 확정)
-- 아카이브 테이블명을 forecast_runs -> forecast_horizon_kma 로 정정.
+- 아카이브 테이블명을 forecast_runs -> forecast_horizon 로 정정.
   KPX 익일(smp_*_da / *_est_demand_da)은 D+1 한계라 지평 아카이브에 해당 없음
   -> historical/forecast 테이블에만 존재.  이 테이블은 KMA 기상 예보 전용.
 - 제외 컬럼: smp_land_da, land_est_demand_da (KPX), day_type (달력, timestamp 에서
@@ -28,7 +28,7 @@ CORE = Path(__file__).resolve().parent
 DATA = CORE.parent / "data"
 
 SRC_TABLE = "forecast_runs"          # bf_*.db 안의 기존 테이블명
-DST_TABLE = "forecast_horizon_kma"   # 본 DB 의 새 아카이브 테이블명
+DST_TABLE = "forecast_horizon"   # 본 DB 의 새 아카이브 테이블명
 KEY_COLS = ["timestamp", "base", "horizon_d"]
 
 MAIN_DB = {"land": DATA / "input_data_land.db", "jeju": DATA / "input_data_jeju.db"}
@@ -106,7 +106,7 @@ def migrate(region: str, dry_run: bool) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="bf_*.db -> 본 DB forecast_horizon_kma 통합")
+    p = argparse.ArgumentParser(description="bf_*.db -> 본 DB forecast_horizon 통합")
     p.add_argument("--region", choices=["land", "jeju"], required=True)
     p.add_argument("--dry-run", action="store_true", help="계획만 출력, 변경 없음")
     a = p.parse_args()

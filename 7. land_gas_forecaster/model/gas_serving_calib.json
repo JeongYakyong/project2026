@@ -1,6 +1,114 @@
 {
-  "bias_calib": 0.96509,
-  "derivation": "val 2025 체인입력 sum(actual gen_gas_kr)/sum(pred)  (구 7-A2 util×cap)",
-  "apply": "gen_gas_pred = util_pred × LNG_cap × bias_calib",
-  "conv_ton_per_mwh": 0.1521
+  "bias_calib": 1.07602,
+  "bias_calib_by_horizon_daypart": {
+    "1": {
+      "day": 1.06665,
+      "night": 1.07602
+    },
+    "2": {
+      "day": 1.06199,
+      "night": 1.07445
+    },
+    "3": {
+      "day": 1.06237,
+      "night": 1.07385
+    },
+    "4": {
+      "day": 1.05846,
+      "night": 1.07338
+    },
+    "5": {
+      "day": 1.06267,
+      "night": 1.07278
+    },
+    "6": {
+      "day": 1.05961,
+      "night": 1.08253
+    },
+    "7": {
+      "day": 1.03183,
+      "night": 1.08358
+    },
+    "8": {
+      "day": 1.02516,
+      "night": 1.08808
+    },
+    "9": {
+      "day": 1.0103,
+      "night": 1.08423
+    },
+    "10": {
+      "day": 1.01295,
+      "night": 1.08579
+    },
+    "11": {
+      "day": 1.01564,
+      "night": 1.08568
+    },
+    "12": {
+      "day": 1.01069,
+      "night": 1.08178
+    },
+    "13": {
+      "day": 1.01216,
+      "night": 1.08801
+    },
+    "14": {
+      "day": 1.01085,
+      "night": 1.08501
+    },
+    "15": {
+      "day": 1.02552,
+      "night": 1.09125
+    }
+  },
+  "blend_weight_by_horizon": {
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.05,
+    "6": 0.1,
+    "7": 0.1,
+    "8": 0.2,
+    "9": 0.3,
+    "10": 0.35,
+    "11": 0.35,
+    "12": 0.4,
+    "13": 0.4,
+    "14": 0.45,
+    "15": 0.5
+  },
+  "climatology": {
+    "window_days": 7,
+    "group": "doy,hour,day_type",
+    "years": "2022-2024",
+    "note": "가스 기후값=우리 historical 실측 doy±7일 슬라이딩×시각×요일유형 평균. 폴백=시각만."
+  },
+  "derivation": "Stage5(2026-06-15): 정직 풀체인 백테스트(D+1~15)로 보정 낮/밤×지평 재적합 + 기후값 블렌딩 w(h)(전체+계절 MAPE 검증, Option A 단조). 전체 13.96→13.72%, 여름 장지평 −3%p.",
+  "apply": "gas_cal=(booster.predict+init_score)×calib(dayahead,daypart); final=(1-w(dayahead))×gas_cal + w×climatology(doy,hour,day_type).",
+  "conv_ton_per_mwh": 0.1521,
+  "bias_calib_prev_v2_h288": {
+    "1": {
+      "day": 1.057,
+      "night": 1.07328
+    },
+    "2": {
+      "day": 1.0519,
+      "night": 1.07152
+    },
+    "3": {
+      "day": 1.05208,
+      "night": 1.07107
+    },
+    "7": {
+      "day": 1.02276,
+      "night": 1.07874
+    },
+    "12": {
+      "day": 0.99761,
+      "night": 1.07054
+    }
+  },
+  "bias_calib_legacy_climatology": 0.96509
 }

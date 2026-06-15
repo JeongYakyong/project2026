@@ -1,4 +1,4 @@
-"""5-B. 전국 수요 D+1~D+7 서빙 — DB 전용 파이프라인 (직접 다지평 LGBM).
+"""5-B. 전국 수요 D+1~D+15 서빙 — DB 전용 파이프라인 (직접 다지평 LGBM, lag168/336/504 정직가드).
 
 ================================================================================
 무엇을 하나
@@ -33,17 +33,46 @@ import lightgbm as lgb
 HERE   = os.path.dirname(os.path.abspath(__file__))
 DB_PATH= os.path.normpath(os.path.join(
     HERE, '..', '1. data_fetcher_and_db', 'data', 'input_data_land.db'))
-MODEL  = os.path.join(HERE, 'model', 'models', 'lgbm_land_demand_direct.txt')
-META   = os.path.join(HERE, 'model', 'models', 'model_meta.json')
+# v2 (2026-06-14): 지점선택 기상 + 구름(서산영광) + cap_btmppa + 낮 비대칭 손실.
+MODEL  = os.path.join(HERE, 'model', 'models', 'lgbm_land_demand_v2.txt')
+META   = os.path.join(HERE, 'model', 'models', 'model_meta_v2.json')
+CAP_CSV= os.path.normpath(os.path.join(
+    HERE, '..', '1. data_fetcher_and_db', 'second_dataset', 'kr_elec_capa.csv'))
 
 STATIONS = ['daegwallyeong', 'wonju', 'seosan', 'pohang', 'yeonggwang']
-WX       = ['temp_c', 'solar_rad', 'wind_spd']
+SOLAR_SEL = ['seosan', 'yeonggwang']        # 태양광·구름 집중지(충남·전남)
+WIND_SEL  = ['daegwallyeong', 'pohang']     # 풍력 집중지(강원·경북)
 OUT_COL  = 'est_demand_land'
-# forecast 테이블 기상 컬럼 매핑 (모델기상 -> forecast 접두사)
-FORE_PREFIX = {'temp_c': 'temp', 'solar_rad': 'radiation', 'wind_spd': 'wind_spd_10m'}
-FEAT = ['h', 'lag168', 'lag24', 'rec24', 'rec168', 'temp_c', 'solar_rad', 'wind_spd',
-        'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos', 'month_sin', 'month_cos', 'day_type']
+# 기상 피처 -> 평균 대상 지점 (용량집중지 선택, v2)
+AGG = {'temp_c': STATIONS, 'solar_rad': SOLAR_SEL, 'wind_spd': WIND_SEL,
+       'total_cloud': SOLAR_SEL, 'midlow_cloud': SOLAR_SEL}
+WEATHER_FEATS = list(AGG)                    # forecast/기후값 폴백이 필요한 기상 5종
+# 기상 피처 -> forecast 테이블 컬럼 접두사 / historical 컬럼 접두사
+FORE_PREFIX = {'temp_c': 'temp', 'solar_rad': 'radiation', 'wind_spd': 'wind_spd_10m',
+               'total_cloud': 'total_cloud', 'midlow_cloud': 'midlow_cloud'}
+HIST_PREFIX = {'temp_c': 'temp_c', 'solar_rad': 'solar_rad', 'wind_spd': 'wind_spd',
+               'total_cloud': 'total_cloud', 'midlow_cloud': 'midlow_cloud'}
+FEAT = ['h', 'lag168', 'lag336', 'lag504', 'lag24', 'rec24', 'rec168', 'temp_c', 'solar_rad', 'wind_spd',
+        'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos', 'month_sin', 'month_cos', 'day_type',
+        'total_cloud', 'midlow_cloud', 'cap_btmppa']   # lag336/504=장지평 주간앵커(D+15), BASEFEAT와 동일순
 DAYTYPE_CATS = ['holiday', 'weekday', 'weekend']   # 5-A astype('category') 와 동일 정렬
+_OFFSET = float(json.load(open(META, encoding='utf-8'))['init_score'])  # 커스텀목적함수 init_score 가산
+
+
+# ── cap_btmppa: 월별 PPA 용량(kr_elec_capa.csv 합계) — 결정값(예보 불필요) ──
+def _ppa_series() -> pd.Series:
+    cap = pd.read_csv(CAP_CSV, encoding='euc-kr', header=None, skiprows=2,
+                      names=['period', 'region', 'LNG', 'solar', 'wind', 'PPA'])
+    cap = cap[cap.region.astype(str).str.strip() == '합계'].copy()
+    cap['ym'] = pd.to_datetime(cap.period, format='%b-%y').dt.to_period('M')
+    cap['PPA'] = pd.to_numeric(cap.PPA, errors='coerce')
+    return cap.dropna(subset=['PPA']).set_index('ym')['PPA'].sort_index()
+
+
+def _cap_btmppa(idx: pd.DatetimeIndex) -> np.ndarray:
+    ppa = _ppa_series(); ym = idx.to_period('M')
+    full = pd.period_range(min(ym.min(), ppa.index.min()), max(ym.max(), ppa.index.max()), freq='M')
+    return ym.map(ppa.reindex(full).ffill().bfill()).astype(float).values
 
 
 def _conn():
@@ -69,14 +98,16 @@ def load_demand_series() -> pd.Series:
 # 2. (월,시) 기후값 — 먼 지평 기상 폴백
 # =============================================================================
 def build_climatology() -> dict[str, pd.Series]:
-    sel = ['timestamp'] + [f'{w}_{st}' for st in STATIONS for w in WX]
+    cols = {f'{HIST_PREFIX[w]}_{st}' for w in WEATHER_FEATS for st in AGG[w]}
+    sel = ['timestamp'] + sorted(cols)
     with _conn() as con:
         df = pd.read_sql(f"SELECT {', '.join(sel)} FROM historical",
                          con, parse_dates=['timestamp'])
-    for w in WX:
-        df[w] = df[[f'{w}_{st}' for st in STATIONS]].mean(axis=1)
+    for w in WEATHER_FEATS:
+        df[w] = df[[f'{HIST_PREFIX[w]}_{st}' for st in AGG[w]]].apply(
+            pd.to_numeric, errors='coerce').mean(axis=1)
     df['month'] = df.timestamp.dt.month; df['hour'] = df.timestamp.dt.hour
-    return {w: df.groupby(['month', 'hour'])[w].mean() for w in WX}
+    return {w: df.groupby(['month', 'hour'])[w].mean() for w in WEATHER_FEATS}
 
 
 # =============================================================================
@@ -85,7 +116,8 @@ def build_climatology() -> dict[str, pd.Series]:
 def load_target_weather(targets: pd.DatetimeIndex, clim: dict) -> pd.DataFrame:
     tmin = targets.min().strftime('%Y-%m-%d %H:%M:%S')
     tmax = targets.max().strftime('%Y-%m-%d %H:%M:%S')
-    fcols = ['timestamp', 'day_type'] + [f'{FORE_PREFIX[w]}_{st}' for st in STATIONS for w in WX]
+    fcols = (['timestamp', 'day_type'] +
+             sorted({f'{FORE_PREFIX[w]}_{st}' for w in WEATHER_FEATS for st in AGG[w]}))
     with _conn() as con:
         fc = pd.read_sql(
             f"SELECT {', '.join(f'\"{c}\"' for c in fcols)} FROM forecast "
@@ -93,8 +125,8 @@ def load_target_weather(targets: pd.DatetimeIndex, clim: dict) -> pd.DataFrame:
             con, params=(tmin, tmax), parse_dates=['timestamp'])
     fc = fc.set_index('timestamp')
     out = pd.DataFrame(index=targets)
-    for w in WX:
-        cols = [f'{FORE_PREFIX[w]}_{st}' for st in STATIONS]
+    for w in WEATHER_FEATS:
+        cols = [f'{FORE_PREFIX[w]}_{st}' for st in AGG[w]]
         have = fc[cols].apply(pd.to_numeric, errors='coerce') if len(fc) else pd.DataFrame()
         fmean = have.mean(axis=1).reindex(targets) if len(have) else pd.Series(np.nan, index=targets)
         # D+5.5(135h) 이후 forecast 는 3h 행만 존재(KIMG 1h 해상도 한계) -- 그 사이
@@ -132,8 +164,8 @@ def _resolve_origin(series: pd.Series, origin_date: str | None) -> pd.Timestamp:
 
 def predict_demand_to_db(origin_date: str | None = None, days_ahead: int = 7,
                          write: bool = True, verbose: bool = True) -> pd.DataFrame:
-    if not (1 <= days_ahead <= 7):
-        raise ValueError('days_ahead 는 1~7 (모델 학습 지평 1..168h)')
+    if not (1 <= days_ahead <= 15):
+        raise ValueError('days_ahead 는 1~15 (모델 학습 지평 1..360h)')
     series = load_demand_series()
     O = _resolve_origin(series, origin_date)
 
@@ -152,11 +184,12 @@ def predict_demand_to_db(origin_date: str | None = None, days_ahead: int = 7,
 
     df = pd.DataFrame(index=targets)
     df['h'] = H
-    df['lag168'] = series.reindex(targets - pd.Timedelta(hours=168)).values
-    lag24_vals = series.reindex(targets - pd.Timedelta(hours=24)).values
-    df['lag24'] = np.where(H <= 24, lag24_vals, np.nan)
+    for k in (168, 336, 504):   # 주간앵커 — h<=k(타깃-k가 원점 이전, 실서빙 가용) 일 때만, 그 외 NaN
+        df[f'lag{k}'] = np.where(H <= k, series.reindex(targets - pd.Timedelta(hours=k)).values, np.nan)
+    df['lag24'] = np.where(H <= 24, series.reindex(targets - pd.Timedelta(hours=24)).values, np.nan)
     df['rec24'] = rec24; df['rec168'] = rec168
-    for w in WX: df[w] = wx[w].values
+    for w in WEATHER_FEATS: df[w] = wx[w].values
+    df['cap_btmppa'] = _cap_btmppa(targets)        # 월별 PPA 용량(결정값)
     hr = targets.hour.values; dw = targets.dayofweek.values; mo = targets.month.values
     df['hour_sin'] = np.sin(2*np.pi*hr/24); df['hour_cos'] = np.cos(2*np.pi*hr/24)
     df['dow_sin']  = np.sin(2*np.pi*dw/7);  df['dow_cos']  = np.cos(2*np.pi*dw/7)
@@ -164,7 +197,8 @@ def predict_demand_to_db(origin_date: str | None = None, days_ahead: int = 7,
     df['day_type'] = pd.Categorical(wx['day_type'].values, categories=DAYTYPE_CATS)
 
     booster = lgb.Booster(model_file=MODEL)
-    df['est_demand_land'] = booster.predict(df[FEAT]).round(1)
+    # 커스텀 비대칭 목적함수 모델 → predict 는 init_score 를 안 더해주므로 _OFFSET 가산.
+    df['est_demand_land'] = (booster.predict(df[FEAT]) + _OFFSET).round(1)
     df['dayahead'] = ((df['h'] - 1) // 24 + 1).astype(int)
     df['weather_src'] = wx['temp_c_src'].values
     out = df.reset_index().rename(columns={'index': 'timestamp'})

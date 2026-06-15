@@ -169,22 +169,26 @@
 
 > 전국은 제주 2·3·4를 미러링하되, **SMP 단계는 없다**(시장 구조상 비대상). 끝은 net_load → 가스 발전 검증이다.
 
-**5단계 — 전국 수요 예측 (`5. land_demand_forecaster`) ✅ (5-0 EDA·5-A 풀드·5-A2 지평별·5-B 서빙 완료)**
+**5단계 — 전국 수요 예측 (`5. land_demand_forecaster`) ✅ (5-0 EDA·5-A 풀드·5-A2 지평별·5-B 서빙 + v2 재정교화 G-17 완료)**
+- **(2026-06-14, G-17) v2 재정교화**: 지점선택+구름(서산영광)+cap_btmppa+낮 비대칭 손실(α=8). 봄 낮 9.43→7.91%·backfill D+1 4.30→3.56%. 서빙=`lgbm_land_demand_v2.txt`. 상세 §7 G-17·§8(06-14)·`model/REPORT_5-A_v2.md`.
 - **5-0 EDA ✅**(G-9 통과): 전국 수요 시계열 = 강한 일/주 주기(lag24 0.78·lag168 0.84), 기온 V자(난방 71k / 최저 58k / 냉방 79k MW, 선형상관은 ≈0이라 트리로 잡음), 5지점 기온상관 0.95~0.98(공간평균 타당), train↔test 분포 겹침 안전. **★ 서빙 가능 기상 = `temp_c·solar_rad·wind_spd`**(forecast 테이블에 습도·강수·적설 없음 — 제주와 차이). 산출 `eda/5-0_eda_land.ipynb`·`REPORT_5-0_eda.md`·`fig/`·`tab/`.
 - **5-A 모델 ✅**(사용자 확정 §0.6): **LGBM 단독·직접(direct) 다지평 1~168h 단일모델**(재귀 rolling 아님 — 주간 lag168이 전 지평 직접 가용해 오차 누적 회피). 피처 = h, lag168, lag24(h≤24만, 그 외 NaN), rec24/rec168(원점 최근레벨), 기상3(5지점평균), 달력(hour/dow/month sin·cos), day_type. 학습창 train≤2024/val2025/test2026. 평가는 **D+1~D+7(각 24h 전체)** + 정직성 2겹(완전기상 상한↔기후값 하한). **결과 test 2026: D+1 3.56~4.50% / 전체 3.99~5.01% / D+7 4.22~5.31% — KPX 하루전(5.45%)을 전 지평에서 상회**(naive lag168 7.2%). 중요도 lag168·기온·rec168 주도. → 베이스라인 우위로 **PatchTST 불필요**(사용자 결정 규칙 충족). 산출 `model/5-A_land_demand_direct.ipynb`·`lgbm_land_demand_direct.txt`·`model_meta.json`·`REPORT_5-A.md`·`fig/`·`tab/`.
 - 보너스: 직접 다지평이라 **일주일(D+7) 앞을 KPX 하루전 수준으로** 예측. 같은 틀을 제주 2단계 장지평 확장에 이식 가능(사용자 요청, 후순위).
 - **5-A2 지평별 직접모델(Direct-H) ✅**(사용자 확정): 5-A가 한 모델로 전 지평을 학습한 "풀드"라면, 5-A2는 **날짜마다 모델을 따로**(D+1·D+2·D+3·D+7·D+12 5개). 출력=D+n 하루(24h) 블록. 피처 동일 템플릿(lag_week + rec24/rec168 + 기상3 + 달력 + day_type), **주간앵커 lag_week = target−168(D+1~7) / target−336(D+12)**(D+12는 lag168이 미래라 불가). **test 2026 완전기상: D+1 3.48·D+2 3.76·D+3 3.94·D+7 4.26·D+12 4.59%**(기후값 하한 +0.9%p 내외), 전 지평 KPX(5.3~5.5%) 상회. 풀드 5-A가 ~0.05~0.1%p 근소 우위(데이터 공유). **공휴일 보정 실험**(사용자 지적: lag_week가 7일전 평일을 주입): lag의 day_type(`lag_dt`) A/B → 전체 개선 ≤0.15%p로 작고 공휴일/불일치 부분집합에서 비일관(공휴일 9일뿐 노이즈, 타깃 day_type이 신호 대부분 보유) → **미채택, base 유지**(파시모니). 산출 `model/5-A2_direct_per_horizon.ipynb`·`lgbm_land_demand_D{1,2,3,7,12}.txt`·`model_meta_perhorizon.json`·`REPORT_5-A2.md`·`fig/`·`tab/`.
-- **5-B 서빙 ✅**: `serve_land_demand.py` — origin(지정일 23:00) 다음 **D+1~D+7 선택형**(`--days 1..7`) 예측 → `forecast.est_demand_land` UPSERT. 피처 조립은 5-A와 동일(검증: 과거 백필 D+1 4.30%·D+7 5.40% = 5-A 기후값 괄호와 일치). 기상은 **forecast 예보 우선·없으면 (월,시) 기후값 폴백**(`weather_src` 표기). CLI `predict [date] --days N` / `backfill start end`(MAPE 평가).
+- **5-B 서빙 ✅**: `serve_land_demand.py` — origin(지정일 23:00) 다음 **D+1~D+15 선택형**(`--days 1..15`, G-19 확장) 예측 → `forecast.est_demand_land` UPSERT. 피처 조립은 5-A와 동일(검증: 과거 백필 D+1 4.30%·D+7 5.40% = 5-A 기후값 괄호와 일치). 기상은 **forecast 예보 우선·없으면 (월,시) 기후값 폴백**(`weather_src` 표기). CLI `predict [date] --days N` / `backfill start end`(MAPE 평가).
 - **7일 예보 수집(G-12)**: KIMG 전구는 **00/12 UTC=288h(12일)·06/18 UTC=87h**. 현재 생산이 18 UTC라 ~3.6일에 막혔던 것(소스 한계 아님). 결정: **≤72h(D+1~D+3)는 기존 신선 발표, >72h(D+4~D+7)는 12 UTC 단일**(`--kimg-days 7`). 서빙은 무변경(forecast 쌓이면 자동 실예보 사용). 백필(과거 장기 lead 가용 확인)은 사용자가 직접 수행.
 
 **6단계 — 전국 신재생 → net_load (`6. land_solarwind_forecaster`) ✅ 완료**
-- 상태: 완료. 채널 분리 — **태양광=PatchTST(D+1~7,D+12 direct)+LGBM 폴백 / 풍력=LGBM 전지평**. 산출 2종: `est_market_renew_land`(시장, →7-A)·`est_true_renew_land`+`est_true_demand_land`(BTM/PPA 포함, →7-Ar 대체효과). 서빙 `serve_solarwind_land.py`. 검증 SOLAR util MAE(낮) 0.087·WIND 0.139.
+- 상태: 완료. 채널 분리 — **태양광=PatchTST({1-7,12,14,15} direct)+LGBM 폴백 / 풍력=LGBM 전지평**. (G-19: `LAND_HORIZONS`=1..15 연속, D14/15 가중치 활성화·빈 8-11/13은 LGBM 폴백.) 산출 2종: `est_market_renew_land`(시장, →7-A)·`est_true_renew_land`+`est_true_demand_land`(BTM/PPA 포함, →7-Ar 대체효과). 서빙 `serve_solarwind_land.py`. 검증 SOLAR util MAE(낮) 0.087·WIND 0.139.
 - DoD: 전국 태양광·풍력 예측 → `net_load`. 전국 DB에 `net_load_kr`·`gen_solar_*`·`gen_wind_kr` 실측으로 검증. 상세 §8(2026-06-08)·6-0~6-C 보고서.
 - 구조(G-13, 2026-06-08 확정): **LGBM-direct 다지평 단일**(5-A·3단계 결론 일관) 주력 + PatchTST는 **D+1/D+2/D+3에서만 비교(6-B)** → 큰 차이 없으면 LGBM 단일. 지평 **D+1~D+12**. 타깃 **이용률 정규화**(solar_cap 2.7k→9.4k MW 3.4배 표류 → DB `gen_solar/wind_utilization_kr`)→×용량 복원 → net_load.
 - 지점(사용자 확정): **solar=영광+서산+포항**(전남·충남·경북, 용량 61%, solar_rad↔이용률 0.69~0.75), **wind=대관령+영광+포항**(강원·경북·전남, 용량 ~90%, 대관령 풍속↔이용률 0.607 압도). 합집합 4지점 forecast만 로드. **후처리 불가**(land forecast에 강수·cape·tcog 없음 → 제주 solar_damping·tcog 미적용).
 - 작업 순서: 6-0 EDA(G-9, 지점별 이용률 관계·용량표류·분포겹침) → 최종 피처 §0.6 질의 → 6-A LGBM-direct → 6-B PatchTST 비교(D+1~3) → 6-C 서빙(`est_net_load_land`).
 
-**7단계 — net_load → 발전용 가스수요 (`7. land_gas_forecaster`) ✅ (7-0~7-C·7-A2-A 체인검증·서빙 완료) ★ 새 명제의 핵심**
+**7단계 — net_load → 발전용 가스수요 (`7. land_gas_forecaster`) ✅ (7-0~7-C·7-A2-A·실예보 재검증/지평별 보정 G-16 완료) ★ 새 명제의 핵심**
+- **(2026-06-14, G-16) 실예보 지평 재검증·보정**: forecast_horizon으로 정직 재측정 → "지평 평평"은 기후값 프록시 허상, 가스 MAPE D+1 13.0%→D+12 17.0% 정직 상승(ORACLE ~10.3% 평평). 지평별 bias 보정 재적합. 상세 §7 G-16·§8(06-14)·`training/REPORT_horizon_diagnosis.md`.
+- **(2026-06-14, G-18) v2 재정교화**: 5-A식 가스 자기회귀 다지평 + MIXED(신재생만 util) + 낮 비대칭(α4) + 낮/밤 분리보정. 봄 낮 24.46→19.77%·D+1 13.02→12.22%. 서빙=`lgbm_land_gas_v2.txt`. 상세 §7 G-18·§8(06-14)·`model/REPORT_7_v2.md`. 구 7-A2(util)·드라이버only 7-A 보존.
+- **(2026-06-15, G-19) 풀체인 D+15 확장 + 기후값 블렌딩**: 수요·가스 v2를 D+15(h360)로 정직 재학습(수요 lag168이 D+8+ 미래누설 → **lag168/336/504 가용성 NaN가드**로 수정), 솔라 PatchTST D14/15 활성화(전 지평 연속, 빈 지평 LGBM 폴백). 풀체인 정직 백테스트(182 base×D+1~15)→ **`est_horizon_land`**(forecast_horizon 양식, 64,939행) 적재. ★**기후값 폴백 금지 하드규칙 해제**(사용자: "기후값=우리 평년 모델")→**장지평 블렌딩 도입**: final=(1-w(h))·예보보정+w·가스기후값(우리 historical doy±7×시각×요일유형), w 0(D+1~4)→0.5(D+15). 정직 가스 전체 13.96→13.72%(여름 장지평 −3%p, 겨울·봄 무해). 상세 §7 G-19·§8(06-15)·`training/{build_chain_horizon,analyze_blending}.py`.
 - DoD(예정): `net_load → 가스 발전량(LNG)` 예측 모델. 전국은 `gen_gas_kr`(실측)으로 정직하게 검증. 예측 가스 발전량을 KOGAS 단가·수입가로 환산해 가스 수요·비용 산출.
 - 데이터: `second_dataset/data/land_*.parquet`(피처 net_load·달력·기온, 타깃 `gen_gas_kr`). 금지 피처(HVDC·유류 발전·타깃 lag)는 딕셔너리의 `forbidden` 참조.
 - 작업 순서(쪼개기, 각 단계 보고서 산출물 필수 · notebook 선호):
@@ -314,6 +318,14 @@
 
 - [x] **G-15. 8단계 데모 배포·구성** (2026-06-10) — ① **배포 = 자체 서버 호스팅**(로컬 DB 실시간 읽기, Community Cloud 스냅샷 방식 미채택) ② **brief_ai = Gemini API**(기존 §6.2 유지) ③ **갱신 = 사전 적재 기본**(서빙 5→6→7 순서 cron) **+ 시연용 실행 버튼 병행** ④ **표시 기간 = 데이터 보유 범위**(전국 est 백필 2026-02~, 제주 2025-12~) ⑤ **SMP = 데모에서 일단 제외** → **번복(2026-06-10 설계 개편)**: 제주 페이지에 "SMP 예측" 메뉴 포함(사용자 확정, 8-B에서 구현).
 
+- [x] **G-16. 전국 지평 아카이브(forecast_horizon) 기반 재검증·보정** (2026-06-14) — 새 `forecast_horizon`(육지 181 base·실예보 D+1~12, 2025-12~2026-06)으로 5→6→7 체인을 정직하게 재측정. **하드 규칙: 기후값 폴백 금지**(예보 진짜 없는 시각은 제외, ≤4h 보간만 허용 — 사용자 지시). 발견: ① 기존 "지평 평평(D+1≈D+12 ~13%)"은 **기후값 프록시(`chained_gas_dataset.parquet`)의 허상**. 실예보로 보면 가스 MAPE **D+1 13.0%→D+7 14.9%→D+12 17.0%**로 정직하게 상승. ② **ORACLE(실측입력) 바닥 ~10.3% 평평** — 실예보−ORACLE 격차(D+1 +2.6%p→D+12 +6.7%p)는 **예보 입력 품질**이지 가스모델 학습 문제 아님 → **가스(7) 재학습 무효 재확인(G-14 A안, 프록시 아닌 실예보로도 성립)**. ③ 수요가 실예보에서 체계적 양bias(+1.3~3.4%, 프록시는 −0.3%로 부호 반대)→가스 +4~7.6% 과대. **해결(Phase 2)**: bias 보정을 **지평별 재적합**(Σ실측/Σraw, 송출량=물량 기준 합계 unbiased) — calib D+1 0.95594~D+12 0.93419, 서빙은 dayahead 선형보간(`serve_land_gas._calib_for_dayahead`), freshest=근지평. 옛 단일계수 0.96509는 legacy 보존. 검증 backfill D+1 MAPE 13.07→12.93%·bias +3.2→+2.2%. **재학습은 보류**(사용자: 일단 보정·이력 더 쌓이면 재정교화 고려). 산출 `training/{build_horizon_backtest,diagnose_horizon,fit_calib}.py`·`horizon_backtest.parquet`·`REPORT_horizon_diagnosis.md`·`fig/tab`·`gas_serving_calib.json`. **남음(Phase 3)**: 지평별 서빙출력 이력 테이블 `est_horizon_land`(forecast_horizon 대칭)+8단계 데모 실예보 소스 전환.
+
+- [x] **G-17. 수요(5) 모델 피처 엔지니어링 + 낮 비대칭 (v2 production)** (2026-06-14) — G-16 진단(수요가 낮09-15h·봄에 +6%대 체계 과대→가스 전파) 후속. 사용자 확정: **구조 = Global Model with Horizon Feature 유지**(pooled vs direct 실예보 동률, 먼 지평 pooled 근소 우위). **피처 = 지점선택(일사=서산·영광/풍속=대관령·포항/기온5) + 구름(서산·영광) + cap_btmppa(월별 PPA, kr_elec_capa.csv)**. ★ cap_btmppa(BTM 듀크커브 신호)가 핵심 — land 5-A엔 빠져 있었음(제주 2-A엔 있었음). **손실 = 커스텀 L2 비대칭, 낮&과대(pred>actual) grad/hess ×8**(land 부호=낮 과대를 아래로, 제주식 반대·복붙 금지). 결과(실예보 백테스트): 봄 낮 9.43%/+6.25 → **7.91%/+3.90%**(MAPE −1.5%p·bias 거의 절반), 겨울 낮 8.10→**6.23%**, D+7 5.16→4.22%·D+12 6.37→5.48%, 밤·전체 무해. production: `train_demand_v2.py`→`lgbm_land_demand_v2.txt`+`model_meta_v2.json`, `serve_land_demand.py` v2(지점선택·구름·cap_btmppa·offset가산), **backfill D+1 4.30→3.56%**. 구버전 보존(롤백). 산출 `model/REPORT_5-A_v2.md`·`exp_{weather_agg,features,asym}.py`·`compare_pooled_vs_direct.py`. **남음**: 가스 체인 전파 + 가스 동일 사고(BTM/PPA·horizon 피처) 적용 + Phase 2 보정 재적합.
+
+- [x] **G-18. 가스(7) 모델 재정교화 — 자기회귀 다지평 + MIXED 비율 + 낮 비대칭 (v2)** (2026-06-14) — 사용자 통찰: 가스도 자기 과거가 있으니 5-A처럼 자기회귀 직접 다지평으로(구 7-A2 동시점이 가스 자기상관 lag168 0.78을 버림). 가스 가용성=수요와 동일 → 가스 lag 누수 아님(§5 '타깃 lag 금지' override, 명제는 드라이버-only 7-A 보존). **피처 MIXED**: real_demand_land(MW)·renew_util(신재생만 비율)·gas_lag168/lag24/rec24/rec168·h·hour·dow·doy. **제외 net_load**(수요와 VIF 126·r 0.986 중복)·**cap_btmppa**(가스 corr −0.016·연도 corr 0.935·test 100% 외삽=covariate shift, 실험서 악화)·month·day_type. **★ MW vs 비율 종합검토**: 가스·수요는 정상(corr~0)→MW, 신재생만 표류(외삽 14%→util 3%)→util. 전부-비율은 가스÷LNG_cap(100% 외삽) 수입으로 +6~9% 과대(cap_btmppa 함정). **MIXED 최고**. 타깃=가스 MW. **손실**=낮(09-15h) 과대 비대칭 L2 α=4(α8은 과보정). **보정**=낮/밤 분리 지평별(전역보정이 비대칭 낮교정 푸는 것 방지). 결과(v2 수요+가스): D+1 13.02→12.22%·D+12 17.03→15.12%·**봄 낮 24.46→19.77%(−4.7%p)**·겨울 낮 20.02→16.06%·여름 낮 17.80→14.25%. production `train_gas_v2.py`→`lgbm_land_gas_v2.txt`+`model_meta_gas_v2.json`+`serve_land_gas.py` 전면 v2, 구 7-A2·7-A 보존. 산출 `model/REPORT_7_v2.md`·`exp_gas{,_features,_ratio,_asym}.py`. **남음**: DB 체인 v2 재적재 + Phase 3.
+
+- [x] **G-19. 전국 풀체인 지평 확장(D+15) + 기후값 블렌딩 + est_horizon_land** (2026-06-15) — 사용자: 전체 체인을 forecast_horizon 전 구간에서 정직 검증해야 명제 완성. ① **정직성 결함 수정**: 수요 v2의 lag168이 D+8+에서 미래누설(타깃−168h가 원점보다 미래·백테스트가 과거라 채워져 장지평 과대평가). → **lag168/336/504 가용성 NaN가드**(h≤k & 과거일 때만; 5-A2 LAGW 일반화, 사용자 확정). 서빙(`serve_land_demand` 캡 7→15·lag336/504)·학습(`exp_features.BASEFEAT/build_samples`) 일관 적용. ② **모델 지평 확장**: 수요 v2(exp_features HMAX 168→360)·가스 v2(exp_gas_ratio HMAX 288→360) 재학습, 솔라 PatchTST D14/D15 가중치 활성화(`SOLAR_PT_HORIZONS`·`LAND_HORIZONS`=1..15, 빈 8-11/13은 LGBM 폴백). ③ **풀체인 정직 백테스트(D+1~15)** `build_chain_horizon.py`(182 base)→ **`est_horizon_land`**(forecast_horizon 양식: base·horizon_d·timestamp, 64,939행, 미래 보존) 적재 = Phase 3 지평출력 테이블. 정직 가스(보정후) D+1 12.6→D+12 14.9→D+15 15.3%, 수요 3.4→5.6%, 신재생 nMAE 16→44%. ④ **★ 하드규칙 변경 — G-16의 "백테스트 기후값 폴백 절대 금지" 해제**: 사용자가 "기후값도 우리가 만든 평년 모델"로 재정의하고 **장지평 블렌딩**을 도입. ⑤ **기후값 정의+블렌딩(MAPE 최소·계절 검증, Option A 단조)**: 가스 기후값=우리 historical(2022-24) doy±7일 슬라이딩×시각×요일유형(한국 급변동 대응 오버랩). final=(1-w(h))·예보보정+w·기후값, w 0(D+1~4)→0.5(D+15). 전체 13.96→13.72%, 여름 장지평 −3%p(D+15 20.7→17.9), 겨울·봄 손해 없음(앙상블 효과). 서빙 `serve_land_gas.py`+`gas_serving_calib.json`(`blend_weight_by_horizon`·`climatology`) 통합. **한계**: 평가창 겨울~초여름(여름=6월만·가을 없음)→여름/가을 쌓이면 w 재조정. 산출 `training/{build_chain_horizon,analyze_blending,finalize_gas_archive}.py`·`model/{review,archive}_demand_horizon.py`·`fig/{chain_horizon_v2,blend_overall,blend_by_season}.png`. **운영 forecast 스냅샷 재적재는 사용자가 서버에서 직접 수행.**
+
 ### 열림(전국 트랙)
 - [ ] **G-9. 관계 검증(EDA) 게이트 — 모든 모델링 선행** — 모델 착수 전 net_load → 타깃 관계의 강도·형태(부하수준별), 시간적 안정성(함수 표류 여부), train↔test 분포 겹침을 확인(§5.0.5). G-6이 "데이터가 멀쩡한가"였다면 G-9는 "명제가 데이터에 실제로 있는가". 표류·분포 이탈 시 처리 방안을 정한 뒤에만 착수. 단계마다(7·5·6 등) 적용. **피처 최종 입력은 EDA 후 사용자에게 묻고 확정한다(§0.6).**
 - [ ] **G-8. 전국 원천 CSV 위치** — `second_dataset/build_dataset.py`의 `CSV` 입력(oil_price, KOGAS, HVDC, only_gen) 실제 경로 확정 필요. 현재 코드의 `"7. data from csv"`는 존재하지 않는 폴더(stale)라 TODO로 표시됨. 빌더 재실행 시에만 영향(현재 parquet는 이미 생성됨).
@@ -323,6 +335,41 @@
 ## 8. 진행 로그 (최신이 위로)
 
 > 2026-06-07 이전 로그는 `docs/PROJECT_LOG.md`로 이관(무수정 보존).
+
+**2026-06-15 — LNG 조달 시나리오 v3 (가격축 제거·재고/신뢰성 중심)**
+- 무엇을: 가스공사 도입팀의 실제 결정변수(가격 아님·재고)에 맞춰 비용($)·JKM 축을 재고·신뢰성(톤·일·붕괴) 단위로 교체. 수치 불변(v2의 가격 의존 표현만 제거). Framing B(3모델 동일 안전재고, 소비예보만 다름)+안전재고 sweep 신뢰도 곡선.
+- 핵심: 헤드라인=LTD 예보오차 σ + "붕괴0 필요 안전재고(일수)". **ours σ 65k vs naive 117k(45% 정밀) → 같은 붕괴0 안정성을 ours 1.5일치 vs naive 2.5일치 안전재고로(1일치≈10.4만톤 적게)**. 비상 조달물량도 전 SS 구간 ours<naive. SS=3일선 셋 다 붕괴 0.
+- 정직성: 폴백 0건, 단일 5.5개월 시나리오, SS<1일 붕괴 횟수 역전(naive 보수적 과대예측)도 그대로 보고. JKM 가격·연도대체 논란 제거. 산출 `7.../procurement/{lng_procurement_sim.py,REPORT_procurement.md,fig/procurement_{reliability,inventory}.png}`. (v1=Framing A σ기반·v2=가격 Framing B는 git 이력.)
+
+**2026-06-15 — 전국 풀체인 지평 확장(D+15) + 기후값 블렌딩 + est_horizon_land (G-19)**
+- 무엇을: 가스 성능 우려에서 출발해, "체인 전체를 forecast_horizon 전 구간에서 정직 검증해야 프로젝트가 완성된다"는 사용자 방침으로 5→6→7 전 단계를 D+15까지 정합·검증.
+- **정직성 결함 발견·수정**: 수요 v2 lag168이 D+8 이상에서 "타깃−168h=원점보다 미래"라 실서빙 불가인데, 백테스트는 전 구간 과거라 그 값이 채워져 장지평 수요가 누설로 부풀려져 있었음. → lag168/336/504 가용성 NaN가드(h≤k & 과거)로 재설계(학습·서빙·백테스트 일관). 가스는 이미 동일 가드 보유.
+- **지평 확장**: 수요(HMAX 168→360)·가스(288→360) 재학습. 솔라 PatchTST D14/D15 가중치가 디스크에 있으나 코드 미등록이라 잠자던 것 활성화(`SOLAR_PT_HORIZONS`·`LAND_HORIZONS`=1..15, 빈 지평은 LGBM 폴백 → 솔라/풍력 전 지평 가능).
+- **풀체인 정직 백테스트**: `build_chain_horizon.py`(182 base×D+1~15)→ `est_horizon_land`(base·horizon_d·timestamp = forecast_horizon 양식, 64,939행, 미래 타깃 보존) 적재 = Phase 3 지평출력 테이블. 정직 가스(보정후) D+1 12.6→D+12 14.9→D+15 15.3%.
+- **★ 하드규칙 변경**: G-16의 "백테스트 기후값 폴백 절대 금지"를 사용자가 해제("기후값=우리가 만든 평년 모델"). 가스 기후값(우리 historical 2022-24, doy±7일 슬라이딩×시각×요일유형)과 예보를 지평별 w로 블렌딩. final=(1-w)·예보보정+w·기후값, w 0(D+1~4)→0.5(D+15). 전체 13.96→13.72%, 여름 장지평 −3%p, 겨울·봄 무해(앙상블). MAPE 최소+계절 균형으로 선정(Option A 단조). 서빙·config 통합.
+- 한계/남음: 평가창 겨울~초여름(여름=6월만·가을 없음)→데이터 쌓이면 블렌딩 w 재조정. 운영 forecast 스냅샷 재적재는 사용자가 서버에서 직접. 8단계 데모를 est_horizon_land 소스로 전환.
+
+**2026-06-14 — 가스(7) v2: 자기회귀 다지평 + MIXED 비율 + 낮 비대칭(G-18)**
+- 무엇을: 가스 모델을 5-A식 자기회귀 직접 다지평으로 전환(구 7-A2 동시점→가스 자기상관 lag168 0.78 활용). 사용자 통찰("가스도 과거 참고해 예측")+가용성 확인(가스=수요와 동일 마지막 실측, 누수 아님).
+- **피처 분석(중요도·VIF·covariate shift)**: net_load 제외(수요와 VIF 126·r 0.986)·cap_btmppa 제외(가스 corr −0.016·연도 0.935·test 100% 외삽)·month 제외(doy와 VIF 145)·day_type 제외.
+- **MW vs 비율 종합검토(사용자 지시)**: 가스·수요 정상(corr~0)→MW / 신재생만 표류(외삽 14%)→util. 전부-비율은 가스÷LNG_cap(100%외삽) 역효과(+6~9% 과대). **MIXED(신재생만 util) 채택**.
+- **손실**=낮 과대 비대칭 α=4, **보정**=낮/밤 분리 지평별(전역보정이 낮교정 푸는 것 방지).
+- 결과(v2 수요+가스 체인): D+1 13.02→12.22%·D+12 17.03→15.12%·**봄낮 24.46→19.77%·겨울낮 20.02→16.06%·여름낮 17.80→14.25%**(낮=사용자 1순위).
+- production `train_gas_v2.py`·`lgbm_land_gas_v2.txt`·`serve_land_gas.py(v2)`·`REPORT_7_v2.md`·`exp_gas*`. 구 7-A2·드라이버only 7-A 보존. **다음=DB 체인 v2 재적재+Phase 3.**
+
+**2026-06-14 — 수요(5) v2: 피처 엔지니어링 + 낮 비대칭 손실(G-17)**
+- 무엇을: G-16 진단에서 수요가 낮(09-15h)·봄에 +6%대 체계 과대예측(가스로 전파)임이 드러나 수요 모델을 재정교화. 구조는 Global+Horizon 유지(pooled vs direct 실예보 동률), 피처·손실로 공략.
+- **피처(사용자 확정)**: 단순 5평균 → 지점선택(일사=서산·영광/풍속=대관령·포항) + 구름(서산·영광) + **cap_btmppa(월별 PPA 용량)**. cap_btmppa 가 결정타 — BTM 듀크커브 신호가 land 5-A엔 통째로 빠져 있었음(제주 2-A엔 존재). 중요도 6.7%.
+- **손실**: 커스텀 L2 비대칭(낮&과대 grad/hess ×8). ★land 부호 = 낮 과대를 아래로(제주식 반대, 복붙 금지 — 메모리 경고 데이터로 확인). 
+- 결과(실예보 백테스트): 봄 낮 9.43%/+6.25 → **7.91%/+3.90%**(MAPE −1.5%p·bias 절반), 겨울 낮 8.10→6.23%, D+7 5.16→4.22%, D+12 6.37→5.48%, 밤·전체 무해. production backfill D+1 4.30→**3.56%**.
+- 산출 `train_demand_v2.py`·`lgbm_land_demand_v2.txt`·`model_meta_v2.json`·`serve_land_demand.py(v2)`·`REPORT_5-A_v2.md`·`exp_{weather_agg,features,asym}.py`. 구버전 보존(롤백). **다음=가스 체인 전파+가스 동일 피처사고+Phase 2 보정 재적합.**
+
+**2026-06-14 — 전국 지평 재검증·보정(G-16): "지평 평평"은 기후값 프록시 허상, 실예보로 정직 재측정 + 지평별 bias 보정**
+- 무엇을: 사용자가 구축한 `forecast_horizon`(실예보 지평 아카이브, 육지 181 base·D+1~12)으로 5→6→7 체인을 처음으로 정직하게 재측정. 기존 7-A2-A 검증의 기상 입력이 사실상 전부 (월,시) 기후값 프록시였던 한계를 교체. **사용자 하드 규칙: 데이터 진짜 없을 때 기후값 폴백 절대 금지**(결과를 크게 망침) — ≤4h 보간(외삽 금지)만 허용, 진짜 결측은 평가 제외.
+- **Phase 0 빌더**(`training/build_horizon_backtest.py`→`horizon_backtest.parquet` 21,358행): forecast_horizon[base] 실예보를 스크래치 connection으로 6단계 `_predict_day`에 주입(서빙 코드 무수정, con 인자 활용)·수요는 forecast_horizon 기상으로 5-A2 D{n} 재조립·가스는 7-A2 적용. D+7~12 3h 해상도는 ≤4h 보간으로 1h 복원(기후값 아님).
+- **Phase 1 진단**(`diagnose_horizon.py`·`REPORT_horizon_diagnosis.md`·fig/tab): 가스 MAPE 실예보 **D+1 13.02→D+3 13.54→D+7 14.85→D+12 17.03%**(정직 상승) vs 프록시 13.0~13.2%(가짜 평평) vs **ORACLE(실측입력) ~10.3% 평평**. 수요 MAPE 3.55→6.49%·신재생 nMAE 15.8→39.8%(멀수록 악화). 격차=예보 품질→**가스 재학습 무효 재확인**.
+- **Phase 2 보정**(`fit_calib.py`): 가스 bias가 지평의존(+4→+7.6%)이라 단일계수 불가 → **지평별 재적합**(송출량 물량 기준 Σ실측/Σraw). calib D+1 0.95594~D+12 0.93419, `serve_land_gas.py`가 dayahead 선형보간 적용(`_calib_for_dayahead`), freshest=근지평. 옛 0.96509=legacy 보존. backfill D+1 MAPE 13.07→12.93%·bias +3.2→+2.2%.
+- 사용자 결정: 재학습은 보류(일단 보정, 이력 더 쌓이면 net_load 외 LGBM 모델들 재정교화 고려). **다음=Phase 3**: 지평별 서빙출력 이력 테이블 `est_horizon_land`(forecast_horizon 대칭)+8단계 데모를 실예보 지평 소스로 전환.
 
 **2026-06-11(c) — 8단계 8-A: 디자인 개편 1차(브리핑 콘솔 테마) + 표준 날짜 컨트롤 + 기상개황 실측 병기**
 - **디자인 시스템**: 기상개황 지도(weather_map.py)의 토큰을 전 페이지로 확장 — ink #0f172a / green #059669, Pretendard 본문 + IBM Plex Mono 수치. `.streamlit/config.toml` 네이티브 테마(라이트 캔버스 #f4f6f9 + **다크 잉크 사이드바**, 루트와 `8. streamlit/`에 동일 복제 — 항상 같이 수정) + `common.inject_style()` 전역 CSS(지표·차트·지도 iframe=흰 카드, 사이드바 radio=내비 메뉴, date_input 중앙정렬) + plotly 템플릿 "briefing" pio 기본 등록 + `page_header()`(eyebrow+체인 pill). **탭=알약 버튼**(기본 테두리 #94a3b8, 선택=다크 잉크 채움). 테두리 위계(사용자): 위젯 #94a3b8 / 카드 #cbd5e1 / 차트 그리드는 연하게 유지.

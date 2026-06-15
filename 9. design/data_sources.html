@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>활용 데이터 · API 출처</title>
+<!-- 시스템 폰트(맑은 고딕) 사용 — 외부 폰트 불필요. 순백 배경(흰 문서 삽입용) -->
+<style>
+  :root{
+    --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+    --accent:#eb6c36; --accent-tint:rgba(235,108,54,0.07);
+    --rule:rgba(45,49,66,0.12); --rule-soft:rgba(45,49,66,0.07);
+    --text:#1a1a1a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--text);
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+    display:flex; justify-content:center; padding:2rem 1rem;
+  }
+  .wrap{width:100%; max-width:760px}     /* ← 문서 폭. 더 좁히려면 이 값을 줄이세요 */
+
+  /* 머리말 */
+  .eyebrow{
+    font-size:8px; font-weight:600; letter-spacing:0.18em;
+    text-transform:uppercase; color:var(--text); margin:0 0 0.4rem;
+  }
+  h1{font-weight:700; font-size:1.75rem; margin:0 0 0.3rem; line-height:1.1}
+  .sub{font-size:12px; color:var(--text); margin:0 0 1.5rem; line-height:1.4}
+
+  /* 두 갈래(정적 데이터셋 / 실시간 API) */
+  .columns{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media (max-width:640px){ .columns{grid-template-columns:1fr} }
+
+  .section{
+    border:1px solid var(--rule); border-radius:8px; padding:16px;
+    border-top:3px solid var(--accent);          /* 갈래 강조선 */
+  }
+  .section-head{display:flex; align-items:center; gap:8px; margin:0 0 4px}
+  .section-tag{
+    font-size:8px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--accent); border:1px solid var(--accent);
+    border-radius:4px; padding:2px 6px; line-height:1;
+  }
+  .section-title{font-size:14px; font-weight:700; margin:0}
+  .section-note{font-size:10px; color:var(--soft); margin:0 0 12px}
+
+  /* 기관(제공처) 그룹 */
+  .group{margin-top:12px}
+  .group:first-of-type{margin-top:0}
+  .group-name{
+    font-size:11px; font-weight:700; color:var(--ink);
+    margin:0 0 6px; padding-left:8px; border-left:2px solid var(--muted);
+  }
+  .items{list-style:none; margin:0; padding:0}
+  .item{
+    display:flex; align-items:flex-start; gap:8px;
+    padding:5px 0; border-top:1px solid var(--rule-soft);
+  }
+  .item:first-child{border-top:none}
+  .tick{
+    flex:none; width:5px; height:5px; margin-top:6px;
+    border-radius:50%; background:var(--accent);
+  }
+  .item-body{flex:1; min-width:0}
+  .item-name{font-size:11.5px; line-height:1.35; color:var(--text)}
+  .item-id{
+    display:inline-block; margin-top:2px;
+    font-size:8px; letter-spacing:0.06em; color:var(--soft);
+  }
+
+  footer{
+    margin-top:1.25rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+    font-size:8px; letter-spacing:0.12em; color:var(--text); text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <div class="columns" id="columns"></div>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 텍스트만 바꾸면 카드가 자동 생성됩니다  ▼▼▼  -->
+<!-- ====================================================================== -->
+<script>
+  // ── 1) 머리말 ──────────────────────────────────────────────
+  const META = {
+    eyebrow:  "Data Sources",
+    title:    "활용 데이터 · API 출처",
+    subtitle: "정적 공공데이터셋과 실시간 수집 API로 구성 — 제공 기관별 정리",
+    footer:   "PROJECT.md · 데이터 출처 · 2026-06",
+  };
+
+  // ── 2) 출처 목록 ───────────────────────────────────────────
+  //   tag   = 카드 머리 라벨 / note = 한 줄 설명
+  //   group = 제공 기관(제공처) / items = { name: 한글 이름, id: 영문·약어(작은 글씨, 생략 가능) }
+  const SECTIONS = [
+    {
+      tag:  "DATASET",
+      title:"공공 데이터셋",
+      note: "정적 · 주기 갱신 (파일·통계)",
+      groups: [
+        {
+          group:"산자부 공공데이터",
+          items:[
+            { name:"한국가스공사 월별 일평균 천연가스 생산량" },
+            { name:"한국가스공사 총발전량 월별 기온효과" },
+            { name:"발전용 천연가스 요금 단가 (2020–2026)" },
+          ],
+        },
+        {
+          group:"전력거래소 EPSIS",
+          items:[
+            { name:"전력통계정보시스템 — 시장참여 설비용량", id:"EPSIS" },
+          ],
+        },
+        {
+          group:"한국가스공사",
+          items:[
+            { name:"LNG 수입국 연도별 단기거래 비중 변화", id:"LNG SPOT" },
+          ],
+        },
+      ],
+    },
+    {
+      tag:  "API",
+      title:"수집 API",
+      note: "실시간 · 자동 수집 (서버 cron)",
+      groups: [
+        {
+          group:"공공데이터포털 API",
+          items:[
+            { name:"기상청 지상(종관, ASOS) 시간자료 조회", id:"ASOS" },
+            { name:"전력거래소 발전원별 발전량" },
+            { name:"전력거래소 계통한계가격·수요예측 (하루전)", id:"SMP" },
+          ],
+        },
+        {
+          group:"기상청 API허브",
+          items:[
+            { name:"한국형수치예보모델 — 격자점 시계열자료", id:"KIMR" },
+            { name:"한국형수치예보모델 — 격자점 자료", id:"KIMG" },
+          ],
+        },
+      ],
+    },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 (손댈 일 거의 없음) ─────────────────────────────
+  const esc = (s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const colsEl = document.getElementById('columns');
+
+  colsEl.innerHTML = SECTIONS.map(sec => `
+    <div class="section">
+      <div class="section-head">
+        <span class="section-tag">${esc(sec.tag)}</span>
+        <h2 class="section-title">${esc(sec.title)}</h2>
+      </div>
+      <p class="section-note">${esc(sec.note)}</p>
+      ${sec.groups.map(g => `
+        <div class="group">
+          <p class="group-name">${esc(g.group)}</p>
+          <ul class="items">
+            ${g.items.map(it => `
+              <li class="item">
+                <span class="tick"></span>
+                <span class="item-body">
+                  <span class="item-name">${esc(it.name)}</span>
+                  ${it.id ? `<span class="item-id">${esc(it.id)}</span>` : ``}
+                </span>
+              </li>`).join('')}
+          </ul>
+        </div>`).join('')}
+    </div>`).join('');
+
+  document.getElementById('eyebrow').textContent  = META.eyebrow;
+  document.getElementById('title').textContent    = META.title;
+  document.getElementById('subtitle').textContent = META.subtitle;
+  document.getElementById('footer').textContent   = META.footer;
+</script>
+</body>
+</html>

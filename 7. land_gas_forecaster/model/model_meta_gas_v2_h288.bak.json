@@ -1,0 +1,27 @@
+{
+  "version": "v2",
+  "features": [
+    "real_demand_land",
+    "renew_util",
+    "gas_lag168",
+    "gas_lag24",
+    "gas_rec24",
+    "gas_rec168",
+    "h",
+    "hour",
+    "dow",
+    "doy"
+  ],
+  "target": "gen_gas_kr (MW)",
+  "architecture": "Global+Horizon, 5-A식 가스 자기회귀 다지평(h 1..288)",
+  "loss": "custom asymmetric L2 (낮09-15h over-pred ×4.0)",
+  "alpha": 4.0,
+  "init_score": 18687.657080126737,
+  "predict_note": "pred = booster.predict(X) + init_score",
+  "renew_util": "renew_gen_total_kr / (solar_cap+wind_cap), kr_elec_capa.csv 월별",
+  "autoreg": "gas_lag168(h>168 NaN)/lag24(h<=24)/rec24/rec168, historical 실측(가용=수요와 동일, 누수아님)",
+  "best_iteration": 155,
+  "train": "2022-2024",
+  "val": "2025",
+  "note": "7 v2: MIXED(신재생만 util)+자기회귀+낮비대칭. 구 7-A2(util) 보존. 명제는 7-A(드라이버only) 별도."
+}

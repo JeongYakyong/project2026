@@ -119,12 +119,21 @@
 
 ## 8단계 앱이 읽는 핵심 컬럼 요약
 
+> ★ **전국 예측 소스 전환(2026-06-15)**: 전국 예측은 모두 **`est_horizon_land`**(tall:
+> `base` 발행시각 × `horizon_d` 지평 × `timestamp` 목표시각)에서 읽는다. 구 `forecast`
+> 테이블(timestamp 단일키 "최신 스냅샷")은 지평이 뭉개져 **예측 소스로 안 쓴다**(기상·KPX DA·
+> 데이터현황 원시조회용으로만 유지). `common.land_est_horizon(mode, value, …)`의 3축:
+> `latest`(목표별 최근 발행=과거는 D+1) / `asof`(발행일 고정 → 그 발행본 D+1~15) /
+> `fixed`(지평 D+k 고정). UI는 `common.horizon_picker`. **KPX `*_da`는 day-ahead라
+> 표시 지평이 D+1인 행에서만 비교 유효**(다른 지평 행은 비움). 제주는 아직 지평 아카이브 미구축
+> (forecast 스냅샷 유지) — 별도 단계.
+
 | 용도 | 전국 (input_data_land.db) | 제주 (input_data_jeju.db) |
 |---|---|---|
-| 수요 예측 | forecast.`est_demand_land` | forecast.`jeju_est_demand_lh`(장지평) / `jeju_est_demand_new`(D+1 배포) |
-| 신재생 예측 | forecast.`est_market_renew_land` | forecast.`est_solar/wind_gen_jeju_lh` |
-| net_load 예측 | forecast.`est_net_load_land` | forecast.`est_net_load_jeju_lh` |
-| 가스 예측 | forecast.`est_gas_gen_land`·`est_gas_sendout_ton_land` | (없음 — 제주는 SMP 관점) |
+| 수요 예측 | **est_horizon_land**.`est_demand_land` | forecast.`jeju_est_demand_lh`(장지평) / `jeju_est_demand_new`(D+1 배포) |
+| 신재생 예측 | **est_horizon_land**.`est_market_renew_land` | forecast.`est_solar/wind_gen_jeju_lh` |
+| net_load 예측 | **est_horizon_land**.`est_net_load_land` | forecast.`est_net_load_jeju_lh` |
+| 가스 예측 | **est_horizon_land**.`est_gas_gen_land`·`est_gas_sendout_ton_land` | (없음 — 제주는 SMP 관점) |
 | SMP 예측 | (비대상 — 시장 구조) | forecast.`est_smp_jeju`·`est_smp_jeju_d2`·경보 컬럼들 |
 | 수요 실측 | historical.`real_demand_land` (+sukub 실시간) | historical.`real_demand_jeju` |
 | 신재생 실측 | historical.`renew_gen_total_kr` | historical.`real_renew_gen_jeju` |

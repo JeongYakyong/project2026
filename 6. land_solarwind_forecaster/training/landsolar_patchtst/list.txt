@@ -1,0 +1,13 @@
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D1.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D12.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D14.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D15.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D2.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D3.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D4.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D5.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D6.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\best_patchtst_landsolar_D7.pth
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\list.txt
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\metadata_landsolar.pkl
+C:\Users\bjkim\Desktop\project2026\6. land_solarwind_forecaster\training\landsolar_patchtst\scaler_landsolar.pkl

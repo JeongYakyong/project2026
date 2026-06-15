@@ -1,8 +1,18 @@
-# project2026 데이터 수집 crontab (crontab -e 로 기존 줄 아래에 추가)
+# project2026 데이터 수집·서빙 crontab (crontab -e 로 기존 줄 아래에 추가)
 # KIM 발표 00/06/12/18 UTC = KST 09/15/21/03, 데이터 가용까지 안전마진 ~3h
 #   → KST 12/18/00/06 시대에 직전 발표가 안정적으로 가용.
 # 경로의 kimjourvanne 는 실제 서버 사용자명/clone 위치에 맞게 수정.
+#
+# ── 역할별 재구성 (2026-06-15) ──────────────────────────────────────────────
+# 수집·서빙을 "cron 한 줄 = 한 역할"로 분리했다 (PROJECT.md / next-session-api-cleanup):
+#   ① 기상예보(KMA) → forecast_horizon   = run_collect_forecast.sh   (collect_forecast_new.py)
+#   ② 실측(KPX+ASOS) → historical        = run_collect_land_new.sh   (collect_data_land_new.py)
+#   ③ 서빙 체인 5→6→7 → est_horizon_land = run_serve_chain_land.sh   (serve_chain_land_new.py)
+# 전국(육지)은 레거시 forecast 테이블을 더는 쓰지 않는다(기상=forecast_horizon, 예측=est_horizon_land).
+# 제주(2~4단계)는 est_horizon_jeju 미구축이라 현행 유지(아래 제주 줄 그대로).
 
+
+# ════════════ 제주 (현행 유지 — 변경 없음) ════════════
 # 제주: 4회/일 (기본 동작 = forecast 최신 2발표 + historical 2일, RT SMP 포함)
 10 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
 
@@ -11,17 +21,26 @@
 #   / 그 이후 D+7까지: KIMG 3h 행만 저장(보간은 사용 시). probe 2026-06-12~13.
 10 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh --bases 1 --forecast-days 7
 
-# 육지: 4회/일, 제주와 30분 시차 (API 동시 호출 분산)
-40 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh
+# 제주 지평 아카이브(forecast_horizon): 12 UTC 발표를 (base,timestamp) 키로 적재.
+#   전국 forecast_horizon 은 아래 run_collect_forecast.sh 가 담당하므로 여기는 --region jeju.
+45 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_runs.sh --region jeju
 
-# 육지 00:40 실행 = 12 UTC 발표분 — 12일 예보 윈도우로 수집 (G-12 확장, 2026-06-12 서버 적용)
-#   12 UTC 발표 lead=288h 라 D+12 지평(5-A2)까지 커버. 단 lead 한계가 D+12 21시 KST 라
-#   D+12 의 22~23시는 빈 값으로 남음. >72h 예보는 12 UTC 단일, ≤72h 는 위의 신선 발표 담당.
-#   06 UTC 발표는 전날 18:40 실행이 이미 수집했으므로 --bases 1 로 절약.
-40 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh --bases 1 --kimg-days 12
 
-# 지평별 누적(forecast_horizon_kma): 같은 12 UTC 발표를 (base, timestamp) 복합키로 별도 적재.
-#   KMA 기상 예보 전용(KPX *_da·day_type 제외). 제주 7일 + 육지 12일 윈도우,
-#   기존 forecast(freshest)와 독립 — 지평별 백테스트용.
-#   01:30 = 위 두 수집과 API 호출 시간대 분리.
-30 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_runs.sh
+# ════════════ 전국/육지 (신규 3-cron) ════════════
+# ② 실측: 매일 1회 — KPX 육지 수급/발전/DA + ASOS-land → historical (최근 2일 top-up).
+50 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_land_new.sh
+
+# ① 기상예보: 매일 1회 — 12 UTC 발표(육지) D+15.5(=16일)까지 → forecast_horizon.
+#   12 UTC 가용(~00:10 KST)+안전마진 후 01:30. 근거리~장지평 한 base 통째로 적재(부분 적재 방지).
+30 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh
+
+# ③ 서빙 체인: 매일 1회 — ①·② 완료 후 최신 base 5→6→7 → est_horizon_land (로컬 추론, API 무관).
+30 2 * * * /home/kimjourvanne/project2026/deploy/run_serve_chain_land.sh
+
+
+# ════════════ (폐기) 기존 전국 수집 줄 — 위 신규 3-cron 으로 대체 ════════════
+# 아래 두 줄은 레거시 forecast 테이블(전국)을 갱신하던 것으로, forecast 폐기에 따라 더는 쓰지 않는다.
+# 서버 적용 시 제거(또는 주석 유지).  (제주 run_collect_runs.sh 의 both 기본도 위에서 jeju 로 분리.)
+# 40 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh
+# 40 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh --bases 1 --kimg-days 12
+# 30 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_runs.sh        # both → 제주 전용(45 1)로 이전

@@ -119,7 +119,7 @@ def clean(region: str, apply: bool) -> None:
 
     out = df.reset_index()
     # timestamp 포맷을 원본과 동일하게 ('YYYY-MM-DD HH:MM:SS') -- 다른 테이블/
-    # forecast_horizon_kma 와의 JOIN 깨짐 방지.
+    # forecast_horizon 와의 JOIN 깨짐 방지.
     out["timestamp"] = out["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
     con = sqlite3.connect(db)

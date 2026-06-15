@@ -1,11 +1,11 @@
 """
-collect_forecast_runs.py -- 12 UTC 발표를 horizon-tagged 로 forecast_horizon_kma 테이블에 적재.
+collect_forecast_runs.py -- 12 UTC 발표를 horizon-tagged 로 forecast_horizon 테이블에 적재.
 
 배경 (2026-06-11 설계)
 기존 forecast 테이블은 timestamp 단일키 + freshest-wins UPSERT 라 "이 행이 어느
 발표(몇 일 지평)에서 왔는지"가 소실된다.  지평별 백테스트/평가를 위해 12 UTC
 (21 KST 발표, 가용 ~00:10 KST) 발표 하나만 골라, 발표(base)별 윈도우 전체를
-(base, timestamp) 복합키로 별도 테이블 `forecast_horizon_kma` 에 누적한다.
+(base, timestamp) 복합키로 별도 테이블 `forecast_horizon` 에 누적한다.
 12 UTC 를 고른 이유: day-aligned 커버리지가 발표 중 최적 (D+1~D+5 전부 1h,
 육지 D+12 가 21시까지 -- 22·23시만 결손으로 보간 한계 4h 안).
 
@@ -27,12 +27,12 @@ collect_forecast_runs.py -- 12 UTC 발표를 horizon-tagged 로 forecast_horizon
 
 임시 DB 워크플로 (--out / --merge)
 백필을 본 DB 와 분리해 받고 싶으면 --out NAME 으로 data/<NAME>_<region>.db 에
-적재한 뒤, 검증 후 --merge NAME 으로 본 DB 의 forecast_horizon_kma 에 병합한다.
-forecast_horizon_kma 는 어차피 독립 테이블이라 본 DB 에 바로 적재해도 기존
+적재한 뒤, 검증 후 --merge NAME 으로 본 DB 의 forecast_horizon 에 병합한다.
+forecast_horizon 는 어차피 독립 테이블이라 본 DB 에 바로 적재해도 기존
 forecast/historical 과 섞이지 않지만, 백필 검증 전 격리용으로 제공.
-  주의: 2026-06 의 180일 백필은 테이블명 정정(forecast_runs->forecast_horizon_kma)
+  주의: 2026-06 의 180일 백필은 테이블명 정정(forecast_runs->forecast_horizon)
   전에 받아 bf_*.db 에 옛 이름 forecast_runs 로 남아 있다.  그 통합은 --merge 가
-  아니라 core/migrate_forecast_horizon.py (SRC=forecast_runs -> DST=forecast_horizon_kma,
+  아니라 core/migrate_forecast_horizon.py (SRC=forecast_runs -> DST=forecast_horizon,
   KPX/day_type 제외) 로 1회 수행했다.  이후 --out/--merge 는 새 이름으로 동작.
 
 사용 예
@@ -68,7 +68,7 @@ from _common import PUBLISH_DELAY_HOURS
 KST = ZoneInfo("Asia/Seoul")
 UTC = timezone.utc
 
-RUNS_TABLE = "forecast_horizon_kma"  # KMA 기상 예보 전용 지평 아카이브
+RUNS_TABLE = "forecast_horizon"  # KMA 기상 예보 전용 지평 아카이브
 DATA_DIR = cj.DEFAULT_DB.parent
 
 
@@ -79,10 +79,12 @@ def is_non_kma(col: str) -> bool:
     migrate_forecast_horizon.is_kma_weather 와 동일 기준(지역 무관)."""
     return col.endswith("_da") or col == "day_type"
 
-# 권역별 본 DB 와 기본 윈도우 길이 (운영 cron 의 12z 실행과 동일).
+# 권역별 본 DB 와 기본 윈도우 길이.  land 16일 = KIMG 3h 상한 372h(D+15.5)까지 커버
+# (collection_hf_range 가 KIMG_MAX_HF=372 에서 자동으로 자름).  이 값은 freshest
+# forecast 테이블용 run_collect_land.sh --kimg-days 와 별개 -- 여기는 아카이브 윈도우다.
 REGIONS: dict[str, dict] = {
     "jeju": {"db": cj.DEFAULT_DB, "days": 7},
-    "land": {"db": cl.DEFAULT_DB, "days": 12},
+    "land": {"db": cl.DEFAULT_DB, "days": 16},
 }
 
 
@@ -113,7 +115,7 @@ def region_db(region: str, out: str | None) -> Path:
 
 
 def existing_base_counts(db_path: Path) -> dict[str, int]:
-    """forecast_horizon_kma 에 이미 있는 base 별 행 수.  테이블/파일 없으면 빈 dict."""
+    """forecast_horizon 에 이미 있는 base 별 행 수.  테이블/파일 없으면 빈 dict."""
     if not db_path.exists() or db_path.stat().st_size == 0:
         return {}
     with sqlite3.connect(db_path) as c:
@@ -127,7 +129,7 @@ def existing_base_counts(db_path: Path) -> dict[str, int]:
 
 
 def _upsert_df(df: pd.DataFrame, db_path: Path) -> int:
-    """base + horizon_d 가 이미 붙은 DF 를 forecast_horizon_kma 에 (base,timestamp) UPSERT.
+    """base + horizon_d 가 이미 붙은 DF 를 forecast_horizon 에 (base,timestamp) UPSERT.
 
     collect_data_jeju.upsert_wide_to 와 같은 temp-table / INSERT OR REPLACE 패턴이되
     키가 복합.  본 테이블이 없으면 생성, 새 컬럼은 ALTER 로 확장.
@@ -170,7 +172,7 @@ def _upsert_df(df: pd.DataFrame, db_path: Path) -> int:
 
 
 def upsert_runs(wide: pd.DataFrame, base_utc: datetime, db_path: Path) -> int:
-    """wide(단일 base)에 base + horizon_d 태그를 붙여 forecast_horizon_kma 에 UPSERT."""
+    """wide(단일 base)에 base + horizon_d 태그를 붙여 forecast_horizon 에 UPSERT."""
     if wide.empty:
         return 0
     base_kst = base_utc.astimezone(KST)
@@ -247,7 +249,7 @@ def verify_runs(db_path: Path, region: str, out: str | None) -> list[str]:
 
 
 def merge_runs(src_db: Path, dst_db: Path) -> int:
-    """src 의 forecast_horizon_kma 전체를 dst 의 forecast_horizon_kma 에 (base,timestamp) UPSERT."""
+    """src 의 forecast_horizon 전체를 dst 의 forecast_horizon 에 (base,timestamp) UPSERT."""
     if not src_db.exists():
         print(f"  [merge] {src_db.name} 없음 -- skip")
         return 0
@@ -273,7 +275,7 @@ def merge_runs(src_db: Path, dst_db: Path) -> int:
 def disable_kpx() -> None:
     """KPX *_da (smp_*_da / *_est_demand_da) 호출을 끈다 -- 기상청(KIMR/KIMG)만 수집.
 
-    forecast_horizon_kma 는 KMA 전용이라 항상 호출(=불필요한 data.go.kr 호출/429)
+    forecast_horizon 는 KMA 전용이라 항상 호출(=불필요한 data.go.kr 호출/429)
     을 끈다.  기존 수집기 무수정 원칙대로 이 프로세스 안에서만 패치: 육지는
     _join_da 를 통째로 no-op, 제주는 fetch_kpx_est 가 빈 DF.  설령 *_da 가 들어와도
     _upsert_df 의 is_non_kma 필터가 적재 전 제거하므로 이중 안전.
@@ -335,7 +337,7 @@ def run_region(
 def main() -> None:
     p = argparse.ArgumentParser(
         description=(
-            "12 UTC 발표를 horizon-tagged 로 forecast_horizon_kma 테이블에 적재 "
+            "12 UTC 발표를 horizon-tagged 로 forecast_horizon 테이블에 적재 "
             "(키 = base + timestamp).  기존 forecast/historical 은 건드리지 않음."
         ),
     )
@@ -350,7 +352,7 @@ def main() -> None:
     )
     mode.add_argument(
         "--merge", metavar="NAME",
-        help="data/<NAME>_<region>.db 의 forecast_horizon_kma 를 본 DB 에 병합 (fetch 없음)",
+        help="data/<NAME>_<region>.db 의 forecast_horizon 를 본 DB 에 병합 (fetch 없음)",
     )
     mode.add_argument(
         "--verify", action="store_true",
@@ -370,7 +372,7 @@ def main() -> None:
     )
     p.add_argument(
         "--force", action="store_true",
-        help="forecast_horizon_kma 에 이미 행이 있는 base 도 다시 받는다",
+        help="forecast_horizon 에 이미 행이 있는 base 도 다시 받는다",
     )
     p.add_argument(
         "--no-kpx", action="store_true",
@@ -388,7 +390,7 @@ def main() -> None:
         print(f"[collect_forecast_runs] 증분 모드: hf >= {args.min_hf} 만 수집 "
               f"(기존 짧은 지평 재호출 생략 -- --region land 와 함께 쓸 것)")
 
-    # forecast_horizon_kma 는 KMA 기상 전용이라 KPX(*_da)는 저장하지 않는다 ->
+    # forecast_horizon 는 KMA 기상 전용이라 KPX(*_da)는 저장하지 않는다 ->
     # 호출 자체를 항상 끈다 (불필요한 data.go.kr 호출/429 회피).  --no-kpx 는 이제
     # 기본 동작이라 하위호환용 no-op.
     disable_kpx()

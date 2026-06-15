@@ -1,0 +1,61 @@
+{
+  "version": "v2",
+  "features": [
+    "h",
+    "lag168",
+    "lag336",
+    "lag504",
+    "lag24",
+    "rec24",
+    "rec168",
+    "temp_c",
+    "solar_rad",
+    "wind_spd",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "day_type",
+    "total_cloud",
+    "midlow_cloud",
+    "cap_btmppa"
+  ],
+  "categorical": [
+    "day_type"
+  ],
+  "target": "real_demand_land",
+  "architecture": "Global Model with Horizon Feature (h 피처, 1..360 direct = D+15)",
+  "loss": "custom asymmetric L2 (낮09-15h & over-pred grad/hess ×alpha)",
+  "alpha": 8.0,
+  "init_score": 64094.68011950901,
+  "predict_note": "pred = booster.predict(X) + init_score (커스텀목적함수라 수동가산)",
+  "stations": {
+    "temp_c": [
+      "daegwallyeong",
+      "wonju",
+      "seosan",
+      "pohang",
+      "yeonggwang"
+    ],
+    "solar_rad": [
+      "seosan",
+      "yeonggwang"
+    ],
+    "wind_spd": [
+      "daegwallyeong",
+      "pohang"
+    ],
+    "cloud": [
+      "seosan",
+      "yeonggwang"
+    ]
+  },
+  "cap_btmppa": "kr_elec_capa.csv PPA(합계, 월별, 끝 이후 ffill)",
+  "best_iteration": 1522,
+  "origin_hour": 23,
+  "train": "target<=2024",
+  "val": "2025",
+  "note": "5-A v2: 지점선택+구름+cap_btmppa+낮비대칭. 검증=exp_asym(실예보 백테스트). old lgbm_land_demand_direct.txt 보존(롤백용)."
+}
