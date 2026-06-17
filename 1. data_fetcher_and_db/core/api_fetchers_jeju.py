@@ -573,9 +573,17 @@ def kimg_one_point(
     return out
 
 
-def kimg_solar(df_long: pd.DataFrame, day_ahead: bool = False) -> pd.Series:
-    """KIMG SOLAR_RAD freshest → radiation_south (저장 단위 그대로, MJ/m^2/h)."""
-    name = "radiation_south"
+def kimg_solar(
+    df_long: pd.DataFrame, suffix: str = "south", day_ahead: bool = False,
+) -> pd.Series:
+    """KIMG SOLAR_RAD freshest → radiation_{suffix} (저장 단위 그대로, MJ/m^2/h).
+
+    일사는 KIMR 에 없어 KIMG 단독 소스다.  호출자(build_wide)가 POINT_SUFFIX 의 각
+    지점(west/east/south)에 대해 그 지점 SOLAR_RAD 만 필터해 넘기면 지점별
+    radiation_<suffix> 컬럼을 만든다.  태양광 모델은 radiation_west + radiation_south
+    를 입력으로 쓴다 (serve_solarwind_lgbm.FORE_MAP).
+    """
+    name = f"radiation_{suffix}"
     if df_long.empty:
         return pd.Series(dtype="float64", name=name)
     if day_ahead:

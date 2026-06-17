@@ -213,58 +213,83 @@ def fetch_kimr_long(bases: list[datetime], workers: int = 1) -> pd.DataFrame:
     return df[["base_datetime", "point_name", "fcst_datetime", "category", "fcst_value"]]
 
 
-def fetch_kimg_long(bases: list[datetime]) -> pd.DataFrame:
+def _fetch_kimg_one_point(base: datetime, base_kst, base_dt_str: str,
+                          base_label: str, pt: dict) -> list[tuple]:
+    """단일 (base, point) 의 hf 를 workers=6 으로 fanout 해 row 튜플 리스트 반환.
+
+    point-local list 에만 append 하므로 여러 point 를 병렬로 돌려도 thread-safe
+    (호출자가 결과 리스트를 메인 스레드에서 합친다).  요약 1줄도 여기서 출력.
+    """
+    hf_list = list(kimg.collection_hf_range(base))
+    t0 = time.time()
+    failed = empty = n_kept = 0
+    rows: list[tuple] = []
+    with ThreadPoolExecutor(max_workers=kimg.MAX_WORKERS) as ex:
+        fut_to_hf = {ex.submit(kimg.fetch_one_hf, base, pt, hf): hf for hf in hf_list}
+        for fut in as_completed(fut_to_hf):
+            hf = fut_to_hf[fut]
+            body = fut.result()
+            if body is None:
+                failed += 1
+                continue
+            raw = kimg.parse_response(body)
+            if not raw:
+                empty += 1
+                continue
+            cats = kimg.derive_categories(raw)
+            fcst_kst = base_kst + timedelta(hours=hf)
+            fcst_dt_str = fcst_kst.strftime("%Y-%m-%d %H:%M")
+            for cat, val in cats.items():
+                rows.append((base_dt_str, pt["name"], fcst_dt_str, cat, float(val)))
+                n_kept += 1
+    elapsed = time.time() - t0
+    print(
+        f"  KIMG {base_label} {pt['name']:<22}  hfs={len(hf_list):2d}  "
+        f"kept_rows={n_kept:4d}  failed={failed:2d}  empty={empty:2d}  "
+        f"({elapsed:.1f}s)"
+    )
+    return rows
+
+
+def fetch_kimg_long(bases: list[datetime], point_workers: int = 1) -> pd.DataFrame:
     """주어진 bases × KIMG.POINTS 에 대해 hf 별 API 호출 → long DF.
 
-    collect_kimg.collect_one_point 의 DB-없는 버전.  (base, point) 마다 48 hf 를
+    collect_kimg.collect_one_point 의 DB-없는 버전.  (base, point) 마다 hf 를
     workers=6 으로 fanout, 결과를 메인 스레드에서 모아 리스트로 누적.  실패 hf 는
     [WARN] 후 스킵.  derive_categories 변환식이 그대로 적용되므로 SOLAR_RAD /
     TEMP_C / WIND_U/V_10M 등이 라벨 그대로 나옴.
+
+    point_workers
+    - 1(기본): (base,point) 외부 루프 순차 -- CLAUDE.md 의 "KIMG parallel-safe 규칙"
+      (hf 만 6 workers, 지점은 순차로 서버 동시성 ~6 유지, 504 회피).  레거시
+      cj.build / run_backfill 은 이 안전 기본값을 그대로 쓴다.
+    - >1: 지점도 동시에 받는다(동시성 = point_workers × MAX_WORKERS).  3 지점·7일
+      윈도우에서 base당 KIMG 시간을 ~1/3 로 줄이는 forecast_horizon 백필용 opt-in
+      (collect_data_jeju_new.build_forecast_wide 가 지점 수만큼 켠다).  KMA 504 위험을
+      감수하는 경로라 기본값이 아니다.
     """
     kimg.warmup()
-    collected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # 미사용 (호환용)
-    _ = collected_at
 
     rows: list[tuple] = []
     for base in bases:
         base_kst = base.astimezone(kimg.KST)
         base_dt_str = base_kst.strftime("%Y-%m-%d %H:%M")
         base_label = base.strftime("%Y%m%d%H") + " UTC"
-        for pt in kimg.POINTS:
-            hf_list = list(kimg.collection_hf_range(base))
-            t0 = time.time()
-            failed = 0
-            empty = 0
-            n_kept = 0
-            with ThreadPoolExecutor(max_workers=kimg.MAX_WORKERS) as ex:
-                fut_to_hf = {
-                    ex.submit(kimg.fetch_one_hf, base, pt, hf): hf
-                    for hf in hf_list
+        if point_workers <= 1:
+            for pt in kimg.POINTS:
+                rows.extend(
+                    _fetch_kimg_one_point(base, base_kst, base_dt_str, base_label, pt)
+                )
+        else:
+            with ThreadPoolExecutor(max_workers=point_workers) as ex:
+                futs = {
+                    ex.submit(
+                        _fetch_kimg_one_point, base, base_kst, base_dt_str, base_label, pt
+                    ): pt
+                    for pt in kimg.POINTS
                 }
-                for fut in as_completed(fut_to_hf):
-                    hf = fut_to_hf[fut]
-                    body = fut.result()
-                    if body is None:
-                        failed += 1
-                        continue
-                    raw = kimg.parse_response(body)
-                    if not raw:
-                        empty += 1
-                        continue
-                    cats = kimg.derive_categories(raw)
-                    fcst_kst = base_kst + timedelta(hours=hf)
-                    fcst_dt_str = fcst_kst.strftime("%Y-%m-%d %H:%M")
-                    for cat, val in cats.items():
-                        rows.append(
-                            (base_dt_str, pt["name"], fcst_dt_str, cat, float(val))
-                        )
-                        n_kept += 1
-            elapsed = time.time() - t0
-            print(
-                f"  KIMG {base_label} {pt['name']:<22}  hfs={len(hf_list):2d}  "
-                f"kept_rows={n_kept:4d}  failed={failed:2d}  empty={empty:2d}  "
-                f"({elapsed:.1f}s)"
-            )
+                for fut in as_completed(futs):
+                    rows.extend(fut.result())
     if not rows:
         return pd.DataFrame(
             columns=["base_datetime", "point_name", "fcst_datetime",
@@ -287,7 +312,7 @@ def build_wide(
     """collect_input 의 후처리 함수들을 그대로 사용해 wide DataFrame 생성.
 
     출력 컬럼은 collect_input.build_csv 와 정확히 동일 (location-suffixed,
-    timestamp index).  KIMG 가 비어있으면 radiation_south 만 빠진다.
+    timestamp index).  KIMG 가 비어있으면 일사(radiation_*)·구름(*_cloud_*) 컬럼이 빠진다.
 
     지점별 KIMR + KIMG 병합 (2026-06-13, 장지평 확장):
     KIMR(지역모델, 고해상도)이 있는 시간은 KIMR 값을 쓰고, KIMR lead 한계(120h)
@@ -314,23 +339,25 @@ def build_wide(
 
     wide = pd.concat(parts, axis=1)
 
-    # KIMG SOLAR_RAD → radiation_south 단일 컬럼.  long DF 를 SOLAR_RAD + solar_farm
-    # + window 안으로 필터링한 뒤 ci.kimg_solar 에 넘긴다 (그 함수는 freshest 만 함).
+    # KIMG SOLAR_RAD → 지점별 radiation_<suffix> 컬럼.  일사는 KIMR 에 없어 KIMG 단독
+    # 소스다.  POINT_SUFFIX 의 각 지점(west/east/south)에 대해 그 지점 SOLAR_RAD 만
+    # window 안으로 필터링한 뒤 ci.kimg_solar 에 넘긴다(그 함수는 freshest 만).
+    # 태양광 모델은 radiation_west + radiation_south 를 입력으로 쓴다.
     start_s = window_start.strftime("%Y-%m-%d %H:%M")
     end_s = window_end.strftime("%Y-%m-%d %H:%M")
-    kimg_solar = kimg_long[
+    solar_all = kimg_long[
         (kimg_long["category"] == "SOLAR_RAD") &
-        (kimg_long["point_name"] == "solar_farm(south)") &
         (kimg_long["fcst_datetime"] >= start_s) &
         (kimg_long["fcst_datetime"] < end_s)
     ]
-    rad = ci.kimg_solar(kimg_solar)
-    if not rad.empty:
+    for point, suffix in ci.POINT_SUFFIX.items():
+        rad = ci.kimg_solar(solar_all[solar_all["point_name"] == point], suffix)
+        if rad.empty:
+            print(f"  [WARN] KIMG SOLAR_RAD empty for {point} -- radiation_{suffix} omitted")
+            continue
         wide = wide.join(rad, how="left")
-        n_rad = wide["radiation_south"].notna().sum()
-        print(f"  joined radiation_south ({n_rad}/{len(wide)} hours have value)")
-    else:
-        print("  [WARN] KIMG SOLAR_RAD empty in window -- radiation_south column omitted")
+        n_rad = wide[f"radiation_{suffix}"].notna().sum()
+        print(f"  joined radiation_{suffix} ({n_rad}/{len(wide)} hours have value)")
 
     # collect_input 과 동일한 timestamp 문자열 (초 단위 포함, downstream 호환).
     wide.index = pd.to_datetime(wide.index, format="%Y-%m-%d %H:%M").strftime(
@@ -510,7 +537,7 @@ def build(
         print("\n[2/3] fetch KIMG (global)")
         kimg_long = fetch_kimg_long(bases)
         if kimg_long.empty:
-            print("  KIMG long: empty (radiation_south will be MISSING from output)")
+            print("  KIMG long: empty (radiation_*/cloud_* will be MISSING from output)")
         else:
             print(
                 f"  KIMG long: {len(kimg_long):,} rows, "

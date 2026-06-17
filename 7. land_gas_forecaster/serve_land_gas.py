@@ -48,8 +48,16 @@ def _conn():
 def _load_calib():
     c = json.load(open(CALIB_JSON, encoding='utf-8'))
     dp = c['bias_calib_by_horizon_daypart']
-    day = {int(k): float(v['day']) for k, v in dp.items()}
-    night = {int(k): float(v['night']) for k, v in dp.items()}
+    if not c.get('calibration_enabled', True):
+        # ★bias 보정 OFF (2026-06-15): 백테스트가 겨울 위주라 calib(>1)가 여름엔 거꾸로 과대를
+        # 키운다(raw +5% → final +13%).  적합값은 JSON 에 보존하고 모든 지평 1.0(중립)으로 반환.
+        # 1년치(여름·가을 포함) 데이터 확보 후 calibration_enabled=true 로 되돌려 재적용.
+        # 블렌딩 가중(w)·기후값은 유지(요청은 calibration 한정).
+        day = {int(k): 1.0 for k in dp}
+        night = {int(k): 1.0 for k in dp}
+    else:
+        day = {int(k): float(v['day']) for k, v in dp.items()}
+        night = {int(k): float(v['night']) for k, v in dp.items()}
     w = {int(k): float(v) for k, v in c.get('blend_weight_by_horizon', {}).items()}
     clim = c.get('climatology', {'window_days': 7, 'years': '2022-2024'})
     return day, night, float(c['conv_ton_per_mwh']), w, clim

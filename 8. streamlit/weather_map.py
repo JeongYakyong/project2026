@@ -155,9 +155,40 @@ def _station_means(region: str, suffixes: list[str], date: str,
     return out
 
 
+def _station_means_fh(region: str, suffixes: list[str], date: str) -> dict[str, dict]:
+    """forecast_horizon(지평 아카이브) 09–15시 평균 — land 예보 전용(레거시 forecast 폐기 대체).
+
+    예측은 timestamp 당 여러 base 가 있으므로 **최신 base** 행만 골라 freshest 예보를 쓴다
+    (구 forecast 단일 스냅샷과 같은 의미).  컬럼명은 forecast 와 동일(KMA 기상)이라 _PREFIX 재사용.
+    """
+    px = _PREFIX["forecast"]
+    s, e = f"{date} {HOURS[0]}", f"{date} {HOURS[1]}"
+    cols = [f"{p}{sx}" for sx in suffixes for p in px.values()]
+    sel = ", ".join(f'"{c}"' for c in cols)
+    df = C.query(region,
+                 f"SELECT {sel} FROM forecast_horizon fh WHERE timestamp BETWEEN ? AND ? "
+                 f"AND base=(SELECT MAX(base) FROM forecast_horizon WHERE timestamp=fh.timestamp)",
+                 (s, e))
+    out = {}
+    for sx in suffixes:
+        if df.empty:
+            out[sx] = {k: float("nan") for k in px}
+            continue
+        m = df.mean(numeric_only=True)
+        out[sx] = {k: m.get(f"{p}{sx}") for k, p in px.items()}
+    return out
+
+
 def _build_zones(date: str, table: str) -> dict[str, dict]:
-    """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산."""
-    land = _station_means("land", C.STATIONS_LAND, date, table)
+    """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산.
+
+    land 예보는 forecast_horizon(최신 base) — 레거시 forecast 폐기.  jeju 예보는 현행 forecast,
+    실측은 양 권역 historical.
+    """
+    if table == "forecast":
+        land = _station_means_fh("land", C.STATIONS_LAND, date)
+    else:
+        land = _station_means("land", C.STATIONS_LAND, date, table)
     jeju = _station_means("jeju", ["west"], date, table)
     clear = CLEARSKY_0915[int(date[5:7])]
 
@@ -217,12 +248,23 @@ def national_util_actual(date: str) -> dict:
 
 @st.cache_data(ttl=C.CACHE_TTL)
 def national_util(date: str) -> dict:
-    """전국 이용률 예측(6단계 서빙값) — 평균(태양광 09–15시·풍력 24시간) + 그날 시간별 최대."""
-    day = C.query("land", "SELECT timestamp, est_solar_util_land, est_wind_util_land "
-                          "FROM forecast WHERE timestamp BETWEEN ? AND ?",
-                  (f"{date} 00:00:00", f"{date} 23:00:00"))
-    if day.empty:
-        return {"solar": None, "solar_max": None, "wind": None, "wind_max": None}
+    """전국 이용률 예측(서빙 체인값) — est_horizon_land 최신 base.
+
+    평균(태양광 09–15시·풍력 24시간) + 그날 시간별 최대.  est_*_util_land 컬럼이 아직 적재 안 됐으면
+    (서빙 체인 미실행) graceful 하게 None — 기상개황 choropleth(forecast_horizon)는 영향 없음.
+    """
+    none = {"solar": None, "solar_max": None, "wind": None, "wind_max": None}
+    try:
+        day = C.query("land",
+                      "SELECT timestamp, est_solar_util_land, est_wind_util_land "
+                      "FROM est_horizon_land eh WHERE timestamp BETWEEN ? AND ? "
+                      "AND base=(SELECT MAX(base) FROM est_horizon_land "
+                      "WHERE timestamp=eh.timestamp AND est_solar_util_land IS NOT NULL)",
+                      (f"{date} 00:00:00", f"{date} 23:00:00"))
+    except Exception:  # noqa: BLE001 — 컬럼 미존재(미적재) 등은 None 으로 강등
+        return none
+    if day.empty or day["est_solar_util_land"].isna().all():
+        return none
     h = day["timestamp"].dt.hour
 
     def pct(v):
@@ -493,7 +535,7 @@ function render(){
     `D${META.dplus>=0?"+":""}${META.dplus} · 전국 대체로 ${META.rep.t}`;
   const u = META.util;
   const utilLine = (u.solar===null) ? "" :
-    `전국 이용률(예측) ☀️ <b>${u.solar}%</b>·최대 ${u.solar_max}% · 🌀 <b>${u.wind}%</b>·최대 ${u.wind_max}%`;
+    `전국 이용률(예측) ☀️ <b>${u.solar}%</b>·최대 ${fmt(u.solar_max,"%")} · 🌀 <b>${u.wind}%</b>·최대 ${fmt(u.wind_max,"%")}`;
   if (nOk){
     const avg = Math.round(sumScore/nOk*100);
     document.getElementById("v-strength").style.width = Math.min(100, avg*1.4)+"%";
@@ -529,7 +571,8 @@ def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict) -> str:
                 if z["ok"] and z["sky"]["t"] == max(set(skies), key=skies.count)))
     weekday = "월화수목금토일"[day.weekday()]
     meta = {"dplus": dplus, "rep": rep,
-            "util": {"solar": util["solar"], "wind": util["wind"]}}
+            "util": {"solar": util["solar"], "wind": util["wind"],
+                     "solar_max": util.get("solar_max"), "wind_max": util.get("wind_max")}}
     html = _TEMPLATE
     for k, v in [("__GEO__", _geo_text()),
                  ("__SIDO2ZONE__", json.dumps(SIDO2ZONE, ensure_ascii=False)),

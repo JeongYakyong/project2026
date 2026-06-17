@@ -14,9 +14,10 @@ base 선택)을 그대로 import 재사용**하되, 두 가지만 정리한다:
     경로에 없으므로 forecast_horizon 에 KPX(*_da)가 섞일 여지가 원천 차단된다.
   - 윈도우 기본값 육지 16일(D+15.5, KIMG 3h 상한 372h)로 운영 cron 과 일치.
 
-제주는 이번 재구성 범위 밖(est_horizon_jeju 미구축)이라 **현행 유지** — `--region jeju` 는 기존
-collect_forecast_runs.fetch_one(cj.build + KPX 비활) 경로로 위임한다.  제주 forecast_horizon 은
-미래 전환 대비 계속 적재된다.
+제주(2026-06-16 합류)도 같은 방식으로 네이티브화한다 — `--region jeju` 는
+collect_data_jeju_new.build_forecast_wide(KIMR+KIMG 병합, 일사 3지점)로 받아 KPX 없는 깨끗한
+경로를 쓴다.  지평 기본값은 제주 7일(D+7=144행) -- 날씨 변동성이 커 장지평이 무의미.
+육지·제주 모두 완결성 기반 skip(불완전 base 자동 재개)으로 통일.
 
 사용 예
     python core/collect_forecast_new.py                       # 최신 12z, 육지 (default --region land)
@@ -42,6 +43,7 @@ import pandas as pd
 # 들어가고 collect_data_jeju/land·_common 도 로드된다.
 import collect_forecast_runs as cfr
 import collect_data_land_new as cdln
+import collect_data_jeju_new as cdjn
 
 KST = cfr.KST
 UTC = cfr.UTC
@@ -49,41 +51,54 @@ RUNS_TABLE = cfr.RUNS_TABLE
 REGIONS = cfr.REGIONS
 
 
-# ── fetch: 육지는 네이티브 clean wide, 제주는 기존 경로 위임 ────────────────
+# ── fetch: 육지·제주 모두 네이티브 clean wide (KMA 전용, KPX 경로 자체가 없음) ──
 def fetch_one(region: str, base_utc: datetime, days: int) -> pd.DataFrame:
     """단일 base 의 기상 wide 를 메모리로 반환 (KMA 전용).
 
-    land : collect_data_land_new.build_forecast_wide (KPX 경로 자체가 없음).
-    jeju : collect_forecast_runs.fetch_one 위임 (cj.build + disable_kpx 로 KPX 비활).
+    land : collect_data_land_new.build_forecast_wide (KIMG-land 5 지점).
+    jeju : collect_data_jeju_new.build_forecast_wide (KIMR+KIMG 병합 3 지점, 일사 3지점).
+    둘 다 KPX(*_da) 호출이 경로에 없어 forecast_horizon 에 KPX 가 섞일 여지가 원천 차단된다.
     """
     if region == "land":
         return cdln.build_forecast_wide(base=base_utc, forecast_days=days)
+    if region == "jeju":
+        return cdjn.build_forecast_wide(base=base_utc, forecast_days=days)
     return cfr.fetch_one(region, base_utc, days)
 
 
-# ── 완결성 기반 skip (육지) ────────────────────────────────────────────────
-def expected_timestamps(base_utc: datetime, days: int) -> set[str]:
+# ── 완결성 기반 skip (육지·제주 공통) ──────────────────────────────────────
+def expected_timestamps(region: str, base_utc: datetime, days: int) -> set[str]:
     """수집기가 실제로 받는 timestamp 집합 = {base_kst + hf : hf ∈ collection_hf_range}.
 
     collection_hf_range 가 윈도우(forecast_days_override)·1h/3h 해상도 전환·MIN_HF 를 모두
     반영하므로, 완전 base 의 저장 timestamp 집합과 정확히 일치한다(육지 16일=212행 실증).
+    제주도 동일: 병합 wide 의 timestamp 집합 = KIMG collection_hf_range 그리드와 같다
+    (KIMR 1h D+1~5 는 KIMG 1h ≤hf135 의 부분집합이라 새 시각을 더하지 않음, 7일=144행).
+    region 에 맞는 override 를 쓴다 -- 둘 다 _common.FORECAST_DAYS 를 세팅하고
+    collection_hf_range 가 그 글로벌을 읽는다 (jeju override 는 KIMR 글로벌도 세팅하나
+    hf 그리드 산출엔 무관).
     """
     base_kst = base_utc.astimezone(KST)
-    with cfr.cl.ckl.forecast_days_override(days):
+    override = (
+        cfr.cj.forecast_days_override if region == "jeju"
+        else cfr.cl.ckl.forecast_days_override
+    )
+    with override(days):
         hfs = list(cfr.ckg.collection_hf_range(base_utc))
     return {(base_kst + timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S") for h in hfs}
 
 
-def base_complete(db_path: Path, base_utc: datetime, days: int) -> bool:
+def base_complete(region: str, db_path: Path, base_utc: datetime, days: int) -> bool:
     """그 base 가 완전한가 = (기대 timestamp 전부 존재) AND (지점 sentinel temp* NULL 셀 없음).
 
     hf 단위 실패는 행 누락(timestamp 부재) 또는 그 지점 컬럼의 NULL 셀로 남으므로 둘 다 본다.
     temp_skin* 은 KIMR 전용(장지평 정상 NULL)이라 sentinel 에서 제외(verify_runs 와 동일).
+    제주 sentinel = temp_west/east/south (3지점 모두 KIMR/KIMG temp 보유), 육지 = temp_<지점>.
     """
     if not db_path.exists() or db_path.stat().st_size == 0:
         return False
     base_str = base_utc.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
-    exp = expected_timestamps(base_utc, days)
+    exp = expected_timestamps(region, base_utc, days)
     with sqlite3.connect(db_path) as c:
         try:
             cols = [r[1] for r in c.execute(f"PRAGMA table_info({RUNS_TABLE})").fetchall()]
@@ -109,23 +124,24 @@ def base_complete(db_path: Path, base_utc: datetime, days: int) -> bool:
 def run_region(
     region: str, bases: list[datetime], days: int, force: bool, db_path: Path,
 ) -> int:
-    """cfr.run_region 의 동일 흐름 + 완결성 기반 skip.
+    """cfr.run_region 의 동일 흐름 + 완결성 기반 skip (육지·제주 공통).
 
-    skip 판정(육지) = base 가 완전(base_complete)하면 건너뛰고, **불완전하면 다시 받는다**.
+    skip 판정 = base 가 완전(base_complete)하면 건너뛰고, **불완전하면 다시 받는다**.
     쓰기가 (base,timestamp) upsert 라 부분 적재 base 는 재실행만으로 부족분이 채워진다(auto-resume).
-    --force 는 "완전해도 다시 받기".  제주는 이번 재구성 범위 밖이라 기존 count 기준 skip 유지.
+    --force 는 "완전해도 다시 받기".  육지·제주 모두 네이티브 build_forecast_wide 경로라
+    완결성 기반으로 통일(과거 제주 count 기준은 부분 적재 base 를 못 채웠다).
     """
-    have = cfr.existing_base_counts(db_path) if region != "land" else {}
+    have = cfr.existing_base_counts(db_path) if region not in ("land", "jeju") else {}
     total = 0
     for i, b in enumerate(bases, 1):
         base_str = b.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
         label = f"[runs:{region}] base {b.strftime('%Y%m%d %HZ')} ({base_str} KST)"
         if not force:
-            if region == "land":
-                if base_complete(db_path, b, days):
+            if region in ("land", "jeju"):
+                if base_complete(region, db_path, b, days):
                     print(f"{label} -- skip (완전; --force 로 재수집)")
                     continue
-            elif have.get(base_str, 0) > 0:   # 제주: 현행 count 기준 (변경 없음)
+            elif have.get(base_str, 0) > 0:
                 print(f"{label} -- skip (already {have[base_str]} rows; --force to redo)")
                 continue
         print(f"\n{'='*70}\n{label}  ({i}/{len(bases)}, window={days}d)\n{'='*70}")

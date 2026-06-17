@@ -14,7 +14,7 @@ C.page_header(
     "신재생이 만든 잔여부하를 가스 발전이 메운다 — 5→6→7 서빙 체인의 사전 적재 예측",
     [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
      ("net_load", C.COLOR["net_load"]), ("가스", C.COLOR["gas"])])
-menu = st.sidebar.radio("메뉴", ["종합", "수요 예측", "데이터 현황"])
+menu = st.sidebar.radio("메뉴", ["종합", "검증", "데이터 현황", "운영 실행"])
 
 TODAY = pd.Timestamp.now().normalize()
 ORIGIN = TODAY - pd.Timedelta(days=1)  # 어제 23:00 발행 가정(사전 적재)
@@ -38,7 +38,7 @@ def render_forecast_check():
     배치: 네비게이터(+⚙️ 표시 데이터) → 비교 plot → 송출량 지표 → AI 브리핑.
     """
     day, _, cap = C.day_navigator("fchk")
-    mode, value, label = C.horizon_picker("fchk")
+    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
 
     df = C.land_day_compare(day, mode=mode, value=value)
     if df["est_gas_gen_land"].isna().all():
@@ -51,9 +51,9 @@ def render_forecast_check():
     # 하단 — 선택일 가스 송출량 지표 4개
     ton = df["est_gas_sendout_ton_land"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("일별 예상 가스 송출량", f"{ton.sum():,.0f} TON")
-    c2.metric("최대 예상 시간당 가스 송출량", f"{ton.max():,.0f} TON/h")
-    c3.metric("최소 예상 시간당 가스 송출량", f"{ton.min():,.0f} TON/h")
+    c1.metric("발전용 가스 하루 예상 송출량", f"{ton.sum():,.0f} TON")
+    c2.metric("시간당 가스 최대 예상 송출량", f"{ton.max():,.0f} TON/h")
+    c3.metric("시간당 가스 최소 예상 송출량", f"{ton.min():,.0f} TON/h")
     c4.metric("가스발전 합", f"{df['est_gas_gen_land'].sum() / 1000:,.1f} GWh")
 
     st.markdown("##### AI 브리핑")
@@ -73,7 +73,7 @@ def _rgba(hex_color: str, alpha: float) -> str:
 def render_gen_mix():
     """발전데이터 탭 — 전력거래소식 누적 발전 믹스(실측) + 예측 dot(누적기준 정렬)."""
     day, _, cap = C.day_navigator("mix")
-    mode, value, label = C.horizon_picker("mix")
+    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
     cap.caption(f"{day:%Y-%m-%d} 00~23시 · 실측 누적 + 예측 dot · {label}")
 
     mix = C.land_day_mix(day)
@@ -265,7 +265,7 @@ def render_longhorizon():
         format_func=lambda d: f"{d:%m-%d}" + (f" (D+{(d - ORIGIN).days})" if d >= TODAY else ""))
     n_days = (end - start).days + 1
 
-    mode, value, label = C.horizon_picker("lh")
+    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or df["est_demand_land"].isna().all():
         st.warning(f"선택 구간/기준의 예측이 없습니다. (지평 아카이브: {lo} ~ {hi})")
@@ -289,11 +289,15 @@ def render_longhorizon():
 
 # ================================================================ 수요 예측
 def render_forecast_menu():
-    # 메뉴 상단 공통 컨트롤(표준 구조 + 기간 슬라이더) — 4개 탭이 같은 구간을 본다
-    start, n, cap = C.day_navigator("fm", ndays=(1, 7, 3))
-    end = start + pd.Timedelta(days=n - 1)
-    mode, value, label = C.horizon_picker("fm")
-    cap.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} ({n}일) · {label} · "
+    # 상단 컨트롤 — 날짜 내비(7일 고정) + '지평 D+k' 하나로 정리(예측기준 3모드·표시기간 슬라이더 제거).
+    # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 아래 '정확도 평가' 탭이 담당.
+    start, _, cap = C.day_navigator("fm")
+    end = start + pd.Timedelta(days=6)
+    meta = C.land_horizon_meta()
+    k = st.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
+                  key="fm_hzk", help="그 지평의 시계열을 봅니다. D+1은 KPX 하루전 예측과도 비교됩니다.")
+    mode, value, label = "fixed", k, f"D+{k} (각 날짜를 {k}일 전에 예측)"
+    cap.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} (7일) · {label} · "
                 "실측 ━ / 예측 ··· / KPX DA ╌")
 
     df = C.land_range_compare(start, end, mode=mode, value=value)
@@ -301,7 +305,8 @@ def render_forecast_menu():
         missing_forecast_block(start, key="fm_gen")
         return
 
-    t1, t2, t3, t4 = st.tabs(["전력수요 예측", "순 수요(net_load) 예측", "천연가스 수요 예측", "검증"])
+    t1, t2, t3, t4, t5 = st.tabs(
+        ["전력수요", "순수요(net_load)", "천연가스", "정확도 평가", "지평별 정확도"])
     ts = df["timestamp"]
     cd, tmpl = C.hz_hover(df)
     da_hover = ("%{x|%m-%d %H시} · %{y:,.0f} MW<br>KPX 하루전 발표(D+1)"
@@ -345,6 +350,11 @@ def render_forecast_menu():
 
     with t4:
         render_validation(df)
+
+    with t5:
+        st.caption("발행본을 모아 본 D+1~D+15 지평별 정확도 — 수요·net_load·가스 = MAPE, 신재생 = nMAE, "
+                   "단위 %. 긴 지평은 실측이 있는(더 오래된) 발행본에서 채워집니다.")
+        render_horizon_accuracy()
 
 
 # ================================================================ 검증 (예측 vs 실측, 하루 단위)
@@ -393,20 +403,40 @@ def render_validation(df: pd.DataFrame):
     st.caption("신재생↑ → net_load↓ → 가스↓ — 같은 시각을 수직으로 비교하세요. "
                "실측은 KPX 실시간(sukub·발전실적)으로 보강되며, 오차를 숨기지 않습니다(§5.4).")
 
-    with st.expander("최근 30일 일별 MAPE 추이"):
-        hist = C.land_daily_error_history((TODAY - pd.Timedelta(days=1)).strftime("%Y-%m-%d"))
-        if hist.dropna(how="all").empty:
-            st.caption("아직 집계할 적재분이 없습니다.")
+
+def _show_acc_table(acc: pd.DataFrame):
+    if acc.empty:
+        st.caption("집계할 적재분이 없습니다.")
+    else:
+        st.dataframe(acc, width="stretch", height=560)
+
+
+def render_horizon_accuracy():
+    """지평별 정확도 — 기간별(프리셋+직접설정) / 계절별(봄·여름·가을·겨울) 탭."""
+    tabs = st.tabs(["기간별", "봄", "여름", "가을", "겨울"])
+    with tabs[0]:
+        PERIODS = {"7일": 7, "14일": 14, "한달": 30, "3개월": 92, "직접 설정": None}
+        psel = st.segmented_control("기간", list(PERIODS), default="한달",
+                                    key="hzacc_period") or "한달"
+        if psel == "직접 설정":
+            meta = C.land_horizon_meta()
+            lo, hi = meta["bases"][0].date(), meta["bases"][-1].date()
+            rng = st.date_input("발행일(base) 범위", value=(lo, hi),
+                                min_value=lo, max_value=hi, key="hzacc_custom")
+            if isinstance(rng, (tuple, list)) and len(rng) == 2:
+                acc = C.land_horizon_accuracy(start=rng[0].strftime("%Y-%m-%d"),
+                                              end=rng[1].strftime("%Y-%m-%d"))
+            else:
+                st.caption("시작·종료 발행일을 모두 선택하세요.")
+                acc = pd.DataFrame()
         else:
-            fig2 = C.make_fig(height=300, ytitle="MAPE (%)")
-            colors = {"수요": C.COLOR["demand"], "신재생": C.COLOR["renew"],
-                      "net_load": C.COLOR["net_load"], "가스": C.COLOR["gas"]}
-            for col in hist.columns:
-                fig2.add_scatter(x=hist.index, y=hist[col], name=col,
-                                 line=dict(color=colors[col]))
-            st.plotly_chart(fig2, width="stretch")
-            st.caption("수요·net_load·가스 = 일별 MAPE, 신재생 = nMAE(심야 분모 문제 회피). "
-                       "가스 일평균이 체인 검증치(~13%, 7-A2-A)와 비슷하면 정상입니다.")
+            cutoff = (TODAY - pd.Timedelta(days=PERIODS[psel])).strftime("%Y-%m-%d")
+            acc = C.land_horizon_accuracy(start=cutoff)
+        _show_acc_table(acc)
+    for i, seas in enumerate(["봄", "여름", "가을", "겨울"], start=1):
+        with tabs[i]:
+            st.caption(f"{seas}({'·'.join(f'{m}월' for m in C.SEASON_MONTHS[seas])}) — 전 기간 발행본 대상")
+            _show_acc_table(C.land_horizon_accuracy(season=seas))
 
 
 # ================================================================ 데이터 현황
@@ -573,6 +603,90 @@ def render_data_status():
         _ds_legacy_forecast()
 
 
+def render_run_ops():
+    """운영 실행 — 서빙 체인 러너(serve_chain_land_new.py)를 수동 트리거.
+
+    서버 cron(매일 06:00)과 동일 작업.  서빙은 로컬 추론(API 무관)이라 대시보드에서 직접 실행 안전.
+    """
+    st.subheader("서빙 체인 실행 — 5→6→7 → est_horizon_land")
+    st.caption("forecast_horizon(기상 예보) → 수요·신재생·가스(보정·블렌딩) 예측을 est_horizon_land 에 "
+               "적재. 로컬 추론(API 무관). 서버 cron(매일 06:00)과 같은 작업을 수동으로 돌린다.")
+
+    mode = st.radio("대상 발행본(base)", ["최신", "특정 발행일", "최근 N개"],
+                    horizontal=True, key="ops_mode")
+    args: list[str] = []
+    if mode == "특정 발행일":
+        d = st.date_input("발행일 (12 UTC base 날짜)",
+                          value=(TODAY - pd.Timedelta(days=1)).date(), key="ops_base")
+        args += ["--base", d.strftime("%Y-%m-%d")]
+    elif mode == "최근 N개":
+        n = st.number_input("N (최근 base 개수, backfill)", min_value=1, max_value=15,
+                            value=3, key="ops_n")
+        args += ["--backfill", str(int(n))]
+
+    dry = st.toggle("dry-run (산출만, 적재 안 함)", value=False, key="ops_dry")
+    if dry:
+        args += ["--no-write"]
+
+    st.code('python "7. land_gas_forecaster/serve_chain_land_new.py" '
+            + (" ".join(args) if args else "  # 최신 base"), language="bash")
+
+    if st.button("▶ 서빙 체인 실행", type="primary", key="ops_run"):
+        with st.spinner("서빙 체인 실행 중… (base 당 수 초)"):
+            rc, out = C.run_script(C.SERVE_CHAIN_LAND, args)
+        if rc == 0:
+            st.success("완료 (종료코드 0)")
+            if not dry:
+                st.cache_data.clear()   # 새 적재가 다른 메뉴 조회에 반영되도록 캐시 무효화
+                st.caption("est_horizon_land 갱신 → 조회 캐시 초기화. 다른 메뉴에서 최신 예측 확인 가능.")
+        else:
+            st.error(f"실패 (종료코드 {rc})")
+        st.code(out or "(출력 없음)")
+
+    st.divider()
+    st.subheader("데이터 수집 (KMA/KPX API)")
+    st.caption("⚠ API 한도 보호 — 평소엔 서버 cron 전용. **개발단계 임시 수동 버튼**(비밀번호 게이트). "
+               "기상은 완결성 auto-resume 라 재실행해도 완전한 base 는 콜 없이 skip.")
+    pw = st.text_input("실행 비밀번호", type="password", key="ops_pw",
+                       help="개발단계 임시 가드 — 운영 공개 전 제거/교체")
+    unlocked = pw == C.OPS_PASSWORD
+    if pw and not unlocked:
+        st.error("비밀번호가 틀립니다.")
+    elif not pw:
+        st.info("수집 버튼은 비밀번호 입력 후 활성화됩니다.")
+
+    col_f, col_h = st.columns(2)
+    with col_f:
+        st.markdown("**① 기상예보 → forecast_horizon**")
+        fmode = st.radio("대상", ["최신 12z", "최근 N개(backfill)"], key="cf_mode")
+        fargs = ["--region", "land"]
+        if fmode == "최근 N개(backfill)":
+            fn = st.number_input("N (최근 base)", 1, 7, 3, key="cf_n")
+            fargs += ["--backfill", str(int(fn))]
+        if st.button("▶ 기상 수집 실행", disabled=not unlocked, key="cf_run"):
+            with st.spinner("기상 수집 중… (KMA API, base 당 수 분)"):
+                rc, out = C.run_script(C.COLLECT_FORECAST, fargs, cwd=C.DATA_DIR)
+            if rc == 0:
+                st.success("완료 (종료코드 0)")
+                st.cache_data.clear()
+            else:
+                st.error(f"실패 (종료코드 {rc})")
+            st.code(out or "(출력 없음)")
+    with col_h:
+        st.markdown("**② 실측 → historical**")
+        hd = st.number_input("최근 일수 (--historical-days)", 1, 30, 2, key="ch_days")
+        if st.button("▶ 실측 수집 실행", disabled=not unlocked, key="ch_run"):
+            with st.spinner("실측 수집 중… (KPX/ASOS API)"):
+                rc, out = C.run_script(C.COLLECT_LAND_HIST,
+                                       ["--historical-days", str(int(hd))], cwd=C.DATA_DIR)
+            if rc == 0:
+                st.success("완료 (종료코드 0)")
+                st.cache_data.clear()
+            else:
+                st.error(f"실패 (종료코드 {rc})")
+            st.code(out or "(출력 없음)")
+
+
 if menu == "종합":
     # 탭별 독립 네비게이터(표준 구조) — 기상개황은 새로고침 없는 슬림 버전
     tab_now, tab_mix, tab_wx, tab_lh = st.tabs(["예측 확인", "발전데이터", "기상개황", "장지평 예측"])
@@ -584,7 +698,9 @@ if menu == "종합":
         render_weather()
     with tab_lh:
         render_longhorizon()
-elif menu == "수요 예측":
+elif menu == "검증":
     render_forecast_menu()
-else:
+elif menu == "데이터 현황":
     render_data_status()
+else:
+    render_run_ops()

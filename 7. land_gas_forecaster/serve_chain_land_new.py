@@ -61,6 +61,7 @@ FEAT_DEM = expf.BASEFEAT + ['total_cloud', 'midlow_cloud', 'cap_btmppa']
 
 HZ = tuple(range(1, 16))   # D+1..D+15 (육지 16일 윈도우 = D+15.5)
 EST_COLS = ['est_demand_land', 'est_market_renew_land', 'est_net_load_land',
+            'est_solar_util_land', 'est_wind_util_land',
             'est_gas_gen_land_raw', 'est_gas_gen_land', 'est_gas_sendout_ton_land']
 
 
@@ -153,13 +154,16 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
 
         # ── 6단계 신재생 (PatchTST/LGBM 하이브리드, 스크래치 기상) ──
         out6, *_ = serve6._predict_day(sc, O.normalize(), n, A6)
-        mr = pd.Series(out6[serve6.OUT['mr']].values,
-                       index=pd.DatetimeIndex(out6['timestamp'])).reindex(tg).values
+        o6 = pd.DataFrame(out6).set_index(pd.DatetimeIndex(out6['timestamp']))
+        mr = o6[serve6.OUT['mr']].reindex(tg).values
+        su = o6[serve6.OUT['su']].reindex(tg).values   # 태양광 이용률(기상개황 탭용)
+        wu = o6[serve6.OUT['wu']].reindex(tg).values   # 풍력 이용률
 
         m = ~np.isnan(dem_pred) & ~pd.isna(mr)
         if not m.any():
             continue
         tg2 = tg[m]; H2 = H[m]; dem2 = dem_pred[m]; mr2 = mr[m].astype(float); dt2 = dtv[m]
+        su2 = su[m].astype(float); wu2 = wu[m].astype(float)
 
         # ── 7단계 가스 raw (v2 자기회귀) ──
         gf = pd.DataFrame(index=tg2)
@@ -174,8 +178,9 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
         rows.append(pd.DataFrame({
             'base': base, 'timestamp': tg2, 'horizon_d': n,
             'est_demand_land': dem2, 'est_market_renew_land': mr2,
-            'est_net_load_land': dem2 - mr2, 'est_gas_gen_land_raw': gas_raw,
-            'day_type': dt2}))
+            'est_net_load_land': dem2 - mr2,
+            'est_solar_util_land': su2, 'est_wind_util_land': wu2,
+            'est_gas_gen_land_raw': gas_raw, 'day_type': dt2}))
       except Exception as e:
         # 부분 적재 base(근거리 누락)·예보 결손 지평은 건너뛴다 (build_chain_horizon 동일 정책).
         continue

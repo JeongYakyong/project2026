@@ -1,4 +1,6 @@
 {
+  "calibration_enabled": false,
+  "calibration_off_note": "2026-06-15 OFF — 백테스트가 겨울 위주라 calib(>1)가 여름엔 raw 과대를 거꾸로 키움(raw +5%→final +13%). 적합값은 아래 보존. 1년치(여름·가을 포함) 데이터 확보 후 true 로 되돌려 재적합/재적용.",
   "bias_calib": 1.07602,
   "bias_calib_by_horizon_daypart": {
     "1": {

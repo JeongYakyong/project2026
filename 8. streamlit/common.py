@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""8단계 공용 레이어 — DB 조회(읽기 전용)·KPX 실시간 수급·단가 환산·적재 현황."""
+"""8단계 공용 레이어 — DB 조회(읽기 전용)·KPX 실시간 수급·단가 환산·적재 현황·운영 실행."""
 from pathlib import Path
+import subprocess
 import sys
 import sqlite3
 
@@ -37,6 +38,39 @@ def query(region: str, sql: str, params: tuple = ()) -> pd.DataFrame:
     finally:
         con.close()
     return df
+
+
+# ---------------------------------------------------------------- 운영 실행 (서빙 체인·수집)
+# 대시보드에서 러너/수집기를 직접 트리거.
+#   - 서빙 체인: 로컬 추론(API 무관) → 무가드.  cwd=ROOT.
+#   - 수집(기상/실측): KMA/KPX API 호출 → ★개발단계 임시 비밀번호(OPS_PASSWORD) 게이트.
+#     수집기는 .env(API 키)를 load_dotenv()(cwd 기준)로 읽으므로 cwd 를 데이터 폴더로 둔다(cron 과 동일).
+# 같은 인터프리터(sys.executable = 이 streamlit 의 venv)로 실행해 로컬·서버 동일 동작.
+DATA_DIR = ROOT / "1. data_fetcher_and_db"
+SERVE_CHAIN_LAND = ROOT / "7. land_gas_forecaster" / "serve_chain_land_new.py"
+COLLECT_FORECAST = DATA_DIR / "core" / "collect_forecast_new.py"   # ① 기상 → forecast_horizon
+COLLECT_LAND_HIST = DATA_DIR / "core" / "collect_data_land_new.py"  # ② 실측 → historical
+OPS_PASSWORD = "8888"   # ★임시(개발단계). 운영 공개 전 제거/교체할 것.
+
+
+def run_script(script: Path, args: list[str], timeout: int = 3600,
+               cwd: Path | None = None) -> tuple[int, str]:
+    """script 를 현재 인터프리터로 실행 → (returncode, stdout+stderr 합본).
+
+    blocking — 호출부에서 st.spinner 로 감싼다.  서빙 체인은 base 당 수 초, 기상 수집은 수 분.
+    cwd 미지정이면 ROOT(서빙).  수집기는 cwd=DATA_DIR 로 넘겨 .env 를 찾게 한다.
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), *args],
+            cwd=str(cwd or ROOT), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
+        )
+        return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+    except subprocess.TimeoutExpired as e:
+        return 124, f"[timeout {timeout}s] {e}"
+    except Exception as e:  # noqa: BLE001
+        return 1, f"[실행 실패] {e}"
 
 
 # ---------------------------------------------------------------- 지평 아카이브 (basetime × horizon)
@@ -95,36 +129,64 @@ def land_est_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
                  (start, end))
 
 
-# ---------------------------------------------------------------- KPX 실시간 (표시 전용, DB에 쓰지 않음)
-@st.cache_data(ttl=300, show_spinner="KPX 실시간 수급을 불러오는 중...")
-def live_sukub_land(day: str) -> pd.DataFrame:
-    """KPX sukub 수급(real_demand_land 등 7컬럼). 실패 시 빈 DF."""
+# ---------------------------------------------------------------- 최근 실측 DB 채움 (갭필 후 저장)
+# 원칙(사용자 2026-06-15): DB에 현재 시각까지 데이터가 있으면 DB에서 읽고, 없으면(뒤처졌으면)
+# 그 부족분만 KPX 라이브 수집 → historical 에 저장.  매번 전체를 다시 긁지 않는다.
+@st.cache_data(ttl=300, show_spinner="최신 실측을 받아 DB에 채우는 중...")
+def ensure_recent(day_str: str) -> int:
+    """그 날 historical 이 '현재 가용 시각'까지 비었으면 KPX(수급+발전) 부족분만 수집→DB 저장.
+
+    DB가 이미 충분하면 수집하지 않고 0 반환(= DB에서 읽으면 됨).  5분 캐시로 호출 빈도 제한.
+    미래일은 즉시 0.  표시 전용 라이브가 아니라 historical 에 partial_upsert 로 영속 저장한다.
+    """
+    now = pd.Timestamp.now()
+    day = pd.Timestamp(day_str).normalize()
+    if day > now.normalize():
+        return 0  # 미래 — 실측 없음
+    # 그 날 채워져야 할 마지막 시각(오늘이면 직전 정시, 과거일이면 23시)
+    last_needed = (now.floor("h") - pd.Timedelta(hours=1)) if day == now.normalize() \
+        else day + pd.Timedelta(hours=23)
+    with sqlite3.connect(str(DB["land"])) as con:
+        row = con.execute(
+            "SELECT MAX(timestamp) FROM historical WHERE timestamp BETWEEN ? AND ? "
+            "AND real_demand_land IS NOT NULL",
+            (f"{day_str} 00:00:00", f"{day_str} 23:00:00")).fetchone()
+    have = pd.Timestamp(row[0]) if row and row[0] else None
+    if have is not None and have >= last_needed:
+        return 0  # DB 충분 — 라이브 수집 안 함 (DB에서 읽는다)
+
+    # 부족 → KPX 수급+발전 그 날치만 수집해 historical 에 partial upsert (영속)
     if str(CORE) not in sys.path:
         sys.path.insert(0, str(CORE))
     try:
-        from api_fetchers_land import fetch_kpx_land
-        df = fetch_kpx_land(day, day, progress=False)
-        return df.reset_index() if not df.empty else pd.DataFrame()
+        from api_fetchers_land import fetch_kpx_land, fetch_land_power
+        from _common import partial_upsert
     except Exception:
-        return pd.DataFrame()
-
-
-@st.cache_data(ttl=300, show_spinner="KPX 발전실적을 불러오는 중...")
-def live_power_land(day: str) -> pd.DataFrame:
-    """KPX 발전원별 실적(gen_gas_kr·gen_solar_market_kr·gen_wind_kr 등). 실패 시 빈 DF."""
-    if str(CORE) not in sys.path:
-        sys.path.insert(0, str(CORE))
-    try:
-        from api_fetchers_land import fetch_land_power
-        df = fetch_land_power(day, day, progress=False)
-        return df.reset_index() if not df.empty else pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+        return 0
+    parts = []
+    for fn in (fetch_kpx_land, fetch_land_power):
+        try:
+            d = fn(day_str, day_str, progress=False)
+            if d is not None and not d.empty:
+                if "timestamp" in d.columns:
+                    d = d.set_index("timestamp")
+                d.index = pd.to_datetime(d.index)
+                parts.append(d)
+        except Exception:
+            pass
+    if not parts:
+        return 0
+    wide = pd.concat(parts, axis=1)
+    wide.index = wide.index.strftime("%Y-%m-%d %H:%M:%S")
+    wide.index.name = "timestamp"
+    n = partial_upsert("historical", wide, DB["land"])
+    query.clear()   # DB 갱신 → 조회 캐시 무효화
+    return n
 
 
 def clear_live_caches():
-    live_sukub_land.clear()
-    live_power_land.clear()
+    ensure_recent.clear()
+    query.clear()
 
 
 # ---------------------------------------------------------------- 비교 프레임 (예측 vs 실측, 하루/구간)
@@ -142,6 +204,14 @@ def land_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
     e = end_day.strftime("%Y-%m-%d 23:00:00")
     base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
 
+    # DB가 최근 구간(오늘 포함 3일 이내)을 못 따라왔으면 그 부족분만 채워 DB를 최신화한 뒤,
+    # 아래는 전부 DB에서 읽는다 (DB에 있으면 수집 안 함 — ensure_recent 가 판정).
+    if use_live:
+        today = pd.Timestamp.now().normalize()
+        for day in pd.date_range(start_day.normalize(), end_day.normalize(), freq="D"):
+            if 0 <= (today - day).days <= 3:
+                ensure_recent(day.strftime("%Y-%m-%d"))
+
     est = land_est_horizon(mode, value, s, e)
     # KPX DA는 historical에 완전 적재(forecast 스냅샷판은 결측 많음 → 폐기). 동일 값.
     da = query("land", "SELECT timestamp, land_est_demand_da FROM historical "
@@ -156,30 +226,6 @@ def land_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
     # KPX DA는 D+1 발표분만 비교 의미가 있음 → 표시 지평이 D+1이 아닌 행은 비운다
     if "horizon_d" in df.columns:
         df.loc[df["horizon_d"] != 1, "land_est_demand_da"] = float("nan")
-
-    # DB가 못 따라온 최근 구간(오늘 포함 3일 이내, 미래 제외)은 live fetch로 보강 (live 값 우선)
-    if use_live:
-        today = pd.Timestamp.now().normalize()
-        for day in pd.date_range(start_day.normalize(), end_day.normalize(), freq="D"):
-            if not (0 <= (today - day).days <= 3):
-                continue
-            d = day.strftime("%Y-%m-%d")
-            sk = live_sukub_land(d)
-            if not sk.empty and "real_demand_land" in sk.columns:
-                sk = sk.assign(timestamp=pd.to_datetime(sk["timestamp"]))
-                df = df.merge(sk[["timestamp", "real_demand_land"]], on="timestamp",
-                              how="left", suffixes=("", "_live"))
-                df["real_demand_land"] = df["real_demand_land_live"].combine_first(df["real_demand_land"])
-                df = df.drop(columns=["real_demand_land_live"])
-            pw = live_power_land(d)
-            if not pw.empty and "gen_gas_kr" in pw.columns:
-                pw = pw.assign(timestamp=pd.to_datetime(pw["timestamp"]))
-                pw["renew_live"] = pw.get("gen_solar_market_kr", 0) + pw.get("gen_wind_kr", 0)
-                df = df.merge(pw[["timestamp", "gen_gas_kr", "renew_live"]], on="timestamp",
-                              how="left", suffixes=("", "_live"))
-                df["gen_gas_kr"] = df["gen_gas_kr_live"].combine_first(df["gen_gas_kr"])
-                df["renew_gen_total_kr"] = df["renew_live"].combine_first(df["renew_gen_total_kr"])
-                df = df.drop(columns=["gen_gas_kr_live", "renew_live"])
 
     df["real_net_load"] = df["real_demand_land"] - df["renew_gen_total_kr"]
     return df
@@ -204,29 +250,15 @@ def land_day_mix(day: pd.Timestamp, use_live: bool = True) -> pd.DataFrame:
     """
     s = day.strftime("%Y-%m-%d 00:00:00")
     e = day.strftime("%Y-%m-%d 23:00:00")
+    # 최근 구간(오늘 포함 3일 이내)이 DB에 비었으면 부족분만 채워 최신화 — 그 외엔 DB만 읽음
+    if use_live and 0 <= (pd.Timestamp.now().normalize() - day.normalize()).days <= 3:
+        ensure_recent(day.strftime("%Y-%m-%d"))
     base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
     cols = ", ".join(MIX_GEN_COLS)
     df = base.merge(query("land", f"""
         SELECT timestamp, real_demand_land, {cols}
         FROM historical WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
     """, (s, e)), on="timestamp", how="left")
-
-    if use_live and (pd.Timestamp.now().normalize() - day).days <= 3:
-        pw = live_power_land(day.strftime("%Y-%m-%d"))
-        if not pw.empty:
-            pw = pw.assign(timestamp=pd.to_datetime(pw["timestamp"]))
-            keep = [c for c in MIX_GEN_COLS if c in pw.columns]
-            df = df.merge(pw[["timestamp"] + keep], on="timestamp", how="left", suffixes=("", "_lv"))
-            for c in keep:
-                df[c] = df[f"{c}_lv"].combine_first(df[c])
-            df = df.drop(columns=[f"{c}_lv" for c in keep])
-        sk = live_sukub_land(day.strftime("%Y-%m-%d"))
-        if not sk.empty and "real_demand_land" in sk.columns:
-            sk = sk.assign(timestamp=pd.to_datetime(sk["timestamp"]))
-            df = df.merge(sk[["timestamp", "real_demand_land"]], on="timestamp",
-                          how="left", suffixes=("", "_lv"))
-            df["real_demand_land"] = df["real_demand_land_lv"].combine_first(df["real_demand_land"])
-            df = df.drop(columns=["real_demand_land_lv"])
 
     out = pd.DataFrame({"timestamp": df["timestamp"]})
     out["원전"] = df["gen_nuclear_kr"]
@@ -287,6 +319,60 @@ def land_daily_error_history(end_day: str, days: int = 30,
                 else float((err / v[ac].abs()).mean() * 100)
         out[name] = grp.apply(_daily, include_groups=False)
     return pd.DataFrame(out)
+
+
+SEASON_MONTHS = {"봄": (3, 4, 5), "여름": (6, 7, 8), "가을": (9, 10, 11), "겨울": (12, 1, 2)}
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_horizon_accuracy(start: str | None = None, end: str | None = None,
+                          season: str | None = None) -> pd.DataFrame:
+    """발행본을 모아 D+1~D+15 지평별 정확도 (est_horizon_land 예측 × historical 실측).
+
+    필터(택일/병용):
+      - 기간별: start(발행일 base 하한)·end(상한). 둘 다 None 이면 전 기간.
+      - 계절별: season ∈ {봄,여름,가을,겨울} → 타깃 시각의 월로 필터(전 기간 대상).
+    수요·net_load·가스 = MAPE, 신재생 = nMAE(심야 분모 문제 회피), 단위 %.  가스 bias·표본 동반.
+    최근 발행본의 먼 지평은 실측이 아직 없어 자동 제외 — 긴 지평은 더 오래된 발행본에서 채워진다.
+    """
+    where, params = [], []
+    if start:
+        where.append("e.base >= ?"); params.append(f"{start} 00:00:00")
+    if end:
+        where.append("e.base <= ?"); params.append(f"{end} 23:59:59")
+    wsql = ("WHERE " + " AND ".join(where)) if where else ""
+    df = query("land", f"""
+        SELECT e.timestamp, e.horizon_d AS hz,
+               e.est_demand_land, e.est_market_renew_land, e.est_net_load_land, e.est_gas_gen_land,
+               h.real_demand_land, h.renew_gen_total_kr, h.gen_gas_kr
+        FROM est_horizon_land e JOIN historical h ON e.timestamp = h.timestamp {wsql}
+    """, tuple(params))
+    if df.empty:
+        return pd.DataFrame()
+    if season:
+        df = df[df["timestamp"].dt.month.isin(SEASON_MONTHS[season])]
+        if df.empty:
+            return pd.DataFrame()
+    df["real_net_load"] = df["real_demand_land"] - df["renew_gen_total_kr"]
+    specs = [("수요 MAPE", "est_demand_land", "real_demand_land", "mape"),
+             ("신재생 nMAE", "est_market_renew_land", "renew_gen_total_kr", "nmae"),
+             ("net_load MAPE", "est_net_load_land", "real_net_load", "mape"),
+             ("가스 MAPE", "est_gas_gen_land", "gen_gas_kr", "mape")]
+    rows = []
+    for hz in range(1, 16):
+        g = df[df["hz"] == hz]
+        rec = {"지평": f"D+{hz}"}
+        n = 0
+        for name, ec, ac, kind in specs:
+            m = error_metrics(g[ec], g[ac])
+            rec[name] = round(m[kind], 1) if m else None
+            if m:
+                n = max(n, m["n"])
+        mg = error_metrics(g["est_gas_gen_land"], g["gen_gas_kr"])
+        rec["가스 bias"] = round(mg["bias"], 1) if mg else None
+        rec["표본"] = n
+        rows.append(rec)
+    return pd.DataFrame(rows).set_index("지평")
 
 
 # ---------------------------------------------------------------- 단가 환산
@@ -574,11 +660,11 @@ HZ_MODES = {"최신 발행": "latest", "발행일 고정": "asof", "지평 고�
 
 
 def horizon_picker(prefix: str) -> tuple[str, object, str]:
-    """예측 기준 컨트롤 — (mode, value, label) 반환.
+    """예측 기준 컨트롤 — (mode, value, label) 반환.  해석을 쉬운 말로 안내.
 
-    최신 발행 = 목표시각마다 가장 최근 발행본(과거=D+1).
-    발행일 고정 = 고른 base가 내다본 한 줄(D+1~D+15).
-    지평 고정 = 모든 목표를 '정확히 D+k 발행'으로 — 지평별 정직한 성능.
+    최신 발행  = 각 날짜를 '가장 최근에 예측한' 값(과거 구간은 사실상 하루 전 예측).
+    발행일 고정 = '특정 날짜에 예측한' 결과 — 그 날 기준 앞으로 며칠치(D+1~D+15)를 그대로.
+    지평 고정  = '며칠 전에 예측했는지(k일 전)'를 고정 — 모든 날짜를 k일 전 예측으로 통일.
     """
     meta = land_horizon_meta()
     c0, c1 = st.columns([1.3, 3], vertical_alignment="bottom")
@@ -587,17 +673,20 @@ def horizon_picker(prefix: str) -> tuple[str, object, str]:
     mode = HZ_MODES[pick]
     if mode == "asof":
         bases = meta["bases"]
-        b = c1.select_slider("발행일(base)", options=bases, value=bases[-1],
+        b = c1.select_slider("예측을 돌린 날짜", options=bases, value=bases[-1],
                              key=f"{prefix}_hzbase",
-                             format_func=lambda t: f"{t:%Y-%m-%d} 발행",
-                             help="그 날 발행한 예보가 내다본 D+1~D+15를 그대로 보여줍니다")
-        return mode, b, f"{b:%Y-%m-%d} 발행본 (D+1~D+{meta['h_hi']})"
+                             format_func=lambda t: f"{t:%Y-%m-%d}에 예측",
+                             help="그 날짜에 예측한 예보가 내다본 앞으로 며칠치"
+                                  "(D+1~D+15, 최대 15일 뒤)를 그대로 보여줍니다.")
+        return mode, b, f"{b:%Y-%m-%d}에 예측한 예보 (앞으로 D+1~D+{meta['h_hi']})"
     if mode == "fixed":
-        k = c1.slider("지평 D+k", meta["h_lo"], meta["h_hi"], 1, key=f"{prefix}_hzk",
-                      help="모든 목표시각을 '정확히 k일 전에 발행한' 예측으로 통일합니다")
-        return mode, k, f"D+{k} 고정 (정확히 {k}일 전 발행)"
-    c1.caption("목표시각마다 가장 최근 발행본 — 과거 구간은 사실상 D+1입니다.")
-    return "latest", None, "최신 발행본 (목표별 D+1 우선)"
+        k = c1.slider("며칠 전에 예측한 값인지 (D+k)", meta["h_lo"], meta["h_hi"], 1,
+                      key=f"{prefix}_hzk",
+                      help="모든 날짜를 '정확히 k일 전에 예측한' 값으로 통일합니다. "
+                           "예: D+3 이면 각 날짜를 3일 전에 미리 예측한 값.")
+        return mode, k, f"D+{k} — 각 날짜를 {k}일 전에 예측한 값"
+    c1.caption("각 날짜를 '가장 최근에 예측한' 값으로 보여줍니다 — 과거 구간은 사실상 하루 전(D+1) 예측입니다.")
+    return "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
 
 
 def page_header(eyebrow: str, title: str, sub: str, chain: list[tuple[str, str]]):
