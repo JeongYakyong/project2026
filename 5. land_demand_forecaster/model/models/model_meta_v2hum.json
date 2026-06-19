@@ -1,0 +1,61 @@
+{
+  "version": "v2hum",
+  "features": [
+    "h",
+    "lag168",
+    "lag336",
+    "lag504",
+    "lag24",
+    "rec24",
+    "rec168",
+    "solar_rad",
+    "hour_sin",
+    "hour_cos",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "day_type",
+    "temp_c4",
+    "humidity",
+    "total_cloud",
+    "midlow_cloud",
+    "cap_btmppa"
+  ],
+  "categorical": [
+    "day_type"
+  ],
+  "target": "real_demand_land",
+  "architecture": "Global Model with Horizon Feature (h, 1..360 direct = D+15)",
+  "loss": "custom asymmetric L2 (낮 over-pred ×alpha)",
+  "alpha": 8.0,
+  "init_score": 64094.68011950901,
+  "changes_vs_v2": "temp_c(5)->temp_c4(4,대관령제외) · wind_spd 제거 · humidity 추가 (di·wct 폐기)",
+  "stations": {
+    "temp_c4": [
+      "wonju",
+      "seosan",
+      "pohang",
+      "yeonggwang"
+    ],
+    "humidity": [
+      "wonju",
+      "seosan",
+      "pohang",
+      "yeonggwang"
+    ],
+    "solar_rad": [
+      "seosan",
+      "yeonggwang"
+    ],
+    "cloud": [
+      "seosan",
+      "yeonggwang"
+    ]
+  },
+  "best_iteration": 1565,
+  "origin_hour": 23,
+  "train": "target<=2024",
+  "val": "2025",
+  "note": "v2hum: 최종안(humidity만). production v2 와 별도. 검증=_ab_comfort_eval."
+}

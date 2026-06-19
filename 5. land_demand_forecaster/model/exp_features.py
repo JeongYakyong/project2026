@@ -27,6 +27,15 @@ bht = importlib.util.module_from_spec(spec); spec.loader.exec_module(bht)
 STATIONS = ['daegwallyeong', 'wonju', 'seosan', 'pohang', 'yeonggwang']
 SOLAR_SEL = ['seosan', 'yeonggwang']      # 태양광·구름 집중지(충남·전남)
 WIND_SEL = ['daegwallyeong', 'pohang']    # 풍력 집중지(강원·경북)
+TEMP_SEL4 = ['wonju', 'seosan', 'pohang', 'yeonggwang']   # 인구권 4지점(대관령=무인 제외) — comfort 전용
+
+
+def comfort(T, RH, W):
+    """불쾌지수(di)·체감기온(wct). 기상청식 — final2 PatchTST 와 동일. W=m/s."""
+    di = 0.81*T + 0.01*RH*(0.99*T - 14.3) + 46.3
+    Wk = np.clip(W*3.6, 4.8, None)
+    wct = 13.12 + 0.6215*T - 11.37*Wk**0.16 + 0.3965*T*Wk**0.16
+    return di, np.where(T <= 10, wct, T)
 PARAMS = dict(objective='regression_l1', metric='mae', learning_rate=0.03, num_leaves=255,
               min_data_in_leaf=100, feature_fraction=0.85, bagging_fraction=0.8, bagging_freq=5,
               lambda_l2=0.2, verbosity=-1, random_state=42)
@@ -72,7 +81,7 @@ def cap_for(idx, ppa):
 
 def load_hist():
     cl = [f'{c}_{s}' for s in STATIONS for c in ('total_cloud', 'midlow_cloud')]
-    wxcols = [f'{w}_{s}' for s in STATIONS for w in ('temp_c', 'solar_rad', 'wind_spd')]
+    wxcols = [f'{w}_{s}' for s in STATIONS for w in ('temp_c', 'solar_rad', 'wind_spd', 'humidity')]
     pull = ['timestamp', 'real_demand_land', 'day_type'] + wxcols + cl
     with sqlite3.connect(DB) as con:
         raw = pd.read_sql(f"SELECT {', '.join(pull)} FROM historical", con, parse_dates=['timestamp'])
@@ -90,6 +99,13 @@ def load_hist():
     d['wind_spd'] = d[[f'wind_spd_{s}' for s in WIND_SEL]].mean(1)
     d['total_cloud'] = d[[f'total_cloud_{s}' for s in SOLAR_SEL]].mean(1)
     d['midlow_cloud'] = d[[f'midlow_cloud_{s}' for s in SOLAR_SEL]].mean(1)
+    # comfort 전용(4지점=대관령 제외): temp_c4·di·wct — 추가 컬럼이라 production v2 무영향
+    T4 = d[[f'temp_c_{s}' for s in TEMP_SEL4]].mean(1)
+    RH4 = d[[f'humidity_{s}' for s in TEMP_SEL4]].mean(1)
+    W4 = d[[f'wind_spd_{s}' for s in TEMP_SEL4]].mean(1)
+    d['temp_c4'] = T4
+    d['humidity'] = RH4
+    d['di'], d['wct'] = comfort(T4, RH4, W4)
     return d
 
 
@@ -117,6 +133,7 @@ def build_samples(d, ppa):
          'lag24': np.where(hh <= 24, dem[tgt-24], np.nan),
          'rec24': np.repeat(rec24[origins], HMAX), 'rec168': np.repeat(rec168[origins], HMAX),
          'temp_c': d.temp_c.values[tgt], 'solar_rad': d.solar_rad.values[tgt], 'wind_spd': d.wind_spd.values[tgt],
+         'temp_c4': d.temp_c4.values[tgt], 'humidity': d.humidity.values[tgt], 'di': d.di.values[tgt], 'wct': d.wct.values[tgt],
          'total_cloud': d.total_cloud.values[tgt], 'midlow_cloud': d.midlow_cloud.values[tgt],
          'cap_btmppa': capb[tgt], 'hour': hour[tgt], 'dow': dow[tgt], 'month': month[tgt],
          'day_type': dtype_arr[tgt], 'tyear': year[tgt]}
@@ -144,7 +161,8 @@ FORE_PREFIX = {'temp_c': 'temp', 'solar_rad': 'radiation', 'wind_spd': 'wind_spd
 def fh_weather(con, targets):
     cols = ([f'{FORE_PREFIX[w]}_{s}' for w in ('temp_c',) for s in STATIONS] +
             [f'radiation_{s}' for s in SOLAR_SEL] + [f'wind_spd_10m_{s}' for s in WIND_SEL] +
-            [f'total_cloud_{s}' for s in SOLAR_SEL] + [f'midlow_cloud_{s}' for s in SOLAR_SEL])
+            [f'total_cloud_{s}' for s in SOLAR_SEL] + [f'midlow_cloud_{s}' for s in SOLAR_SEL] +
+            [f'reh_{s}' for s in TEMP_SEL4] + [f'wind_spd_10m_{s}' for s in TEMP_SEL4])   # comfort 전용(4지점 습도·바람)
     cols = sorted(set(cols))
     ext = pd.date_range(targets.min() - pd.Timedelta(hours=3), targets.max() + pd.Timedelta(hours=3), freq='h')
     sel = ', '.join(f'"{c}"' for c in ['timestamp'] + cols)
@@ -160,6 +178,13 @@ def fh_weather(con, targets):
     out['wind_spd'] = mean_interp([f'wind_spd_10m_{s}' for s in WIND_SEL])
     out['total_cloud'] = mean_interp([f'total_cloud_{s}' for s in SOLAR_SEL])
     out['midlow_cloud'] = mean_interp([f'midlow_cloud_{s}' for s in SOLAR_SEL])
+    # comfort 전용(4지점): 예보 reh·wind 로 di/wct 재구성(서빙 일관)
+    T4 = mean_interp([f'temp_{s}' for s in TEMP_SEL4])
+    RH4 = mean_interp([f'reh_{s}' for s in TEMP_SEL4])
+    W4 = mean_interp([f'wind_spd_10m_{s}' for s in TEMP_SEL4])
+    out['temp_c4'] = T4
+    out['humidity'] = RH4
+    out['di'], out['wct'] = comfort(T4, RH4, W4)
     valid = out[['temp_c', 'solar_rad', 'wind_spd']].notna().all(axis=1)
     return out, valid
 
@@ -183,7 +208,7 @@ def eval_forecast(model, best, feat, d_act, ppa, horizons=(1, 2, 3, 7, 12), offs
             df['lag24'] = np.where(H <= 24, dem.reindex(tg - pd.Timedelta(hours=24)).values, np.nan)
             df['rec24'] = float(dem.loc[O - pd.Timedelta(hours=23):O].mean())
             df['rec168'] = float(dem.loc[O - pd.Timedelta(hours=167):O].mean())
-            for c in ('temp_c', 'solar_rad', 'wind_spd', 'total_cloud', 'midlow_cloud'):
+            for c in ('temp_c', 'solar_rad', 'wind_spd', 'total_cloud', 'midlow_cloud', 'temp_c4', 'humidity', 'di', 'wct'):
                 df[c] = wx[c].values
             df['cap_btmppa'] = cap_for(tg, ppa)
             df['hour_sin'] = np.sin(2*np.pi*tg.hour/24); df['hour_cos'] = np.cos(2*np.pi*tg.hour/24)

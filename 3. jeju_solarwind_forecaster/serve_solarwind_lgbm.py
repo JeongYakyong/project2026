@@ -44,6 +44,8 @@ FORE_MAP = {'radiation_west': 'solar_rad_west', 'radiation_south': 'solar_rad_so
             'rainfall_west': 'rainfall_west', 'rainfall_south': 'rainfall_south',
             'wind_spd_10m_west': 'wind_spd_west', 'wind_spd_10m_east': 'wind_spd_east',
             'wd_sin_10m_west': 'wd_sin_west', 'wd_cos_10m_west': 'wd_cos_west'}
+# (2026-06-17) east 풍향 추가 시도 → forecast 기준 악화(D+1 wind 0.125→0.135)로 복귀.
+# west/east 풍향이 거의 중복이라 east는 예보오차만 더함(실측≠예보 교훈). west 단독 유지.
 CANON = list(dict.fromkeys(FORE_MAP.values()))   # 캐노니컬 raw 컬럼(중복 제거)
 
 

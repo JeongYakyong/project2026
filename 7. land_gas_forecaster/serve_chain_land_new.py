@@ -52,15 +52,19 @@ bht = expf.bht
 serve6 = _imp('serve_solarwind_land', os.path.join(ROOT, '6. land_solarwind_forecaster', 'serve_solarwind_land.py'))
 sg = _imp('serve_land_gas', os.path.join(ROOT, '7. land_gas_forecaster', 'serve_land_gas.py'))
 pp = _imp('postprocess', os.path.join(ROOT, '1. data_fetcher_and_db', 'core', 'postprocess.py'))
+sdp = _imp('serve_demand_patch', os.path.join(ROOT, '5. land_demand_forecaster', 'serve_demand_patch.py'))
 
-# 수요 v2 (D+15) — archive_demand_horizon 와 동일 자산.
+# 수요 = LGBM v2hum(D+15) + PatchTST final336(D+1~7) 하이브리드 (06-19 확정).
+#   D+1~2 full patch / D+3~7 주간(09~15)=patch·야간=lgbm / D+8~15 lgbm.
+#   est_demand_land=합본(step7 입력)·est_demand_lgbm/_patch=원천(투명성).
 DEM_DIR = os.path.join(ROOT, '5. land_demand_forecaster', 'model', 'models')
-DEM_MODEL = os.path.join(DEM_DIR, 'lgbm_land_demand_v2.txt')
-DEM_META = os.path.join(DEM_DIR, 'model_meta_v2.json')
-FEAT_DEM = expf.BASEFEAT + ['total_cloud', 'midlow_cloud', 'cap_btmppa']
+DEM_MODEL = os.path.join(DEM_DIR, 'lgbm_land_demand_v2hum.txt')
+DEM_META = os.path.join(DEM_DIR, 'model_meta_v2hum.json')
+FEAT_DEM = json.load(open(DEM_META, encoding='utf-8'))['features']
 
 HZ = tuple(range(1, 16))   # D+1..D+15 (육지 16일 윈도우 = D+15.5)
-EST_COLS = ['est_demand_land', 'est_market_renew_land', 'est_net_load_land',
+EST_COLS = ['est_demand_land', 'est_demand_lgbm', 'est_demand_patch',
+            'est_market_renew_land', 'est_net_load_land',
             'est_solar_util_land', 'est_wind_util_land',
             'est_gas_gen_land_raw', 'est_gas_gen_land', 'est_gas_sendout_ton_land']
 
@@ -116,6 +120,7 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
 
     O = pd.Timestamp(base).normalize() + pd.Timedelta(hours=23)
     bht.set_scratch_forecast(sc, base)
+    patch = ctx['patch']; win = sdp.past_window(ctx['patch_hist'], O, patch['SEQ'])   # PatchTST 과거 윈도우(base별 1회)
     rec24g = float(gas_series.loc[O - pd.Timedelta(hours=23):O].mean())
     rec168g = float(gas_series.loc[O - pd.Timedelta(hours=167):O].mean())
     if not (np.isfinite(rec24g) and np.isfinite(rec168g)):
@@ -140,7 +145,7 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
             ddf[f'lag{k}'] = np.where(H <= k, dem.reindex(tg - pd.Timedelta(hours=k)).values, np.nan)
         ddf['lag24'] = np.where(H <= 24, dem.reindex(tg - pd.Timedelta(hours=24)).values, np.nan)
         ddf['rec24'] = rec24d; ddf['rec168'] = rec168d
-        for c in ('temp_c', 'solar_rad', 'wind_spd', 'total_cloud', 'midlow_cloud'):
+        for c in ('temp_c', 'solar_rad', 'wind_spd', 'total_cloud', 'midlow_cloud', 'temp_c4', 'humidity'):
             ddf[c] = wx[c].values
         ddf['cap_btmppa'] = expf.cap_for(tg, ppa)
         ddf['hour_sin'] = np.sin(2*np.pi*tg.hour/24); ddf['hour_cos'] = np.cos(2*np.pi*tg.hour/24)
@@ -148,9 +153,12 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
         ddf['month_sin'] = np.sin(2*np.pi*tg.month/12); ddf['month_cos'] = np.cos(2*np.pi*tg.month/12)
         ddf['day_type'] = pd.Categorical(dtv, categories=expf.DTCATS)
         ok = valid.values & ~np.isnan(ddf['lag504'].values)
-        dem_pred = np.full(len(tg), np.nan)
+        dem_lgbm = np.full(len(tg), np.nan)
         if ok.any():
-            dem_pred[ok] = dem_model.predict(ddf.loc[ok, FEAT_DEM], num_iteration=dem_best) + dem_off
+            dem_lgbm[ok] = dem_model.predict(ddf.loc[ok, FEAT_DEM], num_iteration=dem_best) + dem_off
+        # ── PatchTST(final336) 하이브리드 결합: D+1~2 full·D+3~7 주간·그외 lgbm ──
+        patch_pred = sdp.predict_block(patch, win, sc, O, n, tg, dtv, ppa) if (win is not None and n <= sdp.PATCH_MAX) else np.full(len(tg), np.nan)
+        dem_pred = sdp.combine(dem_lgbm, patch_pred, n, tg.hour.values)
 
         # ── 6단계 신재생 (PatchTST/LGBM 하이브리드, 스크래치 기상) ──
         out6, *_ = serve6._predict_day(sc, O.normalize(), n, A6)
@@ -164,6 +172,7 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
             continue
         tg2 = tg[m]; H2 = H[m]; dem2 = dem_pred[m]; mr2 = mr[m].astype(float); dt2 = dtv[m]
         su2 = su[m].astype(float); wu2 = wu[m].astype(float)
+        lgbm2 = dem_lgbm[m]; patch2 = patch_pred[m]   # 원천 보존(투명성)
 
         # ── 7단계 가스 raw (v2 자기회귀) ──
         gf = pd.DataFrame(index=tg2)
@@ -177,7 +186,8 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
 
         rows.append(pd.DataFrame({
             'base': base, 'timestamp': tg2, 'horizon_d': n,
-            'est_demand_land': dem2, 'est_market_renew_land': mr2,
+            'est_demand_land': dem2, 'est_demand_lgbm': lgbm2, 'est_demand_patch': patch2,
+            'est_market_renew_land': mr2,
             'est_net_load_land': dem2 - mr2,
             'est_solar_util_land': su2, 'est_wind_util_land': wu2,
             'est_gas_gen_land_raw': gas_raw, 'day_type': dt2}))
@@ -253,7 +263,7 @@ def main():
     print(f'[serve_chain_land_new] 대상 base {len(bases)}개: {bases[0][:10]} ~ {bases[-1][:10]}')
 
     # 공용 자산 1회 로드.
-    print('[load] 모델·자산 로드 (수요 v2 / 가스 v2 / 신재생 / 실측 시계열)')
+    print('[load] 모델·자산 로드 (수요 v2hum+PatchTST / 가스 v2 / 신재생 / 실측 시계열)')
     dem_model = lgb.Booster(model_file=DEM_MODEL)
     ctx = {
         'd_act': bht.load_actuals(),
@@ -266,6 +276,9 @@ def main():
         'gas_series': sg.load_gas_series(),
         'A6': serve6.load_assets(),
     }
+    ctx['patch'] = sdp.load_assets()                              # PatchTST final336(D1~7)
+    ctx['patch_hist'] = sdp.build_history(ctx['patch'], ctx['ppa'])
+    print(f'[load] PatchTST final336 D1~7 + 과거 {ctx["patch_hist"]["A_sc"].shape[0]}h')
     sc = bht.build_scratch(os.path.join(tempfile.gettempdir(), 'serve_chain_land.db'))
 
     t0 = time.time(); total = 0

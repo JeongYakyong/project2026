@@ -22,14 +22,20 @@ CMP  = os.path.normpath(os.path.join(HERE, '..'))
 CSV  = os.path.normpath(os.path.join(CMP, '..', 'training', 'solarwind_raw_jeju.csv'))
 SU, WU = 'real_solar_utilization_jeju', 'real_wind_utilization_jeju'
 
+# (2026-06-17) 사용자 피처 확정: solar_damping·clearsky_ratio 는 south 단독(west 제거).
+# 일사·구름은 west+south 유지. PatchTST(주력)는 미재학습이라 이 변경은 LGBM 폴백에만 반영.
 SOLAR_FINAL = ['solar_rad_west', 'solar_rad_south', 'total_cloud_west', 'total_cloud_south',
-               'midlow_cloud_west', 'midlow_cloud_south', 'solar_damping_west', 'solar_damping_south',
-               'clearsky_ratio_west', 'clearsky_ratio_south',
+               'midlow_cloud_west', 'midlow_cloud_south', 'solar_damping_south',
+               'clearsky_ratio_south',
                'hour_sin', 'hour_cos', 'month_sin', 'month_cos']
 SOLAR_ABLATION = ['solar_rad_west', 'solar_rad_south', 'total_cloud_west', 'total_cloud_south',
                   'midlow_cloud_west', 'midlow_cloud_south', 'solar_damping_west', 'solar_damping_south',
                   'hour_sin', 'hour_cos']
-WIND_FINAL = ['wind_spd_west', 'wind_spd_east', 'wind_zone_west', 'wind_zone_east',
+# 2026-06-17: east 풍향(wd_sin/cos_east) 추가 1회 실험 → forecast 백테스트서 악화(wind D+1
+# 0.125→0.135, west/east 풍향 중복=예보오차만 더함) → 미채택, 풍향 west 단독 유지.
+# 실험 스크립트 training/exp_wind_east_dir.py(기록 보존).
+# 사용자 피처 확정: wind_zone 은 east 단독(wind_zone_west 제거).
+WIND_FINAL = ['wind_spd_west', 'wind_spd_east', 'wind_zone_east',
               'wd_sin_west', 'wd_cos_west', 'hour_sin', 'hour_cos', 'year_sin', 'year_cos']
 
 WIND_SPD_CAP, CUTOFF = 20.0, 25.0

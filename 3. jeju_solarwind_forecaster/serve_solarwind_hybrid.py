@@ -19,6 +19,7 @@ API: predict_hybrid_to_db(origin, horizons=(1..7)) / backfill_hybrid_to_db(start
 from __future__ import annotations
 import os, sys, json
 import numpy as np, pandas as pd, torch
+import pvlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -30,6 +31,18 @@ SOLAR_PT_HORIZONS = [2, 3, 4, 5, 6, 7]      # direct 신규 학습(D+1은 기존
 APPLY_TCOG = True                            # 대류일(tcog>0) 후처리 보정 토글(3cmp-3)
 TCOG_JSON = os.path.join(HERE, 'lgbm_models', 'tcog_postproc.json')
 JEJU_HORIZONS = (1, 2, 3, 4, 5, 6, 7)
+
+# 야간 0 마스크(사용자 확정 2026-06-17): pvlib 태양 고도 < 5° 면 태양광 강제 0.
+# 모델은 해질녘/밤에 가짜 이용률(겨울 18h ~0.15, 최대 92MW)을 흘림 — 천문 일출일몰로 차단.
+JEJU_LAT, JEJU_LON, SOLAR_ELEV_MIN = 33.38, 126.55, 5.0   # 제주 남/서 태양광권역 대표 좌표
+
+
+def _daylight_mask(idx) -> np.ndarray:
+    """태양 고도 >= SOLAR_ELEV_MIN(5°) 인 시각 = 낮(True). pvlib 기준, 입력은 KST 가정."""
+    t = pd.DatetimeIndex(idx)
+    t = t.tz_localize('Asia/Seoul') if t.tz is None else t.tz_convert('Asia/Seoul')
+    elev = pvlib.solarposition.get_solarposition(t, JEJU_LAT, JEJU_LON)['apparent_elevation'].values
+    return elev >= SOLAR_ELEV_MIN
 PL = 24
 
 OUT = dict(su='est_solar_util_jeju_lh', wu='est_wind_util_jeju_lh', sg='est_solar_gen_jeju_lh',
@@ -156,6 +169,7 @@ def _predict_day(con, origin, n, assets):
     su, wu, tcog_on = _apply_tcog(con, idx, su, wu, assets[5])
     if tcog_on:
         ssrc += '+tcog'; wsrc += '+tcog'
+    su = np.where(_daylight_mask(idx), su, 0.0)   # 야간(태양고도<5°) 태양광 강제 0
     scap = L._latest_capacity(con, d, 'real_solar_gen_jeju', 'real_solar_capacity_jeju')
     wcap = L._latest_capacity(con, d, 'real_wind_gen_jeju', 'real_wind_capacity_jeju')
     if scap is None or wcap is None:

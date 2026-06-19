@@ -44,10 +44,11 @@ def export(db_path: Path, capa_path: Path, out_path: Path, start, end):
         sys.exit(f"[ERR] DB not found: {db_path}")
     cols = ["timestamp", TARGET, "day_type"]
     cols += [f"temp_c_{s}" for s in STATIONS]
+    cols += [f"humidity_{s}" for s in STATIONS]      # 불쾌지수용(상대습도) — 전 5지점
+    cols += [f"wind_spd_{s}" for s in STATIONS]       # 체감기온용 — 전 5지점(구 WIND_SEL→전체)
     cols += [f"solar_rad_{s}" for s in SOLAR_SEL]
     cols += [f"total_cloud_{s}" for s in SOLAR_SEL]
     cols += [f"midlow_cloud_{s}" for s in SOLAR_SEL]
-    cols += [f"wind_spd_{s}" for s in WIND_SEL]
     con = sqlite3.connect(str(db_path))
     try:
         avail = pd.read_sql("PRAGMA table_info(historical)", con)["name"].tolist()

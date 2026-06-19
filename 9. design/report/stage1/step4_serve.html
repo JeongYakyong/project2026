@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4단계 · 데이터 활용</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:760px}
+  .eyebrow{font-size:8px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1rem; line-height:1.55;}
+  svg{width:100%; height:auto; display:block}
+  .note{font-size:11px; color:var(--muted); margin:0.6rem 0 0; line-height:1.5;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="데이터 활용 흐름도"></svg>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 라벨만 바꾸면 됩니다  ▼▼▼                    -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 4 · 데이터 활용",
+    title:    "데이터 활용",
+    subtitle: "예측 모델은 데이터베이스에서 입력을 받아 예측을 만들고, 그 결과를 다시 데이터베이스의 "
+            + "‘예측 결과 테이블’에 저장합니다. 서비스 대시보드는 그 테이블에서 값을 불러와 보여줍니다.",
+    note:     "* 제주도 동일한 구조로 동작합니다.",
+    footer:   "데이터 수집·관리 · 4단계 활용 · 2026-06",
+  };
+
+  // 모델 / 데이터베이스(두 칸) / 대시보드 라벨
+  const LABELS = {
+    model:    { title:"예측 모델", sub:["전력 수요", "신재생 발전", "천연가스 수요"] },
+    dbTitle:  "데이터베이스",
+    inputRow: { n:"입력 데이터", sub:"날씨·전력 실측·예보" },
+    estRow:   { n:"예측 결과 테이블", sub:"모델이 만든 예측값" },
+    dash:     { n:"서비스 대시보드", sub:"표·그래프로 제공" },
+    a1:"① 입력 제공", a2:"② 결과 저장", a3:"③ 불러오기",
+  };
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 ─────────────────────────────────────────────────
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.10)',
+              rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.05)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t=(x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={})=>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+  const arrowLabel=(mx,my,s,col)=>{ const w=s.length*9+10;
+    return `<rect x="${mx-w/2}" y="${my-9}" width="${w}" height="14" rx="2" fill="${T.paper}"/>`+
+           t(mx,my+2,s,{size:8.5,col,w:600,ls:0.02}); };
+
+  function build(){
+    const vbW=720;
+    const model={x:40,y:150,w:180,h:96};            // cy=198
+    const dbX=300, dbW=180;
+    const input={x:dbX,y:150,w:dbW,h:44};           // 입력 데이터 칸  cy=172
+    const est  ={x:dbX,y:210,w:dbW,h:44};           // 예측 결과 테이블 cy=232
+    const dash ={x:540,y:170,w:150,h:56};           // cy=198
+    const cyIn=input.y+input.h/2, cyEst=est.y+est.h/2;
+
+    let s='';
+
+    // ── 화살표(박스보다 먼저) ── 컨테이너 없이 각 칸에 직접 연결
+    // ① 입력 제공 : 입력 데이터 → 예측 모델
+    s += `<line x1="${input.x}" y1="${cyIn}" x2="${model.x+model.w+4}" y2="${model.y+30}" stroke="${T.muted}" stroke-width="1.2" marker-end="url(#arrow)"/>`;
+    // ② 결과 저장 : 예측 모델 → 예측 결과 테이블 (피드백, 강조색)
+    s += `<line x1="${model.x+model.w}" y1="${model.y+72}" x2="${est.x-4}" y2="${cyEst}" stroke="${T.accent}" stroke-width="1.4" marker-end="url(#arrow-acc)"/>`;
+    // ③ 불러오기 : 예측 결과 테이블 → 서비스 대시보드
+    s += `<line x1="${est.x+est.w}" y1="${cyEst}" x2="${dash.x-4}" y2="${dash.y+dash.h/2}" stroke="${T.muted}" stroke-width="1.2" marker-end="url(#arrow)"/>`;
+
+    // 화살표 라벨
+    s += arrowLabel((input.x+model.x+model.w)/2, cyIn-13, LABELS.a1, T.muted);
+    s += arrowLabel((model.x+model.w+est.x)/2, cyEst+13, LABELS.a2, T.accent);
+    s += arrowLabel((est.x+est.w+dash.x)/2, (cyEst+dash.y+dash.h/2)/2+30, LABELS.a3, T.muted);
+
+    // ── 예측 모델 박스 ──
+    s += `<rect x="${model.x}" y="${model.y}" width="${model.w}" height="${model.h}" rx="6" fill="${T.paper}"/>`+
+         `<rect x="${model.x}" y="${model.y}" width="${model.w}" height="${model.h}" rx="6" fill="#ffffff" stroke="${T.ink}" stroke-width="1"/>`;
+    s += t(model.x+model.w/2, model.y+26, LABELS.model.title, {size:13,col:TEXT,w:700});
+    LABELS.model.sub.forEach((ln,i)=>{ s += t(model.x+model.w/2, model.y+46+i*16, "· "+ln, {size:10.5,col:T.muted,w:400}); });
+
+    // ── 데이터베이스 : 컨테이너 없이 라벨 + 두 칸 ──
+    s += t(dbX+dbW/2, input.y-12, LABELS.dbTitle, {size:11,col:T.muted,w:700,ls:0.06});
+    // 입력 데이터 칸
+    s += `<rect x="${input.x}" y="${input.y}" width="${input.w}" height="${input.h}" rx="6" fill="${T.store}" stroke="${T.muted}" stroke-width="1"/>`;
+    s += t(input.x+input.w/2, input.y+19, LABELS.inputRow.n, {size:11.5,col:TEXT,w:700});
+    s += t(input.x+input.w/2, input.y+33, LABELS.inputRow.sub, {size:8.5,col:T.soft,w:400});
+    // 예측 결과 테이블 칸 (강조)
+    s += `<rect x="${est.x}" y="${est.y}" width="${est.w}" height="${est.h}" rx="6" fill="${T.accentTint}" stroke="${T.accent}" stroke-width="1"/>`;
+    s += t(est.x+est.w/2, est.y+19, LABELS.estRow.n, {size:11.5,col:TEXT,w:700});
+    s += t(est.x+est.w/2, est.y+33, LABELS.estRow.sub, {size:8.5,col:T.muted,w:400});
+
+    // ── 서비스 대시보드 박스 ──
+    s += `<rect x="${dash.x}" y="${dash.y}" width="${dash.w}" height="${dash.h}" rx="6" fill="${T.paper}"/>`+
+         `<rect x="${dash.x}" y="${dash.y}" width="${dash.w}" height="${dash.h}" rx="6" fill="#ffffff" stroke="${T.ink}" stroke-width="1"/>`;
+    s += t(dash.x+dash.w/2, dash.y+24, LABELS.dash.n, {size:12,col:TEXT,w:700});
+    s += t(dash.x+dash.w/2, dash.y+41, LABELS.dash.sub, {size:9.5,col:T.muted,w:400});
+
+    // ── 범례 ──
+    const legY=Math.max(model.y+model.h, est.y+est.h, dash.y+dash.h)+30;
+    s += `<line x1="40" y1="${legY}" x2="${vbW-40}" y2="${legY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    const items=[
+      {fill:'#ffffff',stroke:T.ink,label:'예측 모델 · 서비스'},
+      {fill:T.store,stroke:T.muted,label:'입력 데이터'},
+      {fill:T.accentTint,stroke:T.accent,label:'예측 결과 테이블(저장 후 불러옴)'},
+    ];
+    let lx=40, ly=legY+10;
+    items.forEach(it=>{ s += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${it.fill}" stroke="${it.stroke}" stroke-width="1"/>`+
+                t(lx+16, ly+10, it.label, {size:8.5,col:TEXT,w:500,anc:'start',ls:0.02});
+                lx += it.label.length*13 + 40; });
+
+    const vbH=legY+44;
+    const svg=document.getElementById('diagram');
+    svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+    svg.innerHTML =
+      `<defs>`+
+      `<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker>`+
+      `<marker id="arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.accent}"/></marker>`+
+      `</defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+ s;
+
+    document.getElementById('eyebrow').textContent  = META.eyebrow;
+    document.getElementById('title').textContent    = META.title;
+    document.getElementById('subtitle').textContent = META.subtitle;
+    document.getElementById('note').textContent     = META.note;
+    document.getElementById('footer').textContent   = META.footer;
+  }
+  build();
+</script>
+</body>
+</html>

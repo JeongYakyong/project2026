@@ -14,18 +14,27 @@
 # ════════════ 제주 (forecast_horizon 신규 경로로 정리, 2026-06-16) ════════════
 # ① 기상예보(KIMR+KIMG, 일사 3지점) → forecast_horizon : collect_forecast_new 제주 네이티브.
 #   --backfill 3 = 최신+직전 2 base 완결성 점검(완전 skip / 불완전 auto-resume, 육지와 동일 정책).
-#   02:00 1차 + 05:00 재시도. 육지 forecast(1:30/4:30)와 시차를 둬 KMA 동시 부하/504 를 피한다.
+#   run_collect_forecast.sh 는 육지·제주가 같은 flock(collect_forecast.lock)을 공유한다
+#   (KMA 동시 호출 차단=504 방지).  그래서 제주는 육지(1:30/4:30)보다 1시간 뒤(2:30/5:30)에
+#   둬, 육지 실행이 끝나 lock 이 풀린 뒤 돌게 한다(겹치면 flock -n 으로 그 회차는 skip → 다음
+#   회차/다음날 backfill 이 부족분 auto-resume).
 #   ※ 대량 과거 백필·KIMR 504 펑크 보충은 core/backfill_jeju_forecast.py(KIMR/KIMG 2-패스,
 #     --kimr-only) 를 수동으로 쓴다(서버 cron 아님 — API 한도).
-0 2 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
-0 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
+30 2 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
+30 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
 
-# ② 실측 + (현행 서빙용) legacy forecast : run_collect_jeju.sh(forecast+historical) 유지.
-#   제주 데모/서빙이 아직 forecast_horizon·est_horizon_jeju 로 미전환이라 legacy forecast
-#   테이블이 필요하다.  전환 완료 시 이 두 줄을 '--no-forecast'(historical 만)로 바꾸고,
-#   forecast 갱신은 위 ① 한 곳으로 일원화할 것(현재는 ①과 KMA 호출이 겹치는 과도기 비용).
+# ② 실측 + (현행 데모용) legacy forecast : run_collect_jeju.sh(forecast+historical) 유지.
+#   서빙(③)은 forecast_horizon→est_horizon_jeju 로 전환 완료(2026-06-17)했으나, 8단계 streamlit
+#   데모가 아직 제주를 legacy forecast 에서 읽어 당분간 유지한다.  데모 소스 전환(8-B) 완료 시
+#   이 두 줄을 '--no-forecast'(historical 만)로 바꾸고 forecast 갱신은 ① 한 곳으로 일원화할 것.
 10 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
 10 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh --bases 1 --forecast-days 7
+
+# ③ 서빙 체인 2→3 → est_horizon_jeju : 매일 1회 (06:30) — ①·② 완료 후 최신 base 수요·신재생→
+#   net_load 를 est_horizon_jeju(예측 아카이브)에 적재.  로컬 추론(API 무관)이라 육지 서빙(06:00)
+#   직후에 둔다(별도 lock).  legacy forecast 테이블은 건드리지 않는다.  기상/실측이 불완전하면
+#   가능한 지평만 산출(원점 168h history 부족 base 는 skip → 다음날 갱신).  SMP(4단계)는 범위 밖.
+30 6 * * * /home/kimjourvanne/project2026/deploy/run_serve_chain_jeju.sh
 
 # (폐기) run_collect_runs.sh --region jeju → 위 run_collect_forecast.sh --region jeju 로 대체.
 #   collect_forecast_runs.py 는 collect_forecast_new 가 import 하는 라이브러리로는 남지만,

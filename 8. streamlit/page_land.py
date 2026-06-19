@@ -8,6 +8,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
+import brief_ai as B
 
 C.page_header(
     "NATIONAL · DAILY BRIEFING", "가스 송출량 예측 브리핑",
@@ -57,7 +58,7 @@ def render_forecast_check():
     c4.metric("가스발전 합", f"{df['est_gas_gen_land'].sum() / 1000:,.1f} GWh")
 
     st.markdown("##### AI 브리핑")
-    st.info("brief_ai는 8-D에서 연결됩니다 (Gemini API, 같은 날짜·지역 24시간 캐시).")
+    B.render_brief_panel("fchk", day)
 
 
 # 누적 그룹 색 — 전력거래소 차트와 비슷한 톤 (원전 주황·가스 노랑·BTM/PPA 연분홍)
