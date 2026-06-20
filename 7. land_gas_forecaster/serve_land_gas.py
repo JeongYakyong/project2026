@@ -16,8 +16,9 @@ T+h 를 직접 예측.
   최소·계절 균형 검증(Option A 단조).  기후값 절대금지 하드규칙은 해제됨(기후값=우리가 만든 평년 모델).
 명제용 드라이버-only 7-A 와 구 7-A2(util) 는 보존.
 
-출력(forecast, _land): est_gas_gen_land(MW), est_gas_sendout_ton_land(TON/h, ×0.1521).
-API: predict_gas_to_db(origin, days_ahead) / backfill_gas_to_db(start, end). CLI 동일.
+출력(est_horizon_land, _land): est_gas_gen_land(MW), est_gas_sendout_ton_land(TON/h, ×0.1521).
+사용: 통합 체인 serve_chain_land_new.py 가 이 파일의 보정·기후값·용량 함수를 import 해 적용한다.
+  (옛 단독 실행 진입점 predict_gas_to_db/backfill_gas_to_db 는 체인과 중복이라 제거됨, 2026-06-19.)
 """
 from __future__ import annotations
 import os, sys, sqlite3, json
@@ -139,139 +140,8 @@ def load_gas_series() -> pd.Series:
     s.index.name = 'timestamp'
     return s
 
-
-def _read_chain(con, t0, t1):
-    cols = [c[1] for c in con.execute('PRAGMA table_info(forecast)')]
-    dtsel = ', day_type' if 'day_type' in cols else ''
-    df = pd.read_sql(
-        f'SELECT timestamp, "{DEMAND_COL}", "{RENEW_COL}"{dtsel} FROM forecast '
-        f'WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp',
-        con, params=(t0, t1), parse_dates=['timestamp']).set_index('timestamp')
-    return df
-
-
-def predict_gas_to_db(origin_date: str | None = None, days_ahead: int = 7,
-                      write: bool = True, verbose: bool = True) -> pd.DataFrame:
-    day_c, night_c, conv, w_dict, clim_spec = _load_calib()
-    clim_lut, clim_fb = load_gas_climatology(clim_spec.get('years', '2022-2024'), clim_spec.get('window_days', 7))
-    booster = lgb.Booster(model_file=MODEL)
-    gas = load_gas_series()
-
-    if origin_date is None:
-        O = gas.dropna().index.max().normalize() + pd.Timedelta(hours=23)
-        if O > gas.dropna().index.max():
-            O -= pd.Timedelta(days=1)
-    else:
-        O = pd.Timestamp(origin_date).normalize() + pd.Timedelta(hours=23)
-    rec24 = float(gas.loc[O - pd.Timedelta(hours=23):O].mean())
-    rec168 = float(gas.loc[O - pd.Timedelta(hours=167):O].mean())
-    if not np.isfinite(rec24) or not np.isfinite(rec168):
-        raise ValueError(f'원점 가스 최근레벨 NaN (O={O}) — 실측 적재 확인')
-
-    H = np.arange(1, days_ahead * 24 + 1)
-    idx = pd.DatetimeIndex([O + pd.Timedelta(hours=int(h)) for h in H])
-    t0, t1 = idx.min().strftime('%Y-%m-%d %H:%M:%S'), idx.max().strftime('%Y-%m-%d %H:%M:%S')
-    with _conn() as con:
-        ci = _read_chain(con, t0, t1)
-    dem = pd.to_numeric(ci[DEMAND_COL], errors='coerce').reindex(idx)
-    ren = pd.to_numeric(ci[RENEW_COL], errors='coerce').reindex(idx)
-    if dem.isna().all():
-        raise ValueError(f'체인 입력 없음 ({t0}~{t1}) — 5·6단계 서빙을 먼저 실행하세요.')
-
-    df = pd.DataFrame(index=idx)
-    df['real_demand_land'] = dem.values
-    df['renew_util'] = ren.values / _renew_cap(idx)
-    df['gas_lag168'] = np.where(H <= 168, gas.reindex(idx - pd.Timedelta(hours=168)).values, np.nan)
-    df['gas_lag24'] = np.where(H <= 24, gas.reindex(idx - pd.Timedelta(hours=24)).values, np.nan)
-    df['gas_rec24'] = rec24; df['gas_rec168'] = rec168
-    df['h'] = H; df['hour'] = idx.hour; df['dow'] = idx.dayofweek; df['doy'] = idx.dayofyear
-
-    ok = df['real_demand_land'].notna().values & df['renew_util'].notna().values
-    pred = np.full(len(idx), np.nan)
-    pred[ok] = booster.predict(df.loc[ok, FEATS]) + _OFFSET
-    dayahead = ((idx.normalize() - O.normalize()).days).astype(float)
-    cvec = _calib_vec(dayahead, idx.hour.values, day_c, night_c)
-    gen_cal = pred * cvec
-    # 블렌딩: 장지평일수록 가스 기후값(평년) 쪽으로 (w(h), 기후값 가용 시각만)
-    if 'day_type' in ci.columns:
-        dtv = ci['day_type'].reindex(idx).values
-        dtv = np.where(pd.isna(dtv), np.where(idx.dayofweek >= 5, 'weekend', 'weekday'), dtv)
-    else:
-        dtv = np.where(idx.dayofweek >= 5, 'weekend', 'weekday')
-    clim = _clim_vals(idx, dtv, clim_lut, clim_fb)
-    wv = _blend_w(dayahead, w_dict)
-    gen = gen_cal.copy()
-    use = np.isfinite(clim) & np.isfinite(gen_cal)
-    gen[use] = (1 - wv[use]) * gen_cal[use] + wv[use] * clim[use]
-    ton = gen * conv
-
-    out = pd.DataFrame({'timestamp': idx.strftime('%Y-%m-%d %H:%M:%S'),
-                        OUT_GEN: np.round(gen, 1), OUT_TON: np.round(ton, 2)})
-    out = out[np.isfinite(gen)]
-    if write and len(out):
-        with _conn() as con:
-            cols = [c[1] for c in con.execute('PRAGMA table_info(forecast)')]
-            for c in (OUT_GEN, OUT_TON):
-                if c not in cols:
-                    con.execute(f'ALTER TABLE forecast ADD COLUMN "{c}" REAL')
-            con.executemany(
-                f'INSERT INTO forecast ("timestamp","{OUT_GEN}","{OUT_TON}") VALUES (?,?,?) '
-                f'ON CONFLICT("timestamp") DO UPDATE SET "{OUT_GEN}"=excluded."{OUT_GEN}", '
-                f'"{OUT_TON}"=excluded."{OUT_TON}"',
-                [(r.timestamp, float(r[OUT_GEN]), float(r[OUT_TON])) for _, r in out.iterrows()])
-            con.commit()
-    if verbose:
-        gm = float(np.nanmean(gen))
-        print(f'origin={O:%Y-%m-%d} → D+1..D+{days_ahead}  {len(out)}h  '
-              f'gas {gm:.0f}MW(avg)  송출 {np.nansum(ton):.0f}TON(합)  calib=낮/밤 분리·지평보간')
-        print(out.head(12).to_string(index=False))
-    return out
-
-
-def backfill_gas_to_db(start: str, end: str, days_ahead: int = 1,
-                       write: bool = True, verbose: bool = True) -> pd.DataFrame:
-    """과거 origin들에 대해 예측 후 실측 gen_gas_kr와 MAPE(체인 입력 존재 구간만)."""
-    with _conn() as con:
-        gas = pd.read_sql('SELECT timestamp, gen_gas_kr FROM historical', con,
-                          parse_dates=['timestamp']).set_index('timestamp')['gen_gas_kr']
-    origins = pd.date_range(pd.Timestamp(start).normalize(), pd.Timestamp(end).normalize(), freq='D')
-    rows = []
-    for O in origins:
-        try:
-            o = predict_gas_to_db(O.strftime('%Y-%m-%d'), days_ahead, write=write, verbose=False)
-        except Exception:
-            continue
-        o = o.copy(); o['actual'] = gas.reindex(pd.DatetimeIndex(o['timestamp'])).values
-        rows.append(o)
-    if not rows:
-        print('예측 가능한 origin 없음'); return pd.DataFrame()
-    res = pd.concat(rows, ignore_index=True)
-    if verbose:
-        m = res.dropna(subset=['actual']); m = m[m.actual > 0]
-        mape = float(np.mean(np.abs(m.actual - m[OUT_GEN]) / m.actual) * 100)
-        bias = float(np.mean((m[OUT_GEN] - m.actual) / m.actual) * 100)
-        hr = pd.DatetimeIndex(m.timestamp).hour
-        dm = m[(hr >= 9) & (hr <= 15)]
-        dmape = float(np.mean(np.abs(dm.actual - dm[OUT_GEN]) / dm.actual) * 100)
-        print(f'[backfill] {start}~{end}  예측 {len(res)}h  실측대조 {len(m)}h  '
-              f'발전량 MAPE {mape:.2f}%  bias {bias:+.1f}%  낮(09-15) MAPE {dmape:.2f}%')
-    return res
-
-
-if __name__ == '__main__':
-    import argparse
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
-    p = argparse.ArgumentParser(description='7단계 v2 가스 서빙 (자기회귀 다지평 + 체인 5·6)')
-    sub = p.add_subparsers(dest='cmd', required=True)
-    pp = sub.add_parser('predict'); pp.add_argument('date', nargs='?', default=None)
-    pp.add_argument('--days', type=int, default=7); pp.add_argument('--no-write', action='store_true')
-    bf = sub.add_parser('backfill'); bf.add_argument('start'); bf.add_argument('end')
-    bf.add_argument('--days', type=int, default=1); bf.add_argument('--no-write', action='store_true')
-    a = p.parse_args()
-    if a.cmd == 'predict':
-        predict_gas_to_db(a.date, a.days, write=not a.no_write)
-    else:
-        backfill_gas_to_db(a.start, a.end, a.days, write=not a.no_write)
+# 직접 실행(standalone) 진입점은 제거됨(2026-06-19) — 통합 체인 serve_chain_land_new.py 가
+# 위 라이브러리 함수(_load_calib·load_gas_climatology·_clim_vals·_blend_w·_calib_vec·
+# _renew_cap·load_gas_series)를 import 해 5→6→7 을 한 번에 돌리고 보정·블렌딩까지 적용해
+# est_horizon_land 에 쓴다.  옛 _read_chain·predict_gas_to_db·backfill_gas_to_db(forecast
+# 테이블 읽기·쓰기)는 체인과 중복이라 삭제.  이 파일은 체인이 쓰는 라이브러리로만 남는다.

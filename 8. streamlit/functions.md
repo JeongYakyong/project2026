@@ -23,13 +23,11 @@
 |---|---|---|
 | 2-B `serve_jeju_demand_lh.py` | **정수 = D+1..D+N 범위** | `--days 7` → D+1~D+7 |
 | 3 `serve_solarwind_hybrid.py` | **콤마 목록 = 지평들** | `--days 1,2,3,4,5,6,7` |
-| 5-B `serve_land_demand.py` | **정수 = D+1..D+N 범위** | `--days 7` → D+1~D+7 |
-| 6-C `serve_solarwind_land.py` | **콤마 목록 = 지평들** | `--days 1,2,3,4,5,6,7,12` |
-| 7 `serve_land_gas.py` predict | **정수 = D+1..D+N 범위** | `--days 7` → D+1~D+7 |
-| 7 `serve_land_gas.py` backfill | 정수 = 각 origin당 D+N까지 (기본 1 = D+1만) | |
+| 전국(5·6·7) `serve_chain_land_new.py` | `--backfill N`=최근 N개 base / `--base 날짜` / 인자없음=최신 1건 | `--backfill 186`=전 구간 |
+
+> **전국 단독 실행 스크립트(5-B `serve_land_demand.py`·6-C `serve_solarwind_land.py`·7 `serve_land_gas.py`)는 2026-06-19 정리됨**: 통합 체인 `serve_chain_land_new.py`가 5→6→7을 한 번에 돌려 **est_horizon_land**에 쓴다. `serve_land_demand.py`는 `99. others`로 아카이브, 6·7 파일은 체인이 import하는 라이브러리 함수만 남김(단독 `--days` CLI 제거). **전국 forecast 테이블도 폐기**(예측=est_horizon_land·기상=forecast_horizon·실측=historical 3테이블). 제주(2-B·3·4)는 그대로 단독 실행 + forecast 사용.
 
 또 하나: **2-B backfill은 기본이 평가만(no-write)** — DB에 쓰려면 `--write` 필요.
-(5-B·6-C·7 backfill은 기본 write, `--no-write`로 끔.)
 
 ---
 
@@ -94,22 +92,21 @@
 
 ## 전국 트랙 (5~7단계, DB = input_data_land.db)
 
-### 5단계 — 수요 (serve_land_demand.py, 5-B)
-- LGBM 직접 다지평(h=1..168). origin 23:00 → D+1~D+7 → `forecast.est_demand_land`.
-- 기상 = 예보 우선·기후값 폴백(`weather_src` 표기). 보통 실예보는 ~D+1, 그 너머는 기후값.
-- CLI: `predict [date] --days N` / `backfill start end`. D+1 MAPE ~4.2%(백필, KPX 5.45% 우위).
+> ★ **전국 5·6·7 서빙은 통합 체인 `serve_chain_land_new.py`로 단일화됨(2026-06-19)** — 5→6→7을 한 번에 돌려 **est_horizon_land**에 쓴다. 단계별 단독 실행 스크립트는 정리됨(`serve_land_demand.py`=아카이브, 6·7=체인용 라이브러리 함수만 유지). 아래는 모델·컬럼 참조.
 
-### 6단계 — 신재생 → net_load (serve_solarwind_land.py, 6-C)
-- 채널 분리: solar=PatchTST direct(D+1~7, D+12)+LGBM 폴백 / wind=LGBM 전지평. 수요는 `est_demand_land` 우선 → `land_est_demand_da`(KPX) 폴백.
-- 출력 8컬럼: `est_solar/wind_util_land`, `est_solar/wind_gen_land`, **`est_market_renew_land`**(시장 solar+wind → 7단계 입력), `est_true_renew_land`·`est_true_demand_land`(BTM/PPA 포함, 분석용), **`est_net_load_land`**(= 수요 − 시장신재생).
-- CLI: `predict origin --days 1,2,...,7,12`(콤마 목록) / `backfill start end`.
+### 5단계 — 수요 (체인 내, 옛 5-B)
+- 하이브리드: D+1~2 full PatchTST(final336) / D+3~7 주간(09~15)=PatchTST·야간=LGBM / D+8~15 LGBM(v2hum). → `est_horizon_land.est_demand_land`(합본)·`est_demand_lgbm`·`est_demand_patch`(원천).
+- 기상 = forecast_horizon(지평 아카이브). D+1 MAPE ~4.2%(백필, KPX 5.45% 우위).
+
+### 6단계 — 신재생 → net_load (체인 내, 옛 6-C)
+- 채널 분리: solar=PatchTST direct **전 지평(D+1~15, landsolar504)**+LGBM 폴백(입력결측 시) / wind=LGBM 전지평.
+- 출력(est_horizon_land): `est_solar/wind_util_land`, **`est_market_renew_land`**(시장 solar+wind → 7단계 입력), **`est_net_load_land`**(= 수요 − 시장신재생). (BTM/PPA 포함 `est_true_*`는 7-Ar 분석 전용으로 체인 출력엔 미포함.)
 - 검증: SOLAR util MAE(낮) 0.087 / WIND 0.139.
 
-### 7단계 — 가스 (serve_land_gas.py, 7-A2-A 체인)
-- 체인: `est_demand_land`(5) + `est_market_renew_land`(6) 읽어 → 이용률 LGBM × LNG용량 × bias보정(×0.96509) → **`est_gas_gen_land`**(MW) → ×0.1521 → **`est_gas_sendout_ton_land`**(TON).
-- CLI: `predict [date] --days N`(D+1..N) / `backfill start end --days N`(origin당 D+N, 기본 D+1).
-- 계수 파일: `model/gas_serving_calib.json` (bias 0.96509, 변환 0.1521 ton/MWh).
-- 체인 검증 가스 MAPE ~13%(D+1≈D+12 평평, ORACLE 10.8%).
+### 7단계 — 가스 (체인 내, 옛 7-A2-A)
+- `est_demand_land`(5) + `est_market_renew_land`(6) → 이용률 LGBM × LNG용량 × 지평별 보정 + 장지평 기후값 블렌딩 → **`est_gas_gen_land`**(MW) → ×0.1521 → **`est_gas_sendout_ton_land`**(TON).
+- 계수 파일: `model/gas_serving_calib.json` (보정·변환 0.1521 ton/MWh·블렌딩 가중).
+- 체인 검증 가스 MAPE ~13%(정직 D+1 13.0%→D+12 17.0%, ORACLE 평평).
 
 ### KOGAS 환산 (7-C 산출물 — 모델 아님, 앱이 직접 사용)
 - 변환계수: **송출량(TON) = 0.1521 × 발전량(MWh)** (열효율 ~43%, 변환 자체 MAPE 3.6%).
@@ -121,8 +118,9 @@
 
 > ★ **전국 예측 소스 전환(2026-06-15)**: 전국 예측은 모두 **`est_horizon_land`**(tall:
 > `base` 발행시각 × `horizon_d` 지평 × `timestamp` 목표시각)에서 읽는다. 구 `forecast`
-> 테이블(timestamp 단일키 "최신 스냅샷")은 지평이 뭉개져 **예측 소스로 안 쓴다**(기상·KPX DA·
-> 데이터현황 원시조회용으로만 유지). `common.land_est_horizon(mode, value, …)`의 3축:
+> 테이블(timestamp 단일키 "최신 스냅샷")은 지평이 뭉개져 **예측 소스로 안 쓴다**. **전국 forecast
+> 테이블은 2026-06-19 폐기**(전국 DB = est_horizon_land·forecast_horizon·historical 3테이블). KPX DA·
+> 기상·데이터현황은 historical·forecast_horizon에서 읽는다. `common.land_est_horizon(mode, value, …)`의 3축:
 > `latest`(목표별 최근 발행=과거는 D+1) / `asof`(발행일 고정 → 그 발행본 D+1~15) /
 > `fixed`(지평 D+k 고정). UI는 `common.horizon_picker`. **KPX `*_da`는 day-ahead라
 > 표시 지평이 D+1인 행에서만 비교 유효**(다른 지평 행은 비움). 제주는 아직 지평 아카이브 미구축

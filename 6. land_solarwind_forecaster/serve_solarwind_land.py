@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """전국 Solar/Wind → net_load 통합 서빙 (6-C). 채널 분리(G-13):
 
-  - SOLAR = PatchTST direct (D+1~D+7, D+12 가중치). 그 외 지평/입력결측은 LGBM(6-A) 폴백.
+  - SOLAR = PatchTST direct (landsolar504, D+1~D+15 전 지평 가중치). 입력결측 지평만 LGBM(6-A) 폴백.
   - WIND  = LGBM 전 지평(6-A). PatchTST wind 미사용(자기상관 붕괴·forecast 풍속오차 증폭, 비중 작음).
   - 산출 2종: 시장 신재생(→7-A)과 전체 신재생(BTM/PPA 포함 → 7-Ar). 이용률 하나가 둘 다 구동(6-A2).
     total_solar_cap = market_cap + k(1+r)·ppa_cap (6-A2 검증, k·r = btm_ppa_recon_6a2.json).
@@ -13,8 +13,8 @@
   est_true_renew_land(+PPA/BTM, →7-Ar), est_true_demand_land(=수요+PPA/BTM, →7-Ar),
   est_net_load_land(=수요 − 시장신재생).
 
-API: predict_land_to_db(origin, horizons=(1..7,12)) / backfill_land_to_db(start,end)
-CLI: python serve_solarwind_land.py predict 2026-05-01 --days 1,2,3,4,5,6,7,12
+사용: 통합 체인 serve_chain_land_new.py 가 load_assets()·_predict_day() 를 import 해 호출한다.
+  (옛 단독 실행 진입점 predict_land_to_db/backfill_land_to_db 는 체인과 중복이라 제거됨, 2026-06-19.)
 """
 from __future__ import annotations
 import os, sys, json, sqlite3
@@ -24,14 +24,14 @@ import torch.nn as nn, torch.nn.functional as F
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.normpath(os.path.join(HERE, '..', '1. data_fetcher_and_db', 'data', 'input_data_land.db'))
 PPA_CSV = os.path.normpath(os.path.join(HERE, '..', '1. data_fetcher_and_db', 'second_dataset', 'ppa_scale.csv'))
-PT_DIR  = os.path.join(HERE, 'training', 'landsolar_patchtst')
+PT_DIR  = os.path.join(HERE, 'training', 'landsolar504')
 MOD     = os.path.join(HERE, 'model', 'models')
 DEVICE  = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 SOLAR_ST = ['yeonggwang', 'seosan', 'pohang']
 WIND_ST  = ['daegwallyeong', 'yeonggwang', 'pohang']
-SOLAR_PT_HORIZONS = [1, 2, 3, 4, 5, 6, 7, 12, 14, 15]    # 학습된 PatchTST 가중치(D14·D15 추가)
-LAND_HORIZONS = tuple(range(1, 16))    # D+1..D+15 연속 — PatchTST 있는 지평={1-7,12,14,15}, 나머지(8-11,13)=LGBM 폴백
+SOLAR_PT_HORIZONS = list(range(1, 16))    # landsolar504 = D+1..D+15 전 지평 PatchTST 가중치
+LAND_HORIZONS = tuple(range(1, 16))    # D+1..D+15 연속 — 전 지평 PatchTST, 입력결측만 LGBM 폴백
 DEMAND_COLS = ['est_demand_land', 'land_est_demand_da']   # 5단계 우선 → KPX 폴백
 PL = 24
 
@@ -249,59 +249,7 @@ def _predict_day(con, origin, n, A):
     return out, ssrc, wsrc, dsrc
 
 
-def _upsert(con, out):
-    cols = [c[1] for c in con.execute('PRAGMA table_info(forecast)')]
-    for c in OUT_COLS:
-        if c not in cols: con.execute(f'ALTER TABLE forecast ADD COLUMN "{c}" REAL')
-    setc = ', '.join(f'"{c}"=excluded."{c}"' for c in OUT_COLS)
-    colc = ', '.join(f'"{c}"' for c in ['timestamp'] + OUT_COLS)
-    ph = ', '.join(['?']*(1+len(OUT_COLS)))
-    rows = [tuple([r['timestamp']] + [None if pd.isna(r[c]) else float(r[c]) for c in OUT_COLS]) for _, r in out.iterrows()]
-    con.executemany(f'INSERT INTO forecast ({colc}) VALUES ({ph}) ON CONFLICT("timestamp") DO UPDATE SET {setc}', rows)
-
-
-def predict_land_to_db(origin, horizons=LAND_HORIZONS, write=True, verbose=True) -> pd.DataFrame:
-    A = load_assets(); o = pd.Timestamp(origin).normalize(); outs = []
-    with _conn() as con:
-        for n in horizons:
-            try:
-                out, ssrc, wsrc, dsrc = _predict_day(con, o, n, A)
-            except Exception as e:
-                if verbose: print(f'  skip D+{n}: {str(e)[:70]}')
-                continue
-            o2 = out.copy(); o2.insert(1, 'horizon', n); o2['solar_src'] = ssrc; outs.append(o2)
-            if write: _upsert(con, out)
-            if verbose:
-                nl = out[OUT['nl']]; tr = out[OUT['tr']]
-                print(f'  D+{n} {(o+pd.Timedelta(days=n)).date()} | solar={ssrc} wind=lgbm dem={dsrc} | '
-                      f"net_load {('NaN' if nl.isna().all() else f'{nl.mean():.0f}MW')} | true_renew {tr.mean():.0f}MW")
-        if write: con.commit()
-    if verbose: print(f'[DB] forecast ← origin {o.date()} | {len(outs)}지평 ({"write" if write else "no-write"})')
-    return pd.concat(outs, ignore_index=True) if outs else pd.DataFrame()
-
-
-def backfill_land_to_db(start, end, horizons=LAND_HORIZONS, verbose=True):
-    A = load_assets(); days = pd.date_range(pd.Timestamp(start).normalize(), pd.Timestamp(end).normalize(), freq='D'); done = 0
-    with _conn() as con:
-        for o in days:
-            for n in horizons:
-                try:
-                    out, *_ = _predict_day(con, o, n, A); _upsert(con, out); done += 1
-                except Exception:
-                    pass
-        con.commit()
-    if verbose: print(f'[backfill] {days[0].date()}~{days[-1].date()} | {len(days)}발행일×{len(horizons)}지평, {done}건')
-
-
-if __name__ == '__main__':
-    import argparse
-    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    except Exception: pass
-    p = argparse.ArgumentParser(description='전국 solar/wind 서빙(solar=PatchTST, wind=LGBM)')
-    sub = p.add_subparsers(dest='cmd', required=True)
-    pp = sub.add_parser('predict'); pp.add_argument('origin'); pp.add_argument('--days', default='1,2,3,4,5,6,7,12'); pp.add_argument('--no-write', action='store_true')
-    bf = sub.add_parser('backfill'); bf.add_argument('start'); bf.add_argument('end'); bf.add_argument('--days', default='1,2,3,4,5,6,7,12')
-    a = p.parse_args()
-    hz = tuple(int(x) for x in a.days.split(','))
-    if a.cmd == 'predict': predict_land_to_db(a.origin, horizons=hz, write=not a.no_write)
-    else: backfill_land_to_db(a.start, a.end, horizons=hz)
+# 직접 실행(standalone) 진입점은 제거됨(2026-06-19) — 통합 체인 serve_chain_land_new.py 가
+# load_assets()·_predict_day() 를 import 해 5→6→7 을 한 번에 돌리고 est_horizon_land 에 쓴다.
+# 옛 predict_land_to_db / backfill_land_to_db / _upsert(forecast 테이블 적재)는 체인과 중복이라
+# 삭제했다.  이 파일은 이제 체인이 쓰는 라이브러리(모델·예측 함수)로만 남는다.
