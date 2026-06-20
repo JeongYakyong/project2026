@@ -23,18 +23,26 @@
 30 2 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
 30 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
 
-# ② 실측 + (현행 데모용) legacy forecast : run_collect_jeju.sh(forecast+historical) 유지.
-#   서빙(③)은 forecast_horizon→est_horizon_jeju 로 전환 완료(2026-06-17)했으나, 8단계 streamlit
-#   데모가 아직 제주를 legacy forecast 에서 읽어 당분간 유지한다.  데모 소스 전환(8-B) 완료 시
-#   이 두 줄을 '--no-forecast'(historical 만)로 바꾸고 forecast 갱신은 ① 한 곳으로 일원화할 것.
+# ② 실측 + 미래 DA : run_collect_jeju.sh.  **forecast 테이블 폐기(2026-06-20, G-22)** 후
+#   build() 는 weather 를 더는 forecast 에 쓰지 않고, 미래 *_da(SMP D+1/D+2 DA 가격선·예상수요)만
+#   historical 에 컬럼단위 UPSERT(upsert_da_to_historical, 실측 보존).  build_historical 은 과거
+#   실측(*_jeju/asos/*_da).  즉 이 줄은 historical(실측+미래DA) 한 테이블만 채운다.
+#   ※ 기상 예보는 ①(collect_forecast_new→forecast_horizon)이 정본 — build() 의 KIMR/KIMG fetch 는
+#     현재 산출물 없음(추후 _da 만 받도록 build 경량화 여지).  --forecast-days 는 _da 윈도우 길이로만
+#     의미(기본 2일이 D+1/D+2 SMP 에 충분 → 별도 7일 줄 폐지).
 10 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh
-10 0 * * * /home/kimjourvanne/project2026/deploy/run_collect_jeju.sh --bases 1 --forecast-days 7
 
 # ③ 서빙 체인 2→3 → est_horizon_jeju : 매일 1회 (06:30) — ①·② 완료 후 최신 base 수요·신재생→
 #   net_load 를 est_horizon_jeju(예측 아카이브)에 적재.  로컬 추론(API 무관)이라 육지 서빙(06:00)
 #   직후에 둔다(별도 lock).  legacy forecast 테이블은 건드리지 않는다.  기상/실측이 불완전하면
 #   가능한 지평만 산출(원점 168h history 부족 base 는 skip → 다음날 갱신).  SMP(4단계)는 범위 밖.
 30 6 * * * /home/kimjourvanne/project2026/deploy/run_serve_chain_jeju.sh
+
+# ④ 서빙 SMP 2단계출력→4단계 : 매일 1회 (06:40) — ③ 직후.  est_horizon_jeju(net_load·수요) +
+#   historical DA → SMP D+1·D+2 핵심3컬럼(est_smp·smp_neg_proba·smp_danger)을 est_smp_horizon_jeju 에
+#   적재(serve_smp_horizon_jeju.py).  로컬 추론(API 무관)·forecast 미접촉.  최신 base 의 DA·history 가
+#   불완전하면 가능한 지평만(다음날 갱신).
+40 6 * * * /home/kimjourvanne/project2026/deploy/run_serve_smp_jeju.sh
 
 # (폐기) run_collect_runs.sh --region jeju → 위 run_collect_forecast.sh --region jeju 로 대체.
 #   collect_forecast_runs.py 는 collect_forecast_new 가 import 하는 라이브러리로는 남지만,

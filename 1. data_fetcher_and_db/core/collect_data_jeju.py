@@ -444,6 +444,45 @@ def write_to_historical(wide: pd.DataFrame, db_path: Path) -> int:
     return partial_upsert(HISTORICAL_TABLE, wide, db_path)
 
 
+def upsert_da_to_historical(wide_da: pd.DataFrame, db_path: Path) -> int:
+    """*_da 컬럼만 historical 에 **컬럼단위** UPSERT (다른 컬럼 보존).
+
+    partial_upsert(INSERT OR REPLACE = 행 전체 교체)와 달리 ON CONFLICT DO UPDATE 로
+    지정한 _da 컬럼만 갱신한다 → 같은 timestamp 의 실측(real_*·smp_jeju_rt·관측기상)을
+    NULL 로 덮어쓰지 않는다.  COALESCE(excluded, 기존)이라 새 값이 NULL(미발행 미래시각)
+    이면 기존 DA 를 보존.  historical 에 없던 미래 timestamp 는 새 행으로 INSERT(그 외 컬럼
+    NULL — 나중에 build_historical 이 실측으로 채움).  forecast 테이블 폐기(2026-06-20) 후
+    미래 DA(SMP D+1/D+2 가격선) 공급 경로.
+    """
+    cols = [c for c in wide_da.columns if c != "timestamp"]
+    if wide_da.empty or not cols:
+        return 0
+    with sqlite3.connect(db_path) as c:
+        existing = {r[1] for r in c.execute(
+            f"PRAGMA table_info({HISTORICAL_TABLE})").fetchall()}
+        if not existing:
+            c.execute(f"CREATE TABLE {HISTORICAL_TABLE} (timestamp TEXT)")
+        for col in cols:
+            if col not in existing:
+                c.execute(f'ALTER TABLE {HISTORICAL_TABLE} ADD COLUMN "{col}"')
+        c.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{HISTORICAL_TABLE}_ts "
+                  f"ON {HISTORICAL_TABLE}(timestamp)")
+        set_clause = ", ".join(
+            f'"{col}"=COALESCE(excluded."{col}", {HISTORICAL_TABLE}."{col}")'
+            for col in cols)
+        collist = ", ".join(['timestamp'] + [f'"{col}"' for col in cols])
+        ph = ", ".join(["?"] * (1 + len(cols)))
+
+        def _v(x):
+            return None if pd.isna(x) else float(x)
+        rows = [(str(ts), *[_v(wide_da.iloc[i][col]) for col in cols])
+                for i, ts in enumerate(wide_da.index)]
+        c.executemany(
+            f"INSERT INTO {HISTORICAL_TABLE} ({collist}) VALUES ({ph}) "
+            f"ON CONFLICT(timestamp) DO UPDATE SET {set_clause}", rows)
+    return len(rows)
+
+
 # ── public entry ────────────────────────────────────────────────────────
 @contextmanager
 def forecast_days_override(days: int | None):
@@ -585,8 +624,18 @@ def build(
     wide = pp.add_day_type(wide)
 
     if save:
-        n = write_to_forecast(wide, db_path)
-        print(f"\n  UPSERT forecast: {n:,} rows -> {db_path}")
+        # forecast 테이블 폐기(2026-06-20, 제주 G-22 후속): weather(KIMR/KIMG)는
+        # forecast_horizon(collect_forecast_new ①)이 담당하므로 build() 의 weather 출력은 불필요.
+        # 미래 *_da(SMP D+1/D+2 DA 가격선·예상수요)만 historical 에 적재해 DA 공급을 유지한다
+        # (과거 *_da 는 build_historical 이 담당 — 미래 DA 는 이 forecast 윈도우에서만 발행됨).
+        da_cols = [c for c in ("smp_jeju_da", "smp_land_da",
+                               "jeju_est_demand_da", "land_est_demand_da")
+                   if c in wide.columns]
+        if da_cols:
+            n = upsert_da_to_historical(wide[da_cols], db_path)
+            print(f"\n  UPSERT historical(*_da only, 컬럼단위): {n:,} rows -> {db_path}")
+        else:
+            print("\n  [skip] *_da 컬럼 없음 — historical 적재 생략 (forecast 테이블은 폐기됨)")
     return wide
 
 
@@ -809,7 +858,13 @@ def run_backfill(
     - Resume-skip: 한 base 가 만들어낼 모든 timestamp 가 이미 forecast 에 있으면
       그 base 는 fetch 자체를 건너뛴다 (재실행 시 네트워크 절약).
     - 반환: 총 UPSERT 된 행 수.
+
+    [폐기 2026-06-20] forecast 테이블 폐기로 이 weather 백필은 더 이상 쓰지 않는다.
+    과거 기상 예보 백필은 `core/backfill_jeju_forecast.py`(→ forecast_horizon)를 사용할 것.
     """
+    raise RuntimeError(
+        "run_backfill 은 폐기됨(forecast 테이블 폐기, 2026-06-20). "
+        "기상 예보 백필은 core/backfill_jeju_forecast.py (→ forecast_horizon) 사용.")
     now_kst = datetime.now(tz=KST)
     bases = kim.backfill_bases(n_days, now_kst)
     if not bases:

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5단계 · 예측 거리별 모델 분담 (하이브리드)</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:720px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.15;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1rem; line-height:1.55;}
+  svg{width:100%; height:auto; display:block}
+  .note{font-size:11px; color:var(--muted); margin:0.6rem 0 0; line-height:1.5;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="예측 거리별 모델 분담 구조"></svg>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 글자·구간만 바꾸면 됩니다  ▼▼▼              -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 5 · 예측 거리별 모델 분담",
+    title:    "예측 거리에 따라 두 모델이 역할을 나눕니다",
+    subtitle: "가까운 미래와 낮 시간대는 날씨 기반 PatchTST가, 먼 미래와 밤은 과거 패턴 기반 "
+            + "LGBM이 맡습니다. 각 모델을 가장 잘 맞는 구간에만 씁니다.",
+    note:     "* 낮 = 09~15시(태양광 영향이 큰 시간대). 가까운 미래일수록 날씨 예보가 잘 맞아 PatchTST가, "
+            + "멀어질수록·밤일수록 과거의 반복 패턴이 중요해 LGBM이 더 정확합니다.",
+    footer:   "전국 수요 예측 · 5단계 하이브리드 · 2026-06",
+  };
+
+  // 구간(예측 거리) · 각 구간의 낮/밤 담당 모델. range=[시작, 끝] (D+ 기준)
+  const BANDS = [
+    { label:"D+1~2",  range:[1,2],  day:"patch", night:"patch" },  // 전 시간 PatchTST
+    { label:"D+3~7",  range:[3,7],  day:"patch", night:"lgbm"  },  // 낮=PatchTST · 밤=LGBM
+    { label:"D+8~15", range:[8,15], day:"lgbm",  night:"lgbm"  },  // 전 시간 LGBM
+  ];
+  const LANES = { day:{ n:"낮", sub:"09~15시" }, night:{ n:"밤", sub:"그 외 시간" } };
+  const MODELS = {
+    patch:{ name:"PatchTST", kind:"patch" },
+    lgbm: { name:"LGBM",     kind:"lgbm"  },
+  };
+  const AXIS = { left:"가까운 미래", right:"먼 미래" };
+  const LEGEND = [
+    { kind:"patch", label:"PatchTST — 딥러닝 · 날씨 예보 기반" },
+    { kind:"lgbm",  label:"LGBM — 부스팅 트리 · 과거 패턴 기반" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.10)',
+              rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.06)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const KIND = {
+    patch:{ fill:T.accentTint, stroke:T.accent },
+    lgbm: { fill:T.store,      stroke:T.muted  },
+  };
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t=(x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={})=>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+
+  function build(){
+    const padX=24, gutter=88, plotX0=padX+gutter, plotX1=696;
+    const N=15, unit=(plotX1-plotX0)/N;
+    const bandTop=86, laneH=66, gap=4;
+    const dayY=bandTop, nightY=bandTop+laneH+gap;       // 낮 / 밤 줄
+    const bottom=nightY+laneH;
+    const bx=(d)=> plotX0 + (d-1)*unit;                 // D+d 시작 x
+
+    let s='';
+
+    // ── 줄(낮/밤) 라벨 (왼쪽 거터, 오른쪽 정렬) ──
+    s += t(plotX0-14, dayY+laneH/2-2,  LANES.day.n,   {size:13,col:TEXT,w:700,anc:'end'});
+    s += t(plotX0-14, dayY+laneH/2+13, LANES.day.sub, {size:9, col:T.muted,w:400,anc:'end'});
+    s += t(plotX0-14, nightY+laneH/2-2,  LANES.night.n,   {size:13,col:TEXT,w:700,anc:'end'});
+    s += t(plotX0-14, nightY+laneH/2+13, LANES.night.sub, {size:9, col:T.muted,w:400,anc:'end'});
+
+    // ── 구간 블록 (낮/밤이 같은 모델이면 세로로 합침) ──
+    const block=(x,y,w,h,kind,name,sub)=>{
+      const k=KIND[kind];
+      let g=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${T.paper}"/>`+
+            `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${k.fill}" stroke="${k.stroke}" stroke-width="1.2"/>`;
+      g+=t(x+w/2, y+h/2-3, name, {size:13,col:TEXT,w:700});
+      if(sub) g+=t(x+w/2, y+h/2+14, sub, {size:9.5,col:T.muted,w:400});
+      return g;
+    };
+
+    BANDS.forEach(b=>{
+      const x=bx(b.range[0]), w=(b.range[1]-b.range[0]+1)*unit;
+      // 구간 라벨(상단)
+      s += t(x+w/2, bandTop-14, b.label, {size:10.5,col:T.ink,w:700,ls:0.02});
+      if(b.day===b.night){
+        s += block(x, dayY, w, bottom-dayY, b.day, MODELS[b.day].name, "전 시간");
+      }else{
+        s += block(x, dayY,   w, laneH, b.day,   MODELS[b.day].name,   null);
+        s += block(x, nightY, w, laneH, b.night, MODELS[b.night].name, null);
+      }
+    });
+
+    // ── 예측 거리 축 (아래, 왼→오) ──
+    const axisY=bottom+30;
+    s += `<line x1="${plotX0}" y1="${axisY}" x2="${plotX1}" y2="${axisY}" stroke="${T.soft}" stroke-width="1" marker-end="url(#arrow)"/>`;
+    s += t(plotX0, axisY+16, AXIS.left,  {size:9.5,col:T.muted,w:600,anc:'start'});
+    s += t(plotX1, axisY+16, AXIS.right, {size:9.5,col:T.muted,w:600,anc:'end'});
+    s += t((plotX0+plotX1)/2, axisY+16, "예측 거리(D+)", {size:9,col:T.soft,w:500,ls:0.04});
+
+    // ── 범례 ──
+    const legY=axisY+38;
+    s += `<line x1="${padX}" y1="${legY}" x2="${plotX1}" y2="${legY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx=padX, ly=legY+10;
+    LEGEND.forEach(it=>{ const k=KIND[it.kind];
+      s += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${k.fill}" stroke="${k.stroke}" stroke-width="1.2"/>`+
+           t(lx+16, ly+10, it.label, {size:8.5,col:TEXT,w:500,anc:'start',ls:0.02});
+      lx += it.label.length*8 + 48; });
+
+    const vbW=plotX1+padX, vbH=legY+40;
+    const svg=document.getElementById('diagram'); svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+    svg.innerHTML=`<defs>`+
+      `<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.soft}"/></marker>`+
+      `</defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+ s;
+    for(const k of ['eyebrow','title','subtitle','note','footer']) document.getElementById(k).textContent=META[k]||'';
+  }
+  build();
+</script>
+</body>
+</html>

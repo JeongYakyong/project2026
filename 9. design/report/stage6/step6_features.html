@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6단계 · 태양광·풍력 모델 비교</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --accentTint:rgba(235,108,54,0.08); --rule:rgba(45,49,66,0.12);
+         --store:rgba(45,49,66,0.05); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:720px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1.1rem; line-height:1.5;}
+  table{width:100%; border-collapse:collapse; table-layout:fixed;}
+  col.c0{width:22%} col.c1{width:39%} col.c2{width:39%}
+  th,td{ text-align:left; vertical-align:top; padding:9px 12px; line-height:1.45;
+         border-bottom:1px solid var(--rule); }
+  thead th{ font-size:13px; font-weight:700; border-bottom:1.5px solid var(--muted); }
+  thead .lbl{ font-size:8.5px; font-weight:700; letter-spacing:0.12em; color:var(--soft);
+              text-transform:uppercase; }
+  thead .solar{ background:var(--accentTint); color:var(--accent); border-radius:6px 6px 0 0; }
+  td.lbl{ font-size:11.5px; font-weight:600; color:var(--muted); background:var(--store); }
+  td.solar{ background:var(--accentTint); }
+  td.v{ font-size:12px; }
+  td.v small{ display:block; font-size:10.5px; color:var(--soft); margin-top:2px; }
+  .note{font-size:11px; color:var(--muted); margin:0.9rem 0 0; line-height:1.5;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <table>
+    <colgroup><col class="c0"><col class="c1"><col class="c2"></colgroup>
+    <thead><tr>
+      <th class="lbl" id="h0"></th>
+      <th class="solar" id="h1"></th>
+      <th id="h2"></th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기 데이터만 고치면 됩니다  ▼▼▼                                   -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 6 · 모델별 피처와 특징",
+    title:    "태양광·풍력 예측 모델 비교",
+    subtitle: "두 채널은 입력 피처도 모델 종류도 다릅니다. 태양광은 딥러닝, 풍력은 트리 모델을 씁니다.",
+    h0: "구분", h1: "태양광", h2: "풍력",
+    note: "모델 설정 — 태양광: 과거 504시간(21일) 되돌아보기, 24시간씩 예측 / 학습 ~2025-01, 검증 ~2026-01. " +
+          "산출된 이용률에 설비용량을 곱해 발전량을 만들고, 설비용량은 시장 + PPA·자가용을 합산합니다.",
+    footer: "전국 신재생 예측 모델 비교 · 2026-06",
+  };
+
+  // 각 행: [구분, 태양광 설명, 풍력 설명].  보조설명은 "본문||작은글씨" 형태로 || 뒤에 붙임.
+  const ROWS = [
+    ["모델 종류",      "시계열 딥러닝||PatchTST",            "부스팅 트리||LGBM"],
+    ["예측 지평",      "지평별 전용 모델 15개||D+1 ~ D+15",  "전 지평 공용 모델 1개"],
+    ["관측 지점",      "영광 · 서산 · 포항",                  "대관령 · 영광 · 포항"],
+    ["주요 기상 입력", "일사량 · 전운량 · 중하층운량 · 강수 감쇠", "풍속 · 풍향"],
+    ["시간 입력",      "시각(하루 주기)",                    "시각 · 계절(연중 주기)"],
+    ["과거 발전 사용", "과거 21일 이용률을 함께 입력||자기회귀", "사용 안 함||기상 → 이용률 직접"],
+    ["산출 방식",      "이용률 예측 → 설비용량 곱해 발전량",  "(태양광과 동일)"],
+    ["보조 장치",      "입력이 비는 지평만 트리 모델로 대체", "—"],
+    ["이 모델을 쓴 이유", "일사·구름의 시간 흐름 패턴 학습에 강함",
+                          "풍속은 시간 자기상관이 약하고 예보 오차가 커, 트리 모델이 더 안정적"],
+  ];
+  // ====================================================================== //
+
+  for(const k of ['eyebrow','title','subtitle','note','footer','h0','h1','h2'])
+    document.getElementById(k).textContent = META[k] || '';
+  const cell = (s)=>{ const [main,sub] = String(s).split('||');
+    return main + (sub ? `<small>${sub}</small>` : ''); };
+  const tb = document.getElementById('tbody');
+  ROWS.forEach(([lab,solar,wind])=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="lbl">${lab}</td>`+
+                   `<td class="v solar">${cell(solar)}</td>`+
+                   `<td class="v">${cell(wind)}</td>`;
+    tb.appendChild(tr);
+  });
+</script>
+</body>
+</html>

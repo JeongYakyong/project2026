@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6단계 · 신재생 예측 모델 구조</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:720px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1rem; line-height:1.5;}
+  svg{width:100%; height:auto; display:block}
+  .note{font-size:11px; color:var(--muted); margin:0.6rem 0 0; line-height:1.4;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="흐름도"></svg>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 좌표·화살표는 자동 계산됩니다  ▼▼▼          -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 6 · 전국 신재생 예측",
+    title:    "태양광·풍력으로 잔여부하를 산출하는 구조",
+    subtitle: "기상 예보를 받아 태양광과 풍력을 따로 예측하고, 발전량을 합쳐 수요에서 빼면 '잔여부하'가 됩니다.",
+    note:     "* 자가용·PPA를 포함한 전체 신재생은 따로 추정해 분석용으로만 씁니다(예측 체인 산출 아님).",
+    footer:   "전국 신재생 예측 모델 구조 · 2026-06",
+  };
+
+  // 열(왼→오) · 각 열의 박스(위→아래). type: external | focal | data | model | store
+  const COLS = [
+    { head:"입력 데이터", boxes:[
+        { id:"input", n:"기상 예보 · 과거 데이터", sub:["전국 5개 지점","기상·과거 발전 추세"], type:"data" },
+    ]},
+    { head:"신재생 예측 — 두 채널", boxes:[
+        { id:"solar", n:"태양광 예측",   sub:["시계열 딥러닝","지평별 전용 모델"], type:"focal" },
+        { id:"wind",  n:"풍력 예측",     sub:["부스팅 트리 모델"],             type:"model" },
+    ]},
+    { head:"발전량 환산", boxes:[
+        { id:"gen", n:"신재생 발전량",   sub:["이용률 × 설비용량"], type:"model" },
+    ]},
+    { head:"최종 산출", boxes:[
+        { id:"net", n:"잔여부하",        sub:["수요 − 신재생","net_load"], type:"focal" },
+        { id:"dem", n:"전국 수요 예측",  sub:["5단계 결과"],               type:"data" },
+    ]},
+  ];
+
+  // 화살표: [출발 id, 도착 id, 라벨(생략 가능)]
+  //  같은 열에 위아래로 놓인 두 박스를 이으면(예: dem→net) 자동으로 세로 화살표가 됩니다.
+  const EDGES = [
+    ["input","solar"], ["input","wind"],
+    ["solar","gen","이용률"], ["wind","gen","이용률"],
+    ["gen","net","신재생"], ["dem","net","수요"],
+  ];
+
+  const LEGEND = [
+    { type:"data",  label:"입력·결과 데이터" },
+    { type:"model", label:"예측 모델" },
+    { type:"focal", label:"핵심" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.08)',
+              rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.05)',
+              ext:'rgba(45,49,66,0.03)', extStroke:'rgba(45,49,66,0.32)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const STYLE = {
+    focal:{fill:T.accentTint,stroke:T.accent}, data:{fill:T.store,stroke:T.muted},
+    external:{fill:T.ext,stroke:T.extStroke}, store:{fill:T.store,stroke:T.muted},
+    model:{fill:'#ffffff',stroke:T.ink},
+  };
+  const CFG = { nodeW:184, colGapX:64, padX:24, padTop:78, vGap:22, footPad:44 };
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t=(x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={})=>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+  function boxH(b){ return 40 + (b.sub||[]).length*14; }
+  function build(){
+    const { nodeW,colGapX,padX,padTop,vGap,footPad } = CFG;
+    const colH = COLS.map(c=>c.boxes.reduce((s,b)=>s+boxH(b),0)+(c.boxes.length-1)*vGap);
+    const maxColH = Math.max(...colH);
+    const vbW = padX*2 + COLS.length*nodeW + (COLS.length-1)*colGapX;
+    const legendY = padTop + maxColH + 30, vbH = legendY + footPad;
+    const pos={};
+    COLS.forEach((c,ci)=>{ const x=padX+ci*(nodeW+colGapX); let y=padTop+(maxColH-colH[ci])/2;
+      c._headY=y-14; c._headX=x+nodeW/2;
+      c.boxes.forEach(b=>{ const h=boxH(b); pos[b.id]={x,y,w:nodeW,h,cx:x+nodeW/2,cy:y+h/2,left:x,right:x+nodeW}; y+=h+vGap; }); });
+    let arrows='',labels='',boxes='',heads='';
+    EDGES.forEach(([f,to,lab])=>{ const a=pos[f],b=pos[to]; if(!a||!b)return;
+      const vertical = Math.abs(a.cx-b.cx) < 1;   // 같은 열 → 세로 화살표
+      let x1,y1,x2,y2;
+      if(vertical){ const x=a.cx;
+        if(a.cy>b.cy){ x1=x; y1=a.y;     x2=x; y2=b.y+b.h+4; }  // 출발이 아래면 위로
+        else         { x1=x; y1=a.y+a.h; x2=x; y2=b.y-4;     }  // 출발이 위면 아래로
+      } else { x1=a.right; y1=a.cy; x2=b.left-4; y2=b.cy; }
+      arrows+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${T.muted}" stroke-width="1" marker-end="url(#arrow)"/>`;
+      if(lab){ const mx=(x1+x2)/2,my=(y1+y2)/2,w=lab.length*9+10;
+        const ly = vertical ? my-7 : my-19;   // 세로선은 선 위 중앙 마스크 / 가로선은 선 위로
+        const ty = vertical ? my+4 : my-8;
+        labels+=`<rect x="${mx-w/2}" y="${ly}" width="${w}" height="14" rx="2" fill="${T.paper}"/>`+t(mx,ty,lab,{size:8.5,col:T.muted,w:600,ls:0.04}); } });
+    COLS.forEach(c=>{ heads+=t(c._headX,c._headY,c.head,{size:8.5,col:T.soft,w:600,ls:0.12}); });
+    COLS.forEach(c=>c.boxes.forEach(b=>{ const p=pos[b.id],s=STYLE[b.type]||STYLE.model,hasSub=(b.sub||[]).length>0;
+      boxes+=`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
+             `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
+      boxes+=t(p.cx, hasSub?p.y+22:p.cy+4, b.n, {size:12.5,col:TEXT,w:700});
+      (b.sub||[]).forEach((ln,i)=>{ boxes+=t(p.cx,p.y+38+i*14,ln,{size:10,col:T.muted,w:400}); }); }));
+    let legend=`<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx=padX,ly=legendY+10;
+    LEGEND.forEach(it=>{ const s=STYLE[it.type]||STYLE.model;
+      legend+=`<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
+              t(lx+16,ly+10,it.label,{size:8.5,col:TEXT,w:500,anc:'start',ls:0.03}); lx+=it.label.length*13+40; });
+    const svg=document.getElementById('diagram'); svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+    svg.innerHTML=`<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker></defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+arrows+labels+heads+boxes+legend;
+    for(const k of ['eyebrow','title','subtitle','note','footer']) document.getElementById(k).textContent=META[k]||'';
+  }
+  build();
+</script>
+</body>
+</html>

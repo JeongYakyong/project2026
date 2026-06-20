@@ -31,7 +31,11 @@ DB_PATH = os.path.normpath(os.path.join(
 # is_midday/is_neg_season은 hour/month와 중복(중요도 최하위)으로 판명 → 제거.
 FEATURES = ['smp_jeju_da', 'net_load', 'nl_lead_1', 'nl_lead_2',
             'est_demand', 'est_demand_lead_1', 'est_demand_lead_2', 'hour', 'month']
-TARGET_REG = 'smp_jeju_rt'
+# 실시간 SMP 컬럼 — **회귀 타깃이 아니다.**  음수경보 라벨(rt<NEG_THRESH)을 만들고 검증
+# 채점에만 쓴다.  가격선은 항상 DA(=smp_jeju_da)를 예측한다: D+1 은 발표된 DA 그대로(A안),
+# D+2 는 DA 잔차회귀(train_smp_d2_da, TARGET='smp_jeju_da').  rt 점예측은 잠긴 실패경로
+# (trial_error.md) — 다시 시도하지 않는다.
+RT_COL = 'smp_jeju_rt'
 
 # 음수경보 이벤트 임계: rt < NEG_THRESH (5 = 사실상 0에 가까운 무가치 SMP ≈ 음수).
 NEG_THRESH = 5

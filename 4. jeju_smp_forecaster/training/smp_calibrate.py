@@ -22,7 +22,7 @@ from sklearn.isotonic import IsotonicRegression
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))   # 루트(공통 로더 train_smp_db) 접근
-from train_smp_db import (load_historical, FEATURES, TARGET_REG, NEG_THRESH,
+from train_smp_db import (load_historical, FEATURES, RT_COL, NEG_THRESH,
                           TRAIN_START, TRAIN_END, VAL_START)
 
 MODELS = os.path.normpath(os.path.join(HERE, '..', 'models_weight'))
@@ -37,9 +37,9 @@ def fit_and_save():
     va = h[h.index >= VAL_START].dropna(subset=FEATURES)
     d = pd.concat([tr, va])
     p = clf.predict_proba(d[FEATURES])[:, 1]
-    y = (d[TARGET_REG] < NEG_THRESH).astype(int).values
+    y = (d[RT_COL] < NEG_THRESH).astype(int).values
     iso = IsotonicRegression(out_of_bounds='clip').fit(p, y)
-    d_cond = float(d[d[TARGET_REG] < NEG_THRESH][TARGET_REG].mean())   # E[rt|rt<5]
+    d_cond = float(d[d[RT_COL] < NEG_THRESH][RT_COL].mean())   # E[rt|rt<5]
     with open(CALIB, 'wb') as f:
         pickle.dump({'iso': iso, 'd_cond': d_cond, 'neg_thresh': NEG_THRESH}, f)
     print(f'[saved] {CALIB}  d_cond(E[rt|rt<5])={d_cond:.1f}')

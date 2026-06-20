@@ -22,7 +22,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))   # 루트(공통 로더 train_smp_db) 접근
-from train_smp_db import (FEATURES, TARGET_REG, NEG_THRESH, TRAIN_START, TRAIN_END, VAL_START,
+from train_smp_db import (FEATURES, RT_COL, NEG_THRESH, TRAIN_START, TRAIN_END, VAL_START,
                           TEST_START, load_historical, load_forecast, SEASON)
 
 MODELS = os.path.normpath(os.path.join(HERE, '..', 'models_weight'))
@@ -78,7 +78,7 @@ def main():
     va = hist[hist.index >= VAL_START].dropna(subset=FEATURES)
     te = load_forecast(); te = te[te.index >= TEST_START].dropna(subset=FEATURES)
 
-    ytr = (tr[TARGET_REG] < NEG_THRESH).astype(int)
+    ytr = (tr[RT_COL] < NEG_THRESH).astype(int)
     pos, neg = int(ytr.sum()), int((ytr == 0).sum())
     print(f'TRAIN n={len(tr)} rt<{NEG_THRESH}={pos}  VAL n={len(va)}  TEST n={len(te)}\n')
 
@@ -86,7 +86,7 @@ def main():
         objective='binary', n_estimators=2000, learning_rate=0.03, num_leaves=63,
         subsample=0.8, colsample_bytree=0.8, min_child_samples=40,
         scale_pos_weight=neg / max(pos, 1), random_state=42, verbose=-1)
-    clf.fit(tr[FEATURES], ytr, eval_set=[(va[FEATURES], (va[TARGET_REG] < NEG_THRESH).astype(int))],
+    clf.fit(tr[FEATURES], ytr, eval_set=[(va[FEATURES], (va[RT_COL] < NEG_THRESH).astype(int))],
             eval_metric='average_precision', callbacks=[lgb.early_stopping(100, verbose=False)])
 
     pva = clf.predict_proba(va[FEATURES])[:, 1]
@@ -94,9 +94,9 @@ def main():
     print(f'best_iter={clf.best_iteration_}  (경보 지속규칙 MIN_RUN={MIN_RUN}시간)\n')
 
     print('═══ 임계 스윕 (2시간 지속 적용) ═══')
-    sweep('VAL ', va[TARGET_REG], va['smp_jeju_da'], pva)
+    sweep('VAL ', va[RT_COL], va['smp_jeju_da'], pva)
     print()
-    sweep('TEST', te[TARGET_REG], te['smp_jeju_da'], pte)
+    sweep('TEST', te[RT_COL], te['smp_jeju_da'], pte)
 
     imp = pd.Series(clf.feature_importances_, index=FEATURES).sort_values(ascending=False)
     print('\n── 피처 중요도 ──'); print(imp.to_string())

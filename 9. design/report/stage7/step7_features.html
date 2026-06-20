@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7단계 · 가스 모델 입력 구성</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --accentTint:rgba(235,108,54,0.08); --rule:rgba(45,49,66,0.12);
+         --store:rgba(45,49,66,0.05); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:720px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1.1rem; line-height:1.5;}
+  table{width:100%; border-collapse:collapse; table-layout:fixed;}
+  col.c0{width:27%} col.c1{width:14%} col.c2{width:59%}
+  th,td{ text-align:left; vertical-align:top; padding:9px 12px; line-height:1.45;
+         border-bottom:1px solid var(--rule); }
+  thead th{ font-size:13px; font-weight:700; border-bottom:1.5px solid var(--muted); }
+  thead .lbl{ font-size:8.5px; font-weight:700; letter-spacing:0.12em; color:var(--soft);
+              text-transform:uppercase; }
+  td.name{ font-size:12px; font-weight:600; }
+  td.v{ font-size:11.5px; color:#1a1a1a; }
+  td.tag{ }
+  .chip{ display:inline-block; font-size:10.5px; font-weight:700; padding:2px 9px;
+         border-radius:10px; letter-spacing:0.02em; }
+  .chip.use{ background:var(--accentTint); color:var(--accent); }
+  .chip.drop{ background:var(--store); color:var(--soft); }
+  tr.dropRow td.name{ color:var(--muted); }
+  .note{font-size:11px; color:var(--muted); margin:0.9rem 0 0; line-height:1.5;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <table>
+    <colgroup><col class="c0"><col class="c1"><col class="c2"></colgroup>
+    <thead><tr>
+      <th class="lbl" id="h0"></th>
+      <th class="lbl" id="h1"></th>
+      <th class="lbl" id="h2"></th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기 데이터만 고치면 됩니다  ▼▼▼                                   -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 7 · 모델 입력 구성",
+    title:    "가스 모델이 보는 것과 일부러 뺀 것",
+    subtitle: "무엇을 넣을지만큼 '무엇을 뺄지'가 정확도에 중요했습니다. 분석 결과를 근거로 입력을 골랐습니다.",
+    h0: "입력 후보", h1: "처리", h2: "이유",
+    note: "★ 미래에 한 방향으로만 변하는 값(설비용량 등)을 그대로 넣으면, 학습에 없던 범위로 빗나가 예측이 흔들립니다. " +
+          "그래서 표류하는 값은 빼거나 '이용률(비율)'로 바꿔 넣었습니다.",
+    footer: "발전용 가스 모델 입력 구성 · 2026-06",
+  };
+
+  // 각 행: [입력 후보, "use"|"drop", 이유]
+  const ROWS = [
+    ["전국 수요",            "use",  "가스 발전 규모를 정하는 가장 큰 요인입니다(수요가 클수록 가스도 늘어남)."],
+    ["신재생 이용률",        "use",  "한낮 태양광이 늘면 가스가 밀려납니다(덕 커브). 이용률(비율)로 넣어 표류를 막았습니다."],
+    ["가스 과거 흐름",       "use",  "하루 전·일주일 전 가스 발전을 되짚어 현재 수준을 잡습니다(자기회귀)."],
+    ["달력",                 "use",  "시각·요일·연중 위치로 하루·주간·계절 주기를 반영합니다."],
+    ["잔여부하",             "drop", "수요에서 신재생을 뺀 값이라 수요와 거의 같음 — 중복이라 수요로 대신합니다."],
+    ["자가용·PPA 설비용량",  "drop", "해마다 늘기만 해 미래에서 빗나갑니다(외삽). 효과는 신재생 입력에 이미 반영됩니다."],
+    ["월(달)",               "drop", "연중 위치 입력과 거의 같은 정보 — 중복입니다."],
+    ["원자력",               "drop", "최근 정비로 과거와 패턴이 달라져, 넣으면 오히려 예측이 나빠졌습니다."],
+  ];
+  // ====================================================================== //
+
+  for(const k of ['eyebrow','title','subtitle','note','footer','h0','h1','h2'])
+    document.getElementById(k).textContent = META[k] || '';
+  const tb = document.getElementById('tbody');
+  ROWS.forEach(([name,tag,why])=>{
+    const tr = document.createElement('tr');
+    if(tag==='drop') tr.className='dropRow';
+    const chip = tag==='use' ? '<span class="chip use">사용</span>'
+                             : '<span class="chip drop">제외</span>';
+    tr.innerHTML = `<td class="name">${name}</td>`+
+                   `<td class="tag">${chip}</td>`+
+                   `<td class="v">${why}</td>`;
+    tb.appendChild(tr);
+  });
+</script>
+</body>
+</html>
