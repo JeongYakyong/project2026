@@ -1,0 +1,48 @@
+<svg viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg" font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif">
+  <!-- background -->
+  <rect x="6" y="6" width="868" height="348" rx="18" fill="#ffffff" stroke="#e5e7eb" stroke-width="1.5"/>
+
+  <!-- title -->
+  <text x="440" y="38" text-anchor="middle" font-size="17" fill="#6b7280" font-weight="600">LNG 도입 환경의 변화 — 과거 vs 현재</text>
+
+  <!-- panel tints -->
+  <rect x="28" y="58" width="396" height="286" rx="14" fill="#fef2f2"/>
+  <rect x="456" y="58" width="405" height="286" rx="14" fill="#f0fdf4"/>
+  <!-- divider -->
+  <line x1="440" y1="70" x2="440" y2="332" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 6"/>
+
+  <!-- ===== 수요예측 전 ===== -->
+  <text x="52" y="92" font-size="20" fill="#b91c1c" font-weight="700">LNG시장</text>
+
+
+  <text x="150" y="160" text-anchor="middle" font-size="46">📈</text>
+  <text x="220" y="155" text-anchor="middle" font-size="30" fill="#9ca3af">→</text>
+  <text x="292" y="160" text-anchor="middle" font-size="46">🎢</text>
+  <text x="150" y="190" text-anchor="middle" font-size="15" fill="#374151">단기물량 급증</text>
+  <text x="292" y="190" text-anchor="middle" font-size="15" fill="#b91c1c">수요·가격 변동 ↑</text>
+
+  <text x="72" y="302" text-anchor="middle" font-size="44">😫</text>
+  <polygon points="118,296 96,306 122,314" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <rect x="118" y="252" width="296" height="66" rx="14" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="266" y="280" text-anchor="middle" font-size="15.5" fill="#334155">시장이 너무 어려워졌어…</text>
+  <text x="266" y="303" text-anchor="middle" font-size="15.5" fill="#334155">구매시점을 어떻게 결정하지?</text>
+
+  <!-- ===== 수요예측 이후 ===== -->
+  <text x="480" y="92" font-size="20" fill="#15803d" font-weight="700">수요예측</text>
+
+  <!-- badges: 가격 ✗ / 수요 ✓ -->
+  <circle cx="792" cy="108" r="13" fill="#22c55e"/>
+  <text x="792" y="113" text-anchor="middle" font-size="15" fill="#ffffff" font-weight="700">✓</text>
+
+  <text x="582" y="160" text-anchor="middle" font-size="46">🎢</text>
+  <text x="652" y="155" text-anchor="middle" font-size="28" fill="#9ca3af">→</text>
+  <text x="792" y="160" text-anchor="middle" font-size="46">📦</text>
+  <text x="582" y="190" text-anchor="middle" font-size="15" fill="#b91c1c">시장가격의 변동</text>
+  <text x="792" y="190" text-anchor="middle" font-size="15" fill="#15803d">수요·매입 시점 인지</text>
+
+  <text x="500" y="302" text-anchor="middle" font-size="44">😌</text>
+  <polygon points="546,296 524,306 550,314" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <rect x="546" y="252" width="300" height="66" rx="14" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="696" y="280" text-anchor="middle" font-size="15.5" fill="#334155">가격변동을 맞출순 없지만,</text>
+  <text x="696" y="303" text-anchor="middle" font-size="15.5" fill="#334155">재고량을 예측하니 한결 낫네</text>
+</svg>

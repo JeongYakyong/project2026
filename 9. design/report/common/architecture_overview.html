@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시스템 구조 개요 (Frontend · Backend · DB)</title>
+<!-- 시스템 폰트(맑은 고딕) 사용 — 외부 폰트 불필요 -->
+<style>
+  :root{
+    --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+    --accent:#eb6c36; --rule:rgba(45,49,66,0.12);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:#1a1a1a;
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+    display:flex; justify-content:center;
+    padding:2rem 1rem;
+  }
+  .wrap{width:100%; max-width:820px}     /* ← 문서 폭. 더 좁히려면 이 값을 줄이세요 */
+  .eyebrow{
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif; font-size:8px; font-weight:500;
+    letter-spacing:0.18em; text-transform:uppercase; color:#1a1a1a;
+    margin:0 0 0.4rem;
+  }
+  h1{
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif; font-weight:700; font-size:1.75rem;
+    margin:0 0 0.3rem; line-height:1.1;
+  }
+  .sub{font-size:12px; color:#1a1a1a; margin:0 0 1.25rem; line-height:1.4}
+  svg{width:100%; height:auto; display:block}
+  footer{
+    margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif; font-size:8px; letter-spacing:0.12em;
+    color:#1a1a1a; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="시스템 구조 (Frontend Backend DB) 흐름도"></svg>
+
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 좌표·화살표는 자동 계산됩니다  ▼▼▼          -->
+<!-- ====================================================================== -->
+<script>
+  // ── 1) 머리말 ──────────────────────────────────────────────
+  const META = {
+    eyebrow:  "Frontend · Backend · Database",
+    title:    "시스템 구조 한눈에 보기",
+    subtitle: "같은 파이프라인을 '누가 무엇을 하는가' 관점으로 — 화살표를 따라 위에서 아래로 읽으면 됩니다.",
+    footer:   "PROJECT.md · 시스템 아키텍처 · 2026-06",
+  };
+
+  // ── 2) 맨 위: 외부 데이터 소스 (우리 시스템 밖) ──────────────
+  const EXTERNAL = {
+    n:  "공공 데이터 및 API",
+    id: "가스공사 공공데이터 · 기상청 · 전력거래소 API",
+  };
+
+  // ── 3) 계층(띠) — 위에서 아래로. 각 띠 안에 박스를 나열 ───────
+  //   name = 계층 이름 / id = 한 줄 설명
+  //   items[].n = 박스 이름 / .id = 쉬운 설명 / .type = focal | model | optional
+  const LAYERS = [
+    {
+      name: "백엔드",
+      id:   "Backend · 데이터를 모으고 예측을 계산하는 곳",
+      items: [
+        { n:"데이터 수집기",  id:"공공 API 자동 수집", type:"focal"    },
+        { n:"예측 모델",      id:"전력수요 · 발전량", type:"model"    },
+        { n:"가스 수요 환산",  id:"시간별 · 일별 가스송출량",   type:"model"    },
+        { n:"AI 브리핑 및 API 생성",  id:"종합정보(기상 + 계통) 요약",      type:"model" },
+      ],
+    },
+    {
+      name: "데이터베이스",
+      id:   "Database · 모은 데이터와 예측 결과를 보관하는 곳",
+      items: [
+        { n:"전국 데이터",  id:"실측 + 예측값", type:"focal" },
+        { n:"제주 데이터 (참고용)",  id:"실측 + 예측값", type:"optional" },
+      ],
+    },
+    {
+      name: "프론트엔드",
+      id:   "Frontend · 사용자가 직접 보는 화면",
+      items: [
+        { n:"예측 결과", id:"최대 15일 미래, Plot · Table",  type:"focal"    },
+        { n:"지역별 기상 정보",    id:"기상 및 신재생발전 현황",     type:"model"    },
+        { n:"AI 결과 및 API 정보", id:"예측결과, API 코드 제공",     type:"model" },
+      ],
+    },
+  ];
+
+  // ── 4) 계층 사이 화살표 라벨 ───────────────────────────────
+  const FLOW = {
+    extToFirst: "수집",          // 외부 → 백엔드
+    between:    ["저장", "표시(로드)"], // 백엔드→DB, DB→프론트엔드 (계층 수 - 1 개)
+    //feedback:   "예측 실행 (선택)", // 프론트엔드 → 백엔드 (오른쪽 점선)
+  };
+
+  // ── 5) 배치 설정 ──────────────────────────────────────────
+  const CFG = {
+    width:    800,  // 전체 그림 폭(자동으로 화면에 맞게 줄어듭니다)
+    padX:     24,   // 좌우 여백
+    padTop:   16,   // 위 여백
+    gutterW:  46,   // 오른쪽 여백(되돌아가는 점선이 지나는 길)
+    extW:     360,  // 외부 데이터 박스 폭
+    extH:     46,   // 외부 데이터 박스 높이
+    itemW:    150,  // 박스 가로
+    itemH:    54,   // 박스 세로
+    itemGap:  16,   // 박스 간격
+    headerH:  20,   // 띠 제목 줄 높이
+    bandTopPad: 14, // 띠 안쪽 위 여백(제목 위)
+    bandMidPad: 12, // 제목과 박스 사이 간격
+    bandBotPad: 16, // 띠 안쪽 아래 여백(박스 밑)
+    bandGap:  52,   // 띠 사이 간격(화살표 자리)
+  };
+
+  // ── 범례 항목 ─────────────────────────────────────────────
+  const LEGEND = [
+    { type:"external", label:"외부 공공 데이터" },
+    { type:"focal",    label:"핵심 구조" },
+    { type:"model",    label:"예측 · 처리" },
+    { type:"optional", label:"부분 구현 (참고)" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 엔진 (좌표·SVG 자동 생성. 손댈 일 거의 없음) ─────
+  const T = {
+    paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+    accent:'#eb6c36', accentTint:'rgba(235,108,54,0.08)',
+    rule:'rgba(45,49,66,0.12)', band:'#f7f8fa', bandStroke:'rgba(45,49,66,0.14)',
+    optFill:'rgba(45,49,66,0.02)', optStroke:'rgba(45,49,66,0.9)',
+    extFill:'#eef0f3', extStroke:'#9aa3b2',
+  };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const STYLE = {
+    focal:    { fill:T.accentTint, stroke:T.accent,    dash:null  },
+    model:    { fill:'#ffffff',    stroke:T.ink,       dash:null  },
+    optional: { fill:T.optFill,    stroke:T.optStroke, dash:'4,3' },
+    external: { fill:T.extFill,    stroke:T.extStroke, dash:null  },
+  };
+
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t = (x,y,s,{size=12,col=TEXT,w=600,fam=FONT,anc='middle',ls=0}={}) =>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${fam}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+  const mono = (x,y,s,o={}) =>
+    t(x,y,s,{size:9, col:TEXT, w:400, fam:FONT, ...o});
+
+  // 박스 하나 그리기
+  function drawBox(x, y, w, h, name, id, styleKey){
+    const s = STYLE[styleKey] || STYLE.model;
+    const dash = s.dash ? ` stroke-dasharray="${s.dash}"` : '';
+    return (
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${T.paper}"/>`+
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"${dash}/>`+
+      t(x+w/2, y+h/2 - 4, name, { col:TEXT }) +
+      mono(x+w/2, y+h/2 + 13, id)
+    );
+  }
+
+  function build(){
+    const { width, padX, padTop, gutterW, extW, extH,
+            itemW, itemH, itemGap, headerH, bandTopPad, bandMidPad,
+            bandBotPad, bandGap } = CFG;
+
+    const vbW   = width;
+    const bandX = padX;
+    const bandW = vbW - padX*2 - gutterW;          // 띠 폭(오른쪽 길 제외)
+    const cx    = bandX + bandW/2;                 // 가운데 세로축(아래 화살표가 지나는 선)
+    const bandH = bandTopPad + headerH + bandMidPad + itemH + bandBotPad;
+
+    // 각 요소의 y 좌표를 위에서부터 쌓는다
+    let y = padTop;
+    const extY = y;            y += extH + bandGap;
+    const bands = LAYERS.map(L => { const by = y; y += bandH + bandGap; return { L, by }; });
+    const lastBottom = y - bandGap;
+
+    const legendY = lastBottom + 26;
+    const vbH     = legendY + 30;
+
+    let arrows = '', labels = '', shapes = '';
+
+    // 화살표 라벨(흰 배경 + 글자)을 그리는 헬퍼
+    const arrowLabel = (mx, my, text) => {
+      if(!text) return '';
+      const w = text.length*9 + 14;
+      return `<rect x="${mx-w/2}" y="${my-8}" width="${w}" height="16" rx="2" fill="${T.paper}"/>`+
+             mono(mx, my+3, text, { size:8, ls:0.06 });
+    };
+    // 아래로 가는 화살표
+    const downArrow = (yTop, yBot, label) => {
+      arrows += `<line x1="${cx}" y1="${yTop}" x2="${cx}" y2="${yBot-4}" stroke="${T.muted}" stroke-width="1" marker-end="url(#arrow)"/>`;
+      labels += arrowLabel(cx, (yTop+yBot)/2 - 2, label);
+    };
+
+    // (1) 외부 데이터 박스
+    shapes += drawBox(cx - extW/2, extY, extW, extH, EXTERNAL.n, EXTERNAL.id, 'external');
+
+    // (2) 외부 → 첫 계층
+    downArrow(extY + extH, bands[0].by, FLOW.extToFirst);
+
+    // (3) 계층(띠) + 그 안의 박스들
+    bands.forEach(({ L, by }) => {
+      // 띠 배경
+      shapes += `<rect x="${bandX}" y="${by}" width="${bandW}" height="${bandH}" rx="8" fill="${T.band}" stroke="${T.bandStroke}" stroke-width="1"/>`;
+      // 왼쪽 포인트 바
+      shapes += `<rect x="${bandX}" y="${by}" width="4" height="${bandH}" rx="2" fill="${T.accent}"/>`;
+      // 띠 제목 + 설명
+      const hy = by + bandTopPad + 12;
+      shapes += t(bandX+18, hy, L.name, { anc:'start', size:14, w:700 });
+      shapes += mono(bandX+18 + L.name.length*15 + 10, hy, L.id, { anc:'start', col:T.muted, size:9 });
+      // 박스들 (가운데 정렬)
+      const n = L.items.length;
+      const rowW = n*itemW + (n-1)*itemGap;
+      const left = bandX + (bandW - rowW)/2;
+      const iy = by + bandTopPad + headerH + bandMidPad;
+      L.items.forEach((it, i) => {
+        const ix = left + i*(itemW + itemGap);
+        shapes += drawBox(ix, iy, itemW, itemH, it.n, it.id, it.type);
+      });
+    });
+
+    // (4) 계층 사이 아래 화살표
+    for(let i=0;i<bands.length-1;i++){
+      downArrow(bands[i].by + bandH, bands[i+1].by, FLOW.between[i]);
+    }
+
+    // (5) 프론트엔드 → 백엔드 되돌아가는 점선(오른쪽 길)
+    //const feBand = bands[bands.length-1];
+    //const beBand = bands[0];
+    //const gx     = bandX + bandW + gutterW/2;       // 오른쪽 길 가운데
+    //const feY    = feBand.by + bandH/2;
+    //const beY    = beBand.by + bandH/2;
+    //arrows +=
+     // `<path d="M ${bandX+bandW} ${feY} H ${gx} V ${beY} H ${bandX+bandW+4}" `+
+      //`fill="none" stroke="${T.soft}" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>`;
+    //labels += `<g transform="rotate(90 ${gx} ${(feY+beY)/2})">`+
+      //        arrowLabel(gx, (feY+beY)/2, FLOW.feedback) + `</g>`;
+
+    // (6) 범례
+    let legend = `<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx = padX, ly = legendY + 12;
+    LEGEND.forEach(item => {
+      const s = STYLE[item.type] || STYLE.model;
+      const dash = s.dash ? ` stroke-dasharray="3,2"` : '';
+      legend += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"${dash}/>`+
+                mono(lx+16, ly+10, item.label, { size:8, anc:'start', ls:0.04 });
+      lx += item.label.length*9 + 50;
+    });
+
+    const svg = document.getElementById('diagram');
+    svg.setAttribute('viewBox', `0 0 ${vbW} ${vbH}`);
+    svg.innerHTML =
+      `<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">`+
+      `<polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker></defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+
+      arrows + labels + shapes + legend;
+
+    document.getElementById('eyebrow').textContent  = META.eyebrow;
+    document.getElementById('title').textContent    = META.title;
+    document.getElementById('subtitle').textContent = META.subtitle;
+    document.getElementById('footer').textContent   = META.footer;
+  }
+  build();
+</script>
+</body>
+</html>

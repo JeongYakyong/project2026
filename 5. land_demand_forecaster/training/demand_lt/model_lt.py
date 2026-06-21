@@ -283,27 +283,20 @@ def _serve_lagavg(tg, tg_hol, tg_wkd, dem, tindex, hist_hol, hist_wkd, offset, K
     return out
 
 
-@torch.no_grad()
-def serve(db, lt_dir, bases, table):
-    """lt v2 가중치로 D+1..D+15 추론 → rows[(ts, base, n, demand, 'patchtst_lt')]."""
+def load_serve(db, lt_dir):
+    """서빙 자산 1회 로드(체인·standalone 공용). 반환 dict 를 predict_horizon 에 넘긴다."""
     import joblib
     meta = joblib.load(os.path.join(lt_dir, 'metadata_lt.pkl'))
     scaler = joblib.load(os.path.join(lt_dir, 'scaler_exog.pkl'))
-    calib = {}                                   # post-hoc (계절×시각) bias 보정(있으면 적용)
+    calib = {}                                   # post-hoc (계절×시각×지평) bias 보정(있으면 적용)
     cpath = os.path.join(lt_dir, 'calib_lt.json')
     if os.path.exists(cpath):
         with open(cpath, encoding='utf-8') as f:
             calib = json.load(f)
         print(f'  보정표 적용: calib_lt.json ({len(calib)} 셀)')
-    HP = meta['HP']; dmean, dstd = meta['DMEAN'], meta['DSTD']
-    NF = len(FW) + 1
+    HP = meta['HP']; dmean, dstd = meta['DMEAN'], meta['DSTD']; NF = len(FW) + 1
     feat = build_features(_load_raw(db))
     A_all = feat[FW].copy(); A_all[EXOG] = scaler.transform(A_all[EXOG])
-    A_sc = A_all.values.astype(np.float32)
-    dem = feat['Demand'].values.astype(np.float32)
-    tindex = feat.index
-    hist_wkd = feat['is_weekend'].values; hist_hol = feat['is_holiday'].values
-    SEQ = HP['seq_len']; FIDX = list(range(len(FW)))
     models = {}
     for n in range(1, 16):
         wp = os.path.join(lt_dir, f'best_lt_D{n}.pth')
@@ -312,43 +305,68 @@ def serve(db, lt_dir, bases, table):
         m = PatchTST_Anchor(NF, dmean, dstd, meta['RESID_STD'][f'D{n}'], pred_len=24, **HP)
         m.load_state_dict(torch.load(wp, map_location='cpu')); m.eval()
         models[n] = m
-    print(f'  로드된 지평: {sorted(models)}')
+    return dict(scaler=scaler, calib=calib, HP=HP, models=models,
+                A_sc=A_all.values.astype(np.float32), dem=feat['Demand'].values.astype(np.float32),
+                tindex=feat.index, hist_wkd=feat['is_weekend'].values, hist_hol=feat['is_holiday'].values,
+                SEQ=HP['seq_len'], FIDX=list(range(len(FW))))
+
+
+@torch.no_grad()
+def predict_horizon(A, con, base, n, calibrated=True):
+    """(base, 지평 n) → (tg, pred[24]) 절대수요. calibrated=True 면 post-hoc 보정 적용(production),
+    False 면 원본 raw(보정표 재생성·백테스트용). 불가 시 None. tg=base+n일 00~23시.
+    A = load_serve() 자산. con = input_data_land.db 커넥션(forecast_horizon 조회)."""
+    if n not in A['models']:
+        return None
+    tindex = A['tindex']; dem = A['dem']; SEQ = A['SEQ']
+    O = pd.Timestamp(base).normalize() + pd.Timedelta(hours=23)
+    if O not in tindex:
+        return None
+    oi = tindex.get_loc(O)
+    if oi - (SEQ - 1) < 0:
+        return None
+    past = A['A_sc'][oi - (SEQ - 1):oi + 1]; py = dem[oi - (SEQ - 1):oi + 1][:, None]
+    if not (np.isfinite(past).all() and np.isfinite(py).all()):
+        return None
+    fg = _future_grid(con, base, n)
+    if fg is None:
+        return None
+    out, tg, ok = fg
+    out_sc = out.copy(); out_sc[EXOG] = A['scaler'].transform(out_sc[EXOG].ffill().bfill())
+    fut = out_sc[FW].ffill().bfill().values.astype(np.float32)
+    tg_wkd = out['is_weekend'].values; tg_hol = out['is_holiday'].values
+    anchor = _serve_lagavg(tg, tg_hol, tg_wkd, dem, tindex, A['hist_hol'], A['hist_wkd'], HORIZONS[n], K=8, topk=2)
+    clim = _serve_lagavg(tg, tg_hol, tg_wkd, dem, tindex, A['hist_hol'], A['hist_wkd'], HORIZONS[n], K=CLIM_WEEKS, topk=CLIM_WEEKS)
+    ok = ok & np.isfinite(anchor) & np.isfinite(clim)
+    if not ok.any():
+        return None
+    anchor = np.where(np.isfinite(anchor), anchor, clim)   # 앵커 결손 시 기후값 폴백
+    batch = {'past_numeric': torch.FloatTensor(past[None, :, A['FIDX']]),
+             'past_y': torch.FloatTensor(py[None]),
+             'future_numeric': torch.FloatTensor(fut[None]),
+             'anchor': torch.FloatTensor(anchor[None]), 'clim': torch.FloatTensor(clim[None])}
+    pred = np.clip(A['models'][n](batch).numpy().ravel(), 0, None)
+    pred[~ok] = np.nan
+    if calibrated and A['calib']:
+        cf = np.array([A['calib'].get(calib_key(t.month, t.hour, n), 1.0) for t in tg])   # (계절×시각×지평) 보정
+        pred = pred * cf
+    return tg, pred
+
+
+@torch.no_grad()
+def serve(db, lt_dir, bases, table, calibrated=True):
+    """standalone 서빙 → rows[(ts, base, n, demand, 'patchtst_lt')]. (체인은 load_serve+predict_horizon 직접 사용)"""
+    A = load_serve(db, lt_dir)
+    print(f'  로드된 지평: {sorted(A["models"])}  (보정={calibrated})')
     rows = []
     with sqlite3.connect(db) as con:
         for base in bases:
-            O = pd.Timestamp(base).normalize() + pd.Timedelta(hours=23)
-            if O not in tindex:
-                continue
-            oi = tindex.get_loc(O)
-            if oi - (SEQ - 1) < 0:
-                continue
-            past = A_sc[oi - (SEQ - 1):oi + 1]
-            py = dem[oi - (SEQ - 1):oi + 1][:, None]
-            if not (np.isfinite(past).all() and np.isfinite(py).all()):
-                continue
-            for n in sorted(models):
-                fg = _future_grid(con, base, n)
-                if fg is None:
+            for n in sorted(A['models']):
+                res = predict_horizon(A, con, base, n, calibrated=calibrated)
+                if res is None:
                     continue
-                out, tg, ok = fg
-                out_sc = out.copy(); out_sc[EXOG] = scaler.transform(out_sc[EXOG].ffill().bfill())
-                fut = out_sc[FW].ffill().bfill().values.astype(np.float32)
-                tg_wkd = out['is_weekend'].values; tg_hol = out['is_holiday'].values
-                anchor = _serve_lagavg(tg, tg_hol, tg_wkd, dem, tindex, hist_hol, hist_wkd, HORIZONS[n], K=8, topk=2)
-                clim = _serve_lagavg(tg, tg_hol, tg_wkd, dem, tindex, hist_hol, hist_wkd, HORIZONS[n], K=CLIM_WEEKS, topk=CLIM_WEEKS)
-                ok = ok & np.isfinite(anchor) & np.isfinite(clim)
-                if not ok.any():
-                    continue
-                anchor = np.where(np.isfinite(anchor), anchor, clim)   # 앵커 결손 시 기후값 폴백
-                batch = {'past_numeric': torch.FloatTensor(past[None, :, FIDX]),
-                         'past_y': torch.FloatTensor(py[None]),
-                         'future_numeric': torch.FloatTensor(fut[None]),
-                         'anchor': torch.FloatTensor(anchor[None]),
-                         'clim': torch.FloatTensor(clim[None])}
-                pred = np.clip(models[n](batch).numpy().ravel(), 0, None)
-                pred[~ok] = np.nan
+                tg, pred = res
                 for ts, v in zip(tg, pred):
                     if np.isfinite(v):
-                        v *= calib.get(calib_key(ts.month, ts.hour, n), 1.0)   # (계절×시각×지평구간) 보정
                         rows.append((ts.strftime('%Y-%m-%d %H:%M:%S'), base, n, float(v), 'patchtst_lt'))
     return rows

@@ -136,4 +136,17 @@ v4 15지평 honest 186-base: **전 구간·전 계절에서 hybrid 추월**(전�
 **최종 v4+보정 vs hybrid**: 전체 4.44→**3.92**·낮 7.72→**6.55**·밤 3.10→2.83·겨울 4.56→3.86·봄 4.45→4.06·
 여름 4.04→3.46. **전 구간 승 + 지평별 bias ±0.4% 평평**(겨울 D13 +7%→소멸). 보정계수가 지평·계절 의존 증명:
 겨울13시 초단 ×0.954 < 장 ×0.930(장지평일수록 더 깎음), 여름13시 장 ×1.025(여름 장지평은 과소→올림).
-운영: calibrate_lt 는 **미보정 서빙결과로 빌드**(이중보정 금지), 데이터 쌓이면 롤링 갱신. 남은 것 = production 배선.
+운영: calibrate_lt 는 **미보정 서빙결과로 빌드**(이중보정 금지), 데이터 쌓이면 롤링 갱신.
+
+## production 배선 완료 (06-20)
+- **체인 배선**: `7. land_gas_forecaster/serve_chain_land_new.py` 의 수요 계산을 하이브리드(lgbm+patch)→
+  `model_lt.predict_horizon(v4+보정)` 으로 교체. `model_lt` 에 `load_serve`/`predict_horizon`(+`calibrated`) 노출.
+  수요가 가스 입력피처라 가스도 v4 기반(검증: 기존대비 수요 +0.3%·가스 +0.15%, 폭주없음·행수동일).
+- **테이블 체계**:
+  - `est_horizon_land` = production(체인, v4 **보정** + 신재생 + 가스). est_demand_lgbm/patch 컬럼 제거.
+  - `est_horizon_land_raw` = v4 **원본(미보정)** 벤치(`serve_land_new.py` 기본 raw, `--calibrated` 옵션). 구 _new 개명.
+  - `old_method_est_demand` = 폐기 하이브리드 수요 동결 아카이브(66,368행). eval 의 hybrid_old 비교기준.
+- **부수 수정**: 사용자가 `ppa_scale.csv` 를 ISO 날짜·2020년이전 삭제로 바꿈(무해, 우리 2020+만 사용). 소비처
+  `serve_solarwind_land.py`·`backfill_btm_ppa.py` 를 ISO/`%b-%y` 양형식 robust 파싱으로 보강.
+- 서버 배포 = 사용자 수동(`serve_chain_land_new.py --backfill 전체` 1회 → 일일 cron). model_lt 코드는
+  `5. land_demand_forecaster/training/demand_lt/` 에 위치(체인이 import), 가중치=`demand_lt/weights/`.

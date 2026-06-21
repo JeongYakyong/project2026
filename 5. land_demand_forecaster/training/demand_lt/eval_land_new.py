@@ -34,10 +34,11 @@ def bias(a, p):
 def load():
     with sqlite3.connect(DB) as con:
         new = pd.read_sql("SELECT model, base, timestamp, horizon_d, est_demand_land AS pred "
-                          "FROM est_horizon_land_new", con, parse_dates=['timestamp'])
+                          "FROM est_horizon_land_raw", con, parse_dates=['timestamp'])
         bases = tuple(new.base.unique())
+        # hybrid_old = 폐기된 하이브리드(아카이브 동결). v4 채택 후 비교 기준으로 보존.
         q = ("SELECT 'hybrid_old' AS model, base, timestamp, horizon_d, est_demand_land AS pred "
-             "FROM est_horizon_land WHERE base IN (%s)" % ','.join('?' * len(bases)))
+             "FROM old_method_est_demand WHERE base IN (%s)" % ','.join('?' * len(bases)))
         old = pd.read_sql(q, con, params=bases, parse_dates=['timestamp'])
         act = pd.read_sql("SELECT timestamp, real_demand_land AS actual FROM historical", con, parse_dates=['timestamp'])
     df = pd.concat([new, old], ignore_index=True)

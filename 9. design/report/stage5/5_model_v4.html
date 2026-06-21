@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>5단계 · 수요 예측 모델의 입력 정보</title>
+<title>5단계 · 수요 예측 모델 구조 (단일 모델)</title>
 <!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
 <style>
   :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
@@ -12,7 +12,7 @@
   body{ margin:0; background:var(--paper); color:#1a1a1a;
         font-family:'Malgun Gothic','맑은 고딕',sans-serif;
         display:flex; justify-content:center; padding:2rem 1rem; }
-  .wrap{width:100%; max-width:720px}
+  .wrap{width:100%; max-width:760px}
   .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
            color:var(--accent); margin:0 0 0.4rem;}
   h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.15;}
@@ -28,7 +28,7 @@
   <p class="eyebrow" id="eyebrow"></p>
   <h1 id="title"></h1>
   <p class="sub" id="subtitle"></p>
-  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="수요 예측 모델 입력 정보"></svg>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="수요 예측 모델 구조"></svg>
   <p class="note" id="note"></p>
   <footer id="footer"></footer>
 </div>
@@ -38,41 +38,59 @@
 <!-- ====================================================================== -->
 <script>
   const META = {
-    eyebrow:  "STEP 5 · 모델 입력 정보",
-    title:    "수요 예측 모델은 무엇을 보고 예측하나",
-    subtitle: "네 갈래 정보를 함께 봅니다. 그중 수요를 가장 크게 좌우하는 것은 기온, 그리고 계절·시간대입니다.",
-    note:     "* 강조 표시(주황)는 수요에 미치는 영향이 가장 큰 정보입니다.",
-    footer:   "전국 수요 예측 · 5단계 · 2026-06",
+    eyebrow:  "STEP 5 · 수요 예측 모델 구조",
+    title:    "최근 실측에 모델이 '차이'만 더합니다",
+    subtitle: "수요의 큰 틀(기준선)은 최근 실측이 알려주고, 딥러닝 모델은 날씨 때문에 생기는 "
+            + "작은 차이만 맞춥니다. 그래서 먼 미래까지도 크게 어긋나지 않습니다.",
+    note:     "* 예측 거리 D+1~15는 같은 구조의 모델 15벌이 각각 맡습니다. "
+            + "예전엔 거리·시간대별로 두 모델(딥러닝·트리)이 나눠 맡았지만, 지금은 단일 구조로 통합했습니다.",
+    footer:   "전국 수요 예측 · 5단계 단일 모델(v4) · 2026-06",
   };
 
-  // 열(왼→오) · 각 열의 박스(위→아래). type: data | model | focal
+  // 한 줄짜리 쉬운 숫자 예시 (없으면 빈 문자열)
+  const EXAMPLE = "쉬운 예  ›  지난 같은 요일 100   +   날씨로 생긴 차이 +5   =   105   →   보정 ×0.98   →   103 MW";
+
+  // 열(왼→오) · 각 열의 박스(위→아래). type: data | model | focal | store
   const COLS = [
-    { head:"모델에 들어가는 정보", boxes:[
-        { id:"wx",   n:"기상", sub:["기온 · 더위/추위 체감", "일사량 · 구름"], type:"focal" },
-        { id:"past", n:"과거 수요", sub:["최근·지난주 같은 시각의", "수요 반복 패턴"], type:"data" },
-        { id:"cal",  n:"달력", sub:["시각 · 요일 · 휴일", "계절"], type:"focal" },
-        { id:"base", n:"최근 수요 기준선", sub:["최근 같은 요일 실측 평균", "(태양광 성장도 자동 반영)"], type:"data" },
+    { head:"입력", boxes:[
+        { id:"past", n:"과거 수요·날씨", sub:["최근 실측 기록"],     type:"data" },
+        { id:"fut",  n:"미래 날씨 예보", sub:["앞으로 15일"],        type:"data" },
+        { id:"lvl",  n:"최근 같은 요일 수요", sub:["기준선 재료"],   type:"data" },
     ]},
-    { head:"예측", boxes:[
-        { id:"model", n:"수요 예측 모델", sub:["딥러닝 (단일 모델)"], type:"model" },
+    { head:"두 갈래로 계산", boxes:[
+        { id:"anchor", n:"① 기준선 잡기", sub:["최근 같은 요일 실측 평균","태양광·계절 변화 자동 반영"], type:"model" },
+        { id:"resid",  n:"② 차이 학습 (딥러닝)", sub:["날씨로 생기는 작은 출렁임만","더하거나 뺀다"],     type:"model" },
+    ]},
+    { head:"합치기", boxes:[
+        { id:"sum", n:"기준선 + 차이", sub:["= 예측 수요"], type:"focal" },
+    ]},
+    { head:"마무리 · 저장", boxes:[
+        { id:"calib", n:"③ 후처리 보정", sub:["계절·시간대별","남은 치우침 제거"], type:"model" },
+        { id:"out",   n:"예측 결과", sub:["시점별 · 지평별 수요"], type:"store" },
     ]},
   ];
 
-  const EDGES = [ ["wx","model"], ["past","model"], ["cal","model"], ["base","model"] ];
+  // 화살표: [출발 id, 도착 id, 라벨(생략 가능)]
+  const EDGES = [
+    ["past","resid"], ["fut","resid"], ["lvl","anchor"],
+    ["anchor","sum"], ["resid","sum"],
+    ["sum","calib"], ["calib","out"],
+  ];
 
   const LEGEND = [
-    { type:"focal", label:"영향이 큰 정보 (기온 · 계절/시간)" },
-    { type:"data",  label:"보조 정보" },
-    { type:"model", label:"예측 모델" },
+    { type:"data",  label:"입력 데이터" },
+    { type:"model", label:"처리 단계" },
+    { type:"focal", label:"핵심: 합산" },
+    { type:"store", label:"저장" },
   ];
   // ====================================================================== //
   // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
   // ====================================================================== //
 
   const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
-              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.10)',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.08)',
               rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.05)',
-              ext:'rgba(45,49,66,0.03)', extStroke:'rgba(45,49,66,0.32)' };
+              stage:'rgba(45,49,66,0.035)', ext:'rgba(45,49,66,0.03)', extStroke:'rgba(45,49,66,0.32)' };
   const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
   const TEXT = '#1a1a1a';
   const STYLE = {
@@ -80,7 +98,7 @@
     external:{fill:T.ext,stroke:T.extStroke}, store:{fill:T.store,stroke:T.muted},
     model:{fill:'#ffffff',stroke:T.ink},
   };
-  const CFG = { nodeW:196, colGapX:72, padX:24, padTop:78, vGap:18, footPad:44 };
+  const CFG = { nodeW:162, colGapX:46, padX:24, padTop:78, vGap:22, footPad:44 };
   const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const t=(x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={})=>
     `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
@@ -91,7 +109,9 @@
     const colH = COLS.map(c=>c.boxes.reduce((s,b)=>s+boxH(b),0)+(c.boxes.length-1)*vGap);
     const maxColH = Math.max(...colH);
     const vbW = padX*2 + COLS.length*nodeW + (COLS.length-1)*colGapX;
-    const legendY = padTop + maxColH + 30, vbH = legendY + footPad;
+    const exH = EXAMPLE ? 32 : 0, exGap = EXAMPLE ? 24 : 0;
+    const exY = padTop + maxColH + exGap;
+    const legendY = exY + exH + 28, vbH = legendY + footPad;
     const pos={};
     COLS.forEach((c,ci)=>{ const x=padX+ci*(nodeW+colGapX); let y=padTop+(maxColH-colH[ci])/2;
       c._headY=y-14; c._headX=x+nodeW/2;
@@ -99,23 +119,32 @@
     let arrows='',labels='',boxes='',heads='';
     EDGES.forEach(([f,to,lab])=>{ const a=pos[f],b=pos[to]; if(!a||!b)return;
       const x1=a.right,y1=a.cy,x2=b.left-4,y2=b.cy;
-      arrows+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${T.muted}" stroke-width="1" marker-end="url(#arrow)"/>`;
-      if(lab){ const mx=(x1+x2)/2,my=(y1+y2)/2,w=lab.length*9+10;
-        labels+=`<rect x="${mx-w/2}" y="${my-19}" width="${w}" height="14" rx="2" fill="${T.paper}"/>`+t(mx,my-8,lab,{size:8.5,col:T.muted,w:600,ls:0.04}); } });
+      const isAcc = (f==='sum'||to==='sum');
+      const col = isAcc?T.accent:T.muted, mk = isAcc?'arrow-acc':'arrow', sw = isAcc?1.4:1;
+      arrows+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mk})"/>`;
+      if(lab){ const mx=(x1+x2)/2,my=(y1+y2)/2,w=lab.length*8+12;
+        labels+=`<rect x="${mx-w/2}" y="${my-19}" width="${w}" height="14" rx="2" fill="${T.paper}"/>`+t(mx,my-8,lab,{size:8.5,col:T.accent,w:600,ls:0.04}); } });
     COLS.forEach(c=>{ heads+=t(c._headX,c._headY,c.head,{size:8.5,col:T.soft,w:600,ls:0.12}); });
     COLS.forEach(c=>c.boxes.forEach(b=>{ const p=pos[b.id],s=STYLE[b.type]||STYLE.model,hasSub=(b.sub||[]).length>0;
       boxes+=`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
              `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
       boxes+=t(p.cx, hasSub?p.y+22:p.cy+4, b.n, {size:12.5,col:TEXT,w:700});
       (b.sub||[]).forEach((ln,i)=>{ boxes+=t(p.cx,p.y+38+i*14,ln,{size:10,col:T.muted,w:400}); }); }));
+    // 쉬운 숫자 예시 띠
+    let example='';
+    if(EXAMPLE){ example=`<rect x="${padX}" y="${exY}" width="${vbW-padX*2}" height="${exH}" rx="6" fill="${T.accentTint}" stroke="${T.accent}" stroke-width="1"/>`+
+      t(vbW/2, exY+exH/2+4, EXAMPLE, {size:10,col:'#1a1a1a',w:600,ls:0.01}); }
     let legend=`<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
     let lx=padX,ly=legendY+10;
     LEGEND.forEach(it=>{ const s=STYLE[it.type]||STYLE.model;
       legend+=`<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
-              t(lx+16,ly+10,it.label,{size:8.5,col:TEXT,w:500,anc:'start',ls:0.03}); lx+=it.label.length*9+44; });
+              t(lx+16,ly+10,it.label,{size:8.5,col:TEXT,w:500,anc:'start',ls:0.03}); lx+=it.label.length*13+40; });
     const svg=document.getElementById('diagram'); svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
-    svg.innerHTML=`<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker></defs>`+
-      `<rect width="100%" height="100%" fill="${T.paper}"/>`+arrows+labels+heads+boxes+legend;
+    svg.innerHTML=`<defs>`+
+      `<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker>`+
+      `<marker id="arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.accent}"/></marker>`+
+      `</defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+arrows+labels+heads+boxes+example+legend;
     for(const k of ['eyebrow','title','subtitle','note','footer']) document.getElementById(k).textContent=META[k]||'';
   }
   build();

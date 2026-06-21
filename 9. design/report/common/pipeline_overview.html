@@ -65,7 +65,7 @@
     { n:"데이터 수집 · 저장",     id:"공공API → DB저장",   type:"focal"    },
     { n:"전국 전력 수요 예측",             id:"전력수요 예측 → DB저장",     type:"model"    },
     { n:"잔여 순부하 예측",           id:"순부하 = 전력 수요 - 신재생발전 ",            type:"model"    },
-    { n:"천연가스 수요 예측",     id:"천연가스수요  ∝ 순부하",          type:"model"    },
+    { n:"천연가스 수요 예측",     id:"발전용 + 도시가스 "  ,       type:"model"    },
     { n:"서비스 대시보드",   id:"예측 결과 시각화 · 조회",   type:"focal"    },
     { n:"AI 에이전트",           id:"분석결과 생성",        type:"optional" },
   ];
@@ -166,13 +166,22 @@
     NODES.forEach((nd, i) => {
       const p = place(i), s = STYLE[nd.type] || STYLE.model;
       const dash = s.dash ? ` stroke-dasharray="${s.dash}"` : '';
+      
+      // id1, id2가 있으면 위아래 두 줄로 렌더링, 없으면 기존처럼 한 줄(id)로 렌더링
+      let idText = "";
+      if (nd.id1 && nd.id2) {
+        idText = mono(p.cx, p.y+42, nd.id1) + mono(p.cx, p.y+54, nd.id2);
+      } else {
+        idText = mono(p.cx, p.y+46, nd.id || "");
+      }
+
       boxes +=
         `<rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="6" fill="${T.paper}"/>`+
         `<rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"${dash}/>`+
         `<circle cx="${p.x+16}" cy="${p.y+16}" r="10" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
         t(p.x+16, p.y+19, i+1, { size:9, col:s.num }) +
         t(p.cx, p.y+30, nd.n, { col:s.name }) +
-        mono(p.cx, p.y+46, nd.id);
+        idText; // 수정한 텍스트 적용
     });
 
     // 범례 (하단 가로 띠)

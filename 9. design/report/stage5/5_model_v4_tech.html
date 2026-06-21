@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5단계 · 수요 예측 모델 구조 (기술 상세)</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:760px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.5rem; margin:0 0 0.3rem; line-height:1.15;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1rem; line-height:1.55;}
+  svg{width:100%; height:auto; display:block}
+  .note{font-size:11px; color:var(--muted); margin:0.6rem 0 0; line-height:1.5;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="수요 예측 모델 기술 구조도"></svg>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 노드 좌표/라벨·화살표 데이터  ▼▼▼            -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "STEP 5 · 수요 예측 모델 구조 (기술 상세)",
+    title:    "PatchTST-Anchor : 레벨은 밖에서, 잔차만 모델이",
+    subtitle: "과거 수요·기상을 PatchTST 인코더로 표현하고, 미래 기상이 닮은 과거 패치를 골라(cross-attention) "
+            + "문맥을 뽑은 뒤, anchor·climatology를 헤드에 함께 넣어 잔차를 낸다. "
+            + "최종 수요 = anchor + 잔차, 여기에 후처리 보정을 곱한다.",
+    note:     "* 한 샘플 = 한 지평의 24시간 예측. anchor = 최근 2주 같은-요일 평균(저편향), clim = 13주 평균(저분산), "
+            + "둘 다 origin(base 23:00) 이전 실측만 사용. RevIN·RobustScaler 적용. 손실 = SmoothL1. "
+            + "보정층은 재학습 없이 갱신 가능한 별도 층(없으면 무보정).",
+    footer:   "전국 수요 예측 · 5단계 model_lt.PatchTST_Anchor (v4) · 2026-06",
+  };
+
+  // 노드: x,y = 좌상단. h 는 sub 줄 수로 자동. type: data | model | focal | store | stage
+  // group:'model' 인 박스는 가운데 '잔차 모델' 컨테이너 안에 들어갑니다.
+  const NODES = {
+    // ── 입력 (왼쪽 위 3개 + 레벨 1개는 아래 레인) ──
+    i1: { x:18,  y:84,  w:174, n:"과거 공변량",   sub:["(336, 9)","기상3 + 시간·달력6"], type:"data" },
+    i2: { x:18,  y:150, w:174, n:"과거 실측 수요", sub:["(336, 1)"],                    type:"data" },
+    i3: { x:18,  y:216, w:174, n:"미래 공변량",   sub:["(24, 9)","예보기상3 + 달력6"],  type:"data" },
+    i4: { x:18,  y:392, w:174, n:"레벨 기준",     sub:["anchor·clim (24)"],            type:"data" },
+    // ── 잔차 모델 내부 3단계 ──
+    A:  { x:248, y:104, w:268, n:"PatchTST 인코더", sub:["패치 27 · d_model 256","Transformer 3층 · 4헤드"], type:"stage", group:"model" },
+    B:  { x:248, y:188, w:268, n:"Cross-Attention",  sub:["미래기상=Q · 과거패치=K·V","→ 문맥 ctx (256)"],      type:"stage", group:"model" },
+    C:  { x:248, y:272, w:268, n:"잔차 헤드",        sub:["[ctx · 공변량 · 레벨] 520→24","+ 기상 bypass 264→24"], type:"stage", group:"model" },
+    // ── 합산 · 보정 · 출력 (아래 레인) ──
+    sum:  { x:230, y:392, w:184, n:"수요 = anchor + 잔차", sub:["24시간 · MW"],         type:"focal" },
+    cal:  { x:432, y:392, w:138, n:"후처리 보정",          sub:["× calib[계절·시각·지평]"], type:"model" },
+    out:  { x:588, y:392, w:154, n:"예측 결과",            sub:["est_horizon_land"],      type:"store" },
+  };
+
+  // 잔차 모델 컨테이너(자동: group:'model' 박스를 감쌈) 제목
+  const MODEL_BOX = { title:"잔차 모델  ·  model_lt.PatchTST_Anchor", padTop:34, pad:16 };
+
+  // 화살표: {f, t, fp, tp, label}.  포트 fp/tp = l(좌)·r(우)·t(상)·b(하)
+  const EDGES = [
+    { f:"i1", t:"A", fp:"r", tp:"l" },
+    { f:"i2", t:"A", fp:"r", tp:"l" },
+    { f:"i3", t:"B", fp:"r", tp:"l", label:"미래기상 Q" },
+    { f:"i3", t:"C", fp:"r", tp:"l", label:"ff 216" },
+    { f:"A",  t:"B", fp:"b", tp:"t" },
+    { f:"B",  t:"C", fp:"b", tp:"t" },
+    { f:"C",  t:"sum", fp:"b", tp:"t", label:"잔차 24", acc:true },
+    { f:"i4", t:"C",   fp:"r", tp:"l", label:"anc·clim_z" },
+    { f:"i4", t:"sum", fp:"r", tp:"l", label:"anchor", acc:true },
+    { f:"sum",t:"cal", fp:"r", tp:"l", acc:true },
+    { f:"cal",t:"out", fp:"r", tp:"l" },
+  ];
+
+  // 하단 띠
+  const BAND = "예측 거리 D+1 … D+15  ·  같은 구조 모델 15벌 (지평별 가중치만 다름 · offset=(n−1)×24h)";
+
+  const LEGEND = [
+    { type:"data",  label:"입력 / 레벨" },
+    { type:"stage", label:"모델 내부 단계" },
+    { type:"focal", label:"핵심: anchor+잔차 합산" },
+    { type:"store", label:"저장" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.09)',
+              rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.05)',
+              stage:'rgba(45,49,66,0.035)', ext:'rgba(45,49,66,0.03)',
+              extStroke:'rgba(45,49,66,0.32)', cont:'rgba(45,49,66,0.025)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const STYLE = {
+    focal:{fill:T.accentTint,stroke:T.accent}, data:{fill:T.store,stroke:T.muted},
+    store:{fill:T.store,stroke:T.muted}, model:{fill:'#ffffff',stroke:T.ink},
+    stage:{fill:T.stage,stroke:T.muted},
+  };
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t=(x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={})=>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+
+  function build(){
+    const VBW=760;
+    // 기하 계산
+    for(const k in NODES){ const b=NODES[k]; b.h=40+(b.sub||[]).length*14;
+      b.cx=b.x+b.w/2; b.cy=b.y+b.h/2; b.left=b.x; b.right=b.x+b.w; b.top=b.y; b.bottom=b.y+b.h; }
+    const port=(b,p)=> p==='l'?[b.left,b.cy]: p==='r'?[b.right,b.cy]: p==='t'?[b.cx,b.top]:[b.cx,b.bottom];
+
+    // 모델 컨테이너 박스
+    const mg = Object.keys(NODES).filter(k=>NODES[k].group==='model').map(k=>NODES[k]);
+    const cx0=Math.min(...mg.map(b=>b.left))-MODEL_BOX.pad;
+    const cy0=Math.min(...mg.map(b=>b.top))-MODEL_BOX.padTop;
+    const cx1=Math.max(...mg.map(b=>b.right))+MODEL_BOX.pad;
+    const cy1=Math.max(...mg.map(b=>b.bottom))+MODEL_BOX.pad;
+
+    let arrows='', labels='', boxes='';
+
+    // 컨테이너 먼저(맨 뒤)
+    let container=`<rect x="${cx0}" y="${cy0}" width="${cx1-cx0}" height="${cy1-cy0}" rx="10" `+
+      `fill="${T.cont}" stroke="${T.muted}" stroke-width="1" stroke-dasharray="4 3"/>`+
+      t(cx0+14, cy0+20, MODEL_BOX.title, {size:11,col:T.muted,w:700,anc:'start',ls:0.02});
+
+    // 화살표(박스 뒤)
+    EDGES.forEach(e=>{ const a=NODES[e.f], b=NODES[e.t]; if(!a||!b)return;
+      let [x1,y1]=port(a,e.fp), [x2,y2]=port(b,e.tp);
+      if(e.tp==='l') x2-=4; if(e.tp==='t') y2-=4; if(e.tp==='r') x2+=4; if(e.tp==='b') y2+=4;
+      const col=e.acc?T.accent:T.muted, mk=e.acc?'arrow-acc':'arrow', sw=e.acc?1.5:1;
+      arrows+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${sw}" marker-end="url(#${mk})"/>`;
+      if(e.label){ const mx=(x1+x2)/2, my=(y1+y2)/2, w=e.label.length*6.4+10, lc=e.acc?T.accent:T.muted;
+        labels+=`<rect x="${mx-w/2}" y="${my-18}" width="${w}" height="13" rx="2" fill="${T.paper}"/>`+
+                t(mx,my-8,e.label,{size:8,col:lc,w:600,ls:0.02}); } });
+
+    // 박스
+    for(const k in NODES){ const p=NODES[k], s=STYLE[p.type]||STYLE.model, hasSub=(p.sub||[]).length>0;
+      boxes+=`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
+             `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
+      boxes+=t(p.cx, hasSub?p.y+21:p.cy+4, p.n, {size:12,col:TEXT,w:700});
+      (p.sub||[]).forEach((ln,i)=>{ boxes+=t(p.cx,p.y+37+i*13.5,ln,{size:9.5,col:T.muted,w:400}); }); }
+
+    // 하단 띠 (모든 노드·컨테이너 중 가장 아래 기준)
+    const maxBottom=Math.max(cy1, ...Object.keys(NODES).map(k=>NODES[k].bottom));
+    const bandY=maxBottom+20, bandH=30;
+    let band=`<rect x="18" y="${bandY}" width="${VBW-36}" height="${bandH}" rx="6" fill="${T.stage}" stroke="${T.muted}" stroke-width="1"/>`+
+      t(VBW/2, bandY+19, BAND, {size:9.5,col:T.muted,w:600,ls:0.01});
+
+    // 범례
+    const legendY=bandY+bandH+24;
+    let legend=`<line x1="18" y1="${legendY}" x2="${VBW-18}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx=18, ly=legendY+10;
+    LEGEND.forEach(it=>{ const s=STYLE[it.type]||STYLE.model;
+      legend+=`<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
+              t(lx+16,ly+10,it.label,{size:8.5,col:TEXT,w:500,anc:'start',ls:0.02}); lx+=it.label.length*8+44; });
+
+    const vbH=legendY+38;
+    const svg=document.getElementById('diagram'); svg.setAttribute('viewBox',`0 0 ${VBW} ${vbH}`);
+    svg.innerHTML=`<defs>`+
+      `<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker>`+
+      `<marker id="arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="${T.accent}"/></marker>`+
+      `</defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+container+arrows+labels+boxes+band+legend;
+    for(const k of ['eyebrow','title','subtitle','note','footer']) document.getElementById(k).textContent=META[k]||'';
+  }
+  build();
+</script>
+</body>
+</html>

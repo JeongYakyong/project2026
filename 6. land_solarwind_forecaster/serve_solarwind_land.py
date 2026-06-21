@@ -96,7 +96,9 @@ def load_assets(force=False):
     m6a = json.load(open(os.path.join(MOD, 'model_meta_6a.json'), encoding='utf-8'))
     recon = json.load(open(os.path.join(MOD, 'btm_ppa_recon_6a2.json'), encoding='utf-8'))
     # ppa_cap(월)
-    ppa = pd.read_csv(PPA_CSV, encoding='cp949'); ppa['ym'] = pd.to_datetime(ppa['기간'], format='%b-%y').dt.to_period('M')
+    ppa = pd.read_csv(PPA_CSV, encoding='cp949'); _g = ppa['기간'].astype(str)
+    ppa['ym'] = pd.to_datetime(_g, format='%Y-%m-%d', errors='coerce').fillna(
+                pd.to_datetime(_g, format='%b-%y', errors='coerce')).dt.to_period('M')   # ISO/%b-%y 양형식 허용
     ppa = ppa.rename(columns={'PPA 계': 'ppa_cap'}).dropna(subset=['ppa_cap']).set_index('ym')['ppa_cap'].sort_index()
     # 기상 기후값 폴백(월,시) — historical train(≤2024) 평균
     canon = []

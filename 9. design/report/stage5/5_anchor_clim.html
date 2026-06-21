@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5단계 · anchor·clim 기준선은 어떻게 만드나</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12);
+         --store:rgba(45,49,66,0.05); --tint:rgba(235,108,54,0.09); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:760px}
+  .eyebrow{font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.5rem; margin:0 0 0.3rem; line-height:1.15;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1.1rem; line-height:1.55;}
+  svg{width:100%; height:auto; display:block}
+  .cap{font-size:11px; color:var(--muted); margin:0.3rem 0 1.2rem; line-height:1.4; text-align:center;}
+  /* 설명 카드 2×2 */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:0.2rem;}
+  .card{border:1px solid var(--muted); border-radius:8px; padding:13px 15px; background:var(--paper);}
+  .card.focal{border-color:var(--accent); background:var(--tint);}
+  .card h3{margin:0 0 6px; font-size:12.5px; font-weight:700; color:#1a1a1a;}
+  .card .tag{color:var(--accent); font-weight:700;}
+  .card ul{margin:0; padding-left:16px;}
+  .card li{font-size:11.5px; color:#33384a; line-height:1.6; margin:2px 0;}
+  .card li b{color:#1a1a1a;}
+  table.h{border-collapse:collapse; margin:6px 0 0; font-size:11px;}
+  table.h td{border:1px solid var(--rule); padding:3px 8px; color:#33384a;}
+  table.h td.k{background:var(--store); font-weight:700; color:#1a1a1a;}
+  .note{font-size:10.5px; color:var(--muted); margin:1rem 0 0; line-height:1.5;}
+  footer{margin-top:0.9rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">STEP 5 · 기준선(anchor·clim) 구성</p>
+  <h1>'기준선'은 최근의 같은 요일·같은 날 유형 실측으로 만듭니다</h1>
+  <p class="sub">합산 단계에 들어가는 <b>anchor</b>와 헤드에 들어가는 <b>clim</b>은, 예측하려는 시각과
+    <b>같은 요일·같은 날 유형(평일/주말/공휴일)</b>인 과거 주들의 실측 수요만 모아 평균한 값입니다.
+    anchor는 가까운 2주(날카로움), clim은 최근 13주(안정)로 폭만 다릅니다.</p>
+
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="anchor·clim 구성 타임라인"></svg>
+  <p class="cap" id="cap"></p>
+
+  <div class="grid">
+    <div class="card">
+      <h3><span class="tag">①</span> 같은 '날 유형'만 비교</h3>
+      <ul>
+        <li>평일은 평일끼리 · 주말은 주말끼리 · 공휴일은 공휴일끼리만 평균합니다.</li>
+        <li><b>1주(168시간) 간격</b>으로 거슬러 올라가며 같은 요일을 맞춥니다.</li>
+        <li>그래서 한낮 태양광·계절 변화가 최근 실측에 <b>자동으로</b> 담깁니다.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="tag">②</span> 가까운 주에 같은 유형이 없으면</h3>
+      <ul>
+        <li>더 과거의 '같은 유형' 주를 찾습니다 — anchor는 <b>최근 약 8주</b>까지 훑어 가까운 2주를 채웁니다.</li>
+        <li>그래도 anchor를 못 채우면 → <b>clim 값으로 대체</b>합니다.</li>
+        <li>clim마저 표본이 0이면 → 그 시각은 <b>예측하지 않습니다</b>(빈값).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="tag">③</span> 지평이 멀수록 시작 주가 밀림</h3>
+      <ul>
+        <li>미래를 미리 엿보지 않도록(정직-lag), 참조 <b>시작 주</b>를 지평에 맞춰 뒤로 밉니다.</li>
+      </ul>
+      <table class="h">
+        <tr><td class="k">D+1 ~ D+7</td><td>1주 전부터</td></tr>
+        <tr><td class="k">D+8 ~ D+14</td><td>2주 전부터</td></tr>
+        <tr><td class="k">D+15</td><td>3주 전부터</td></tr>
+      </table>
+    </div>
+    <div class="card focal">
+      <h3><span class="tag">④</span> 섞는 비중은 모델이 학습</h3>
+      <ul>
+        <li>anchor·clim을 <b>고정 비율로 섞지 않습니다.</b></li>
+        <li>모델이 <b>지평별로 비중을 학습</b> — 가까운 미래는 anchor(날카로움)를, 먼 미래는 clim(안정)을 더 신뢰합니다.</li>
+        <li>최종 수요 = <b>anchor + 모델이 낸 잔차</b>. (clim은 잔차를 조정하는 단서로 쓰입니다.)</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  상단 타임라인 도식 데이터 — 여기만 고치면 됩니다  ▼▼▼            -->
+<!-- ====================================================================== -->
+<script>
+  const CAP = "예시는 타깃이 평일인 날 — anchor·clim 모두 '평일' 주만 골라 평균합니다 (주말·공휴일도 같은 방식).";
+  const NOTE = "* 정직-lag(honest): 참조하는 과거 주의 lag 가 항상 예측 기준시각(전날 23시) 이전이 되도록 시작 주 w0=⌈(offset+24)/168⌉ 로 둡니다. "
+             + "anchor=같은 유형 가까운 2주 평균(저편향·고분산), clim=같은 유형 최근 13주 평균(저분산·안정). 코드: model_lt.compute_anchor / compute_recent_clim / _serve_lagavg.";
+  const FOOTER = "전국 수요 예측 · 5단계 anchor·clim 구성 · 2026-06";
+
+  // 과거 주 마커(오른쪽=가까움). inAnchor:true 면 가까운 2주(주황 강조)
+  const WEEKS = [
+    { cx:586, label:"1주 전", inAnchor:true },
+    { cx:518, label:"2주 전", inAnchor:true },
+    { cx:450, label:"3주 전" },
+    { cx:382, label:"4주 전" },
+    { cx:314, label:"5주 전" },
+    { cx:246, label:"6주 전" },
+  ];
+  const ELLIPSIS_CX = 196;
+  const WEND = { cx:146, label:"13주 전" };   // clim 범위 끝
+  // ====================================================================== //
+
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', tint:'rgba(235,108,54,0.10)', store:'rgba(45,49,66,0.05)',
+              rule:'rgba(45,49,66,0.12)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const esc=(s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t=(x,y,s,{size=12,col='#1a1a1a',w=600,anc='middle',ls=0}={})=>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+
+  function build(){
+    const VBW=760, mW=48, mH=48, mY=78, mcy=mY+mH/2;
+    let s='';
+
+    // ── clim 묶음(아래, ⊔) : 전체 같은유형 주 ──
+    const climX1=WEND.cx-26, climX2=586+26, climY=mY+mH+12;
+    s+=`<path d="M${climX1} ${climY-7} V${climY} H${climX2} V${climY-7}" fill="none" stroke="${T.muted}" stroke-width="1.4"/>`;
+    s+=t((climX1+climX2)/2, climY+16, "clim  ·  최근 13주 평균 (같은 유형)", {size:10.5,col:T.muted,w:700});
+
+    // ── anchor 묶음(위, ⊓) : 가까운 2주 ──
+    const ancX1=518-26, ancX2=586+26, ancY=mY-12;
+    s+=`<path d="M${ancX1} ${ancY+7} V${ancY} H${ancX2} V${ancY+7}" fill="none" stroke="${T.accent}" stroke-width="1.6"/>`;
+    s+=t((ancX1+ancX2)/2, ancY-6, "anchor  ·  가까운 2주 평균", {size:10.5,col:T.accent,w:700});
+
+    // ── 과거 주 마커 ──
+    WEEKS.forEach(w=>{ const x=w.cx-mW/2, fill=w.inAnchor?T.tint:T.store, stroke=w.inAnchor?T.accent:T.muted;
+      s+=`<rect x="${x}" y="${mY}" width="${mW}" height="${mH}" rx="6" fill="${T.paper}"/>`+
+         `<rect x="${x}" y="${mY}" width="${mW}" height="${mH}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${w.inAnchor?1.4:1}"/>`;
+      s+=t(w.cx, mcy-2, w.label, {size:9.5,col:'#1a1a1a',w:700});
+      s+=t(w.cx, mcy+12, "평일", {size:8,col:T.soft,w:400});
+    });
+    // 생략 표시 + 끝 주
+    s+=t(ELLIPSIS_CX, mcy+3, "…", {size:18,col:T.soft,w:700});
+    { const x=WEND.cx-mW/2;
+      s+=`<rect x="${x}" y="${mY}" width="${mW}" height="${mH}" rx="6" fill="${T.paper}"/>`+
+         `<rect x="${x}" y="${mY}" width="${mW}" height="${mH}" rx="6" fill="${T.store}" stroke="${T.muted}" stroke-width="1"/>`;
+      s+=t(WEND.cx, mcy-2, WEND.label, {size:9.5,col:'#1a1a1a',w:700});
+      s+=t(WEND.cx, mcy+12, "평일", {size:8,col:T.soft,w:400});
+    }
+
+    // ── 예측 타깃 박스(오른쪽) ──
+    const tx=632, tw=112, ty=mY-2, th=mH+4;
+    s+=`<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="7" fill="${T.paper}"/>`+
+       `<rect x="${tx}" y="${ty}" width="${tw}" height="${th}" rx="7" fill="${T.tint}" stroke="${T.accent}" stroke-width="1.4"/>`;
+    s+=t(tx+tw/2, mcy-3, "예측 타깃", {size:12,col:'#1a1a1a',w:700});
+    s+=t(tx+tw/2, mcy+13, "(D+n) · 평일 24h", {size:9,col:T.muted,w:400});
+
+    // ── 1주 간격 점선(가까운 주 → 타깃) + '같은 요일' 라벨 ──
+    s+=`<line x1="${586+26}" y1="${mcy}" x2="${tx-4}" y2="${mcy}" stroke="${T.soft}" stroke-width="1" stroke-dasharray="3 3"/>`;
+    const gx=(586+26+tx)/2;
+    s+=`<rect x="${gx-34}" y="${mcy-19}" width="68" height="13" rx="2" fill="${T.paper}"/>`+
+       t(gx, mcy-9, "같은 요일", {size:8,col:T.soft,w:600});
+
+    // 좌측 '과거' 화살표 축
+    s+=t(WEND.cx-40, mcy+3, "과거", {size:9,col:T.soft,w:600,anc:'end'});
+
+    const vbH=climY+26;
+    const svg=document.getElementById('diagram'); svg.setAttribute('viewBox',`0 0 ${VBW} ${vbH}`);
+    svg.innerHTML=`<rect width="100%" height="100%" fill="${T.paper}"/>`+s;
+    document.getElementById('cap').textContent=CAP;
+    document.getElementById('note').textContent=NOTE;
+    document.getElementById('footer').textContent=FOOTER;
+  }
+  build();
+</script>
+</body>
+</html>

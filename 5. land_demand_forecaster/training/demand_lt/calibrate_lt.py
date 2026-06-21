@@ -18,11 +18,11 @@ CLAMP = (0.90, 1.10)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--lt-dir', default=os.path.join(HERE, 'landdemand_lt v4'))
+    ap.add_argument('--lt-dir', default=os.path.join(HERE, 'weights'))
     ap.add_argument('--model', default='patchtst_lt')
     args = ap.parse_args()
     with sqlite3.connect(DB) as con:
-        p = pd.read_sql("SELECT timestamp, horizon_d, est_demand_land AS pred FROM est_horizon_land_new WHERE model=?",
+        p = pd.read_sql("SELECT timestamp, horizon_d, est_demand_land AS pred FROM est_horizon_land_raw WHERE model=?",
                         con, params=(args.model,), parse_dates=['timestamp'])
         act = pd.read_sql("SELECT timestamp, real_demand_land AS act FROM historical", con, parse_dates=['timestamp'])
     d = p.merge(act, on='timestamp', how='inner')

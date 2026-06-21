@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>동절기 LNG 탱크 재고 시나리오</title>
+<!-- 시스템 폰트(맑은 고딕) 사용 — 외부 폰트 불필요 -->
+<style>
+  :root{
+    --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+    --accent:#059669; --rule:rgba(45,49,66,0.12);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:#1a1a1a;
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+    display:flex; justify-content:center;
+    padding:2rem 1rem;
+  }
+  .wrap{width:100%; max-width:820px}     /* ← 문서 폭. 더 좁히려면 이 값을 줄이세요 */
+  .eyebrow{
+    font-size:8px; font-weight:500; letter-spacing:0.18em;
+    text-transform:uppercase; color:#1a1a1a; margin:0 0 0.4rem;
+  }
+  h1{ font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1; }
+  .sub{font-size:12px; color:#1a1a1a; margin:0 0 1.1rem; line-height:1.4}
+  svg{width:100%; height:auto; display:block}
+  footer{
+    margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+    font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+
+  <svg id="chart" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="동절기 LNG 탱크 재고 시나리오"></svg>
+
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 좌표·곡선은 자동 계산됩니다  ▼▼▼            -->
+<!-- ====================================================================== -->
+<script>
+  // ── 1) 머리말 ──────────────────────────────────────────────
+  const META = {
+    eyebrow:  "Winter LNG Inventory Scenario",
+    title:    "동절기 LNG 탱크 재고 시뮬레이션",
+    subtitle: "1월 이상 난동(과잉)부터 3월 기습 한파(부족)까지 — 후행 대응 vs 15일 선제 대응",
+    footer:   "PROJECT.md · 예시 시나리오 · 2026-06",
+  };
+
+  // ── 2) 데이터 (data plot) ─────────────────────────────────
+  //   dates = x축 라벨 / series = 선 목록(원하면 추가·삭제 가능)
+  //   values 길이는 dates 길이와 같아야 합니다.
+  const DATA = {
+    dates: ['1/01','1/05','1/10','1/15','1/20','1/25','1/30',
+            '2/05','2/10','2/15','2/20','2/25','3/02','3/07','3/12','3/17'],
+    series: [
+      { name:"불완전 예측모델",   color:"#94a3b8", width:2.5, bold:false,
+        values:[50,52,58,68,85,95,100,95,80,70,60,40,15,10,20,40] },
+      { name:"이상적 예측모델", color:"#059669", width:3.2, bold:true,
+        values:[50,53,45,57,56,67,59,48,51,58,64,72,64,58,65,62] },
+    ],
+  };
+
+  // ── 3) 세로축 · 안전 밴드 · 위험선 ─────────────────────────
+  const SCALE = {
+    ymin: 0, ymax: 120,            // 세로축 범위
+    band: [40, 80],                // 안전 재고 밴드 [아래, 위]
+    bandLabel: "안전 재고 밴드",
+  };
+  const THRESHOLDS = [
+    { v:90, label:"고 재고" },
+    { v:20, label:"저 재고" },
+  ];
+
+  // ── 4) 위기 표시(①②) + 가로축 눈금 + 캡션 ─────────────────
+  //   seriesIndex = 어느 선 위에 표시할지(0=후행) / side = 'up'|'down' (라벨 위치)
+  const CRISES = [
+    { i:6,  seriesIndex:0, mark:"\u2460", side:"up"   },   // ① 1/30
+    { i:13, seriesIndex:0, mark:"\u2461", side:"down" },   // ② 3/07
+  ];
+  const XTICKS  = [0,3,6,9,12,15];   // dates 중 라벨 표시할 위치
+  const CAPTION = "\u2460 1월 초 이상 고온 → 과잉재고로 체선비용, 운영비용 부담 \u00A0\u00A0\u00A0\u00A0\u00A0" +
+                  "\u2461 2월 중순 기습 한파 → 재고 고갈로 긴급 패닉바잉";
+  const NOTE    = "예시 시나리오 · 실데이터 연결 예정";   // 우하단 작은 글씨
+
+  // ── 5) 색 · 배치 ──────────────────────────────────────────
+  const COLORS = {
+    ink:'#0f172a', sub:'#64748b', axis:'#94a3b8', grid:'#eef2f7',
+    danger:'#dc2626', bandFill:'#ecfdf5', bandStroke:'#d1fae5', bandText:'#10b981',
+  };
+  const CFG = {
+    width: 820,                    // 전체 그림 폭(화면에 맞게 자동 축소)
+    height: 470,
+    padL: 48, padR: 120,           // 좌 / 우(선 끝 라벨·위험선 라벨 자리)
+    padT: 84, padB: 68,            // 상(범례 자리) / 하(날짜·캡션 자리)
+  };
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 엔진 (좌표·곡선 자동 생성. 손댈 일 거의 없음) ─────
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const txt = (x,y,s,{size=12,col='#1a1a1a',w=400,anc='middle',ls=0,italic=false}={}) =>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em"`+
+    `${italic?' font-style="italic"':''}>${esc(s)}</text>`;
+
+  function build(){
+    const { width:W, height:H, padL, padR, padT, padB } = CFG;
+    const PX0 = padL, PX1 = W - padR, PY0 = padT, PY1 = H - padB;
+    const { ymin, ymax } = SCALE;
+    const n = DATA.dates.length;
+    const xpos = (i) => PX0 + (i/(n-1))*(PX1-PX0);
+    const ypos = (v) => PY1 - ((v-ymin)/(ymax-ymin))*(PY1-PY0);
+
+    // Catmull-Rom → 부드러운 곡선
+    const smooth = (vals) => {
+      const p = vals.map((v,i)=>[xpos(i),ypos(v)]);
+      let d = `M ${p[0][0].toFixed(1)},${p[0][1].toFixed(1)} `;
+      for(let i=0;i<p.length-1;i++){
+        const p0=p[i-1]||p[0], p1=p[i], p2=p[i+1], p3=p[i+2]||p[p.length-1];
+        const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+        const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+        d+=`C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)} `;
+      }
+      return d.trim();
+    };
+
+    let s = `<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`;
+
+    // 범례 (우상단, 한 줄 가로 배치)
+    const legendItems = [...DATA.series].reverse();
+    const swW = 24, gap = 6, itemGap = 22;
+    const widths = legendItems.map(se => swW + gap + se.name.length*12);
+    const totalW = widths.reduce((a,b)=>a+b,0) + itemGap*(legendItems.length-1);
+    let lx = PX1 - totalW;
+    const ly = 40;
+    legendItems.forEach((se, k) => {
+      s += `<line x1="${lx}" y1="${ly}" x2="${lx+swW}" y2="${ly}" stroke="${se.color}" stroke-width="${se.width}"/>`;
+      s += txt(lx+swW+gap, ly+4, se.name, { anc:'start', size:12, col:se.bold?COLORS.ink:COLORS.sub, w:se.bold?600:400 });
+      lx += widths[k] + itemGap;
+    });
+
+    // 안전 밴드
+    const by1 = ypos(SCALE.band[1]), by0 = ypos(SCALE.band[0]);
+    s += `<rect x="${PX0}" y="${by1.toFixed(1)}" width="${(PX1-PX0).toFixed(1)}" height="${(by0-by1).toFixed(1)}" fill="${COLORS.bandFill}" stroke="${COLORS.bandStroke}" stroke-width="1"/>`;
+    s += txt(PX0+8, (by0+by1)/2+4, SCALE.bandLabel, { anc:'start', size:11, col:COLORS.bandText });
+
+    // 위/아래 경계 가이드
+    [ymin, ymax].forEach(v=>{
+      const y=ypos(v);
+      s += `<line x1="${PX0}" y1="${y.toFixed(1)}" x2="${PX1}" y2="${y.toFixed(1)}" stroke="${COLORS.grid}" stroke-width="1"/>`;
+    });
+
+    // 위험선 (점선 + 우측 라벨)
+    THRESHOLDS.forEach(th=>{
+      const y=ypos(th.v);
+      s += `<line x1="${PX0}" y1="${y.toFixed(1)}" x2="${PX1}" y2="${y.toFixed(1)}" stroke="${COLORS.danger}" stroke-width="1" stroke-dasharray="2 4" opacity="0.7"/>`;
+      s += txt(PX1+6, y+4, th.label, { anc:'start', size:10.5, col:COLORS.danger });
+    });
+
+    // 가로축 + 눈금
+    s += `<line x1="${PX0}" y1="${PY1.toFixed(1)}" x2="${PX1}" y2="${PY1.toFixed(1)}" stroke="${COLORS.axis}" stroke-width="1"/>`;
+    XTICKS.forEach(i=>{
+      const x=xpos(i);
+      s += `<line x1="${x.toFixed(1)}" y1="${PY1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(PY1+5).toFixed(1)}" stroke="${COLORS.axis}" stroke-width="1"/>`;
+      s += txt(x, PY1+20, DATA.dates[i], { size:11, col:COLORS.sub });
+    });
+
+    // 선들 + 끝점
+    DATA.series.forEach(se=>{
+      s += `<path d="${smooth(se.values)}" fill="none" stroke="${se.color}" stroke-width="${se.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      s += `<circle cx="${xpos(n-1).toFixed(1)}" cy="${ypos(se.values[n-1]).toFixed(1)}" r="${se.bold?4:3.5}" fill="${se.color}"/>`;
+    });
+
+    // 위기 표시 (①②)
+    CRISES.forEach(c=>{
+      const se = DATA.series[c.seriesIndex];
+      const x=xpos(c.i), y=ypos(se.values[c.i]);
+      s += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x.toFixed(1)}" y2="${PY1.toFixed(1)}" stroke="${COLORS.danger}" stroke-width="1" stroke-dasharray="1 4" opacity="0.4"/>`;
+      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="#ffffff" stroke="${COLORS.danger}" stroke-width="2"/>`;
+      const off = c.side==='up' ? -14 : 22;
+      s += txt(x, y+off, c.mark, { size:13, w:700, col:COLORS.danger });
+    });
+
+    // 하단 캡션 + 우하단 노트
+    s += txt(PX0, H-30, CAPTION, { anc:'start', size:11.5, col:COLORS.sub });
+    s += txt(W-8, H-10, NOTE, { anc:'end', size:9.5, col:COLORS.axis, italic:true });
+
+    const svg = document.getElementById('chart');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = s;
+
+    document.getElementById('eyebrow').textContent  = META.eyebrow;
+    document.getElementById('title').textContent    = META.title;
+    document.getElementById('subtitle').textContent = META.subtitle;
+    document.getElementById('footer').textContent   = META.footer;
+  }
+  build();
+</script>
+</body>
+</html>

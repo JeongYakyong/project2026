@@ -23,7 +23,9 @@ MEAS_START = pd.Timestamp('2024-11-01')   # 이 시점부터 BTM/PPA 실측 사�
 
 def main():
     ppa = pd.read_csv(PPA_CSV, encoding='cp949')
-    ppa['ym'] = pd.to_datetime(ppa['기간'], format='%b-%y').dt.to_period('M')
+    _g = ppa['기간'].astype(str)
+    ppa['ym'] = pd.to_datetime(_g, format='%Y-%m-%d', errors='coerce').fillna(
+                pd.to_datetime(_g, format='%b-%y', errors='coerce')).dt.to_period('M')   # ISO/%b-%y 양형식 허용
     ppa = ppa.rename(columns={'PPA 계': 'ppa_cap'})[['ym', 'ppa_cap']]
 
     con = sqlite3.connect(DB)

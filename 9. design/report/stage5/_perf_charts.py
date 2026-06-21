@@ -25,7 +25,8 @@ def clean(ax):
 # ── 실측·예측 로드 ───────────────────────────────────────────────
 con = sqlite3.connect(DB)
 hist = pd.read_sql('SELECT timestamp, real_demand_land FROM historical', con, parse_dates=['timestamp']).sort_values('timestamp')
-est = pd.read_sql('SELECT timestamp, horizon_d, est_demand_land, est_demand_lgbm FROM est_horizon_land', con, parse_dates=['timestamp'])
+# 폐기된 하이브리드 성능 리포트(동결): est_horizon_land 은 이제 v4 라 아카이브 old_method_est_demand 참조.
+est = pd.read_sql('SELECT timestamp, horizon_d, est_demand_land, est_demand_lgbm FROM old_method_est_demand', con, parse_dates=['timestamp'])
 con.close()
 s = hist.assign(y=hist.real_demand_land.replace(0, np.nan).interpolate('linear')).set_index('timestamp')['y']
 est['actual'] = est.timestamp.map(s.to_dict())

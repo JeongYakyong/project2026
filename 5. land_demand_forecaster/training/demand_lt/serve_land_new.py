@@ -24,9 +24,9 @@ DB = os.path.normpath(os.path.join(HERE, '..', '..', '..', '1. data_fetcher_and_
 # 기존 final336 산출물(가중치/스케일러/메타)
 FINAL336 = r'C:\Users\bjkim\Desktop\project2026\5. land_demand_forecaster\training\landdemand_final336'
 CAPA_CSV = r'C:\Users\bjkim\Desktop\project2026\1. data_fetcher_and_db\second_dataset\kr_elec_capa.csv'
-LT_DIR = os.path.join(HERE, 'landdemand_lt v4')   # lt 정본 가중치(v4 = anchor + recent-clim)
+LT_DIR = os.path.join(HERE, 'weights')   # lt 정본 가중치(v4 = anchor + recent-clim + calib_lt.json)
 DEVICE = 'cpu'
-TABLE = 'est_horizon_land_new'
+TABLE = 'est_horizon_land_raw'   # v4 원본(미보정) 백테스트·보정표 재생성 벤치. production=est_horizon_land(체인)
 
 TEMP_SEL = ['wonju', 'seosan', 'pohang', 'yeonggwang']
 SOLAR_SEL = ['seosan', 'yeonggwang']
@@ -236,6 +236,7 @@ def main():
     ap.add_argument('--days', type=int, default=31, help='최근 N일 base 만 서빙(비교용)')
     ap.add_argument('--lt-dir', default=LT_DIR, help='lt 가중치 폴더')
     ap.add_argument('--reset', action='store_true', help='쓰기 전 테이블 초기화')
+    ap.add_argument('--calibrated', action='store_true', help='post-hoc 보정 적용(기본=원본 raw — 보정표 재생성용)')
     args = ap.parse_args()
     with sqlite3.connect(DB) as con:
         all_bases = [r[0] for r in con.execute('SELECT DISTINCT base FROM forecast_horizon ORDER BY base').fetchall()]
@@ -246,7 +247,7 @@ def main():
         rows = serve_final336(bases)
     else:
         import model_lt
-        rows = model_lt.serve(DB, args.lt_dir, bases, TABLE)
+        rows = model_lt.serve(DB, args.lt_dir, bases, TABLE, calibrated=args.calibrated)
     write_rows(rows, reset=args.reset)
     print(f'wrote {len(rows)} rows ({args.model}) -> {TABLE}')
 
