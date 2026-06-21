@@ -48,8 +48,8 @@
   // 열(왼→오) · 각 열의 박스(위→아래). type: external | focal | data
   const COLS = [
     { head:"외부 데이터 출처", boxes:[
-        { id:"kma",  n:"기상청",     sub:["날씨 실측·예보", "기상 데이터(기온, 일사량 등)"], type:"external" },
-        { id:"kpx",  n:"전력거래소", sub:["전력 수급·발전·가격", "수요·발전원별 발전량"], type:"external" },
+        { id:"kma",  n:"기상청",     sub:["날씨 실측·예보", "기상 데이터(기온, 일사량 등)"], type:"data" },
+        { id:"kpx",  n:"전력거래소", sub:["전력 수급현황", "발전량"], type:"data" },
     ]},
     { head:"수집기", boxes:[
         { id:"col",  n:"전국 데이터 수집기", sub:["정해진 시각에", "자동으로 수집"], type:"focal" },

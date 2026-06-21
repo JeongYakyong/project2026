@@ -111,15 +111,15 @@
     // 구역 라벨(위)
     const cA=(axX0+splitX)/2, cB=(splitX+axX1)/2;
     s += t(cA, barY-26, "1시간 간격", {size:12.5,col:T.accent,w:700});
-    s += t(cA, barY-11, "촘촘한 단기 예보 · 최대 135시간", {size:9.5,col:T.muted,w:400});
+    s += t(cA, barY-11, "최대 135시간 까지", {size:9.5,col:T.muted,w:400});
     s += t(cB, barY-26, "3시간 간격", {size:12.5,col:T.ink,w:700});
-    s += t(cB, barY-11, "성긴 장기 예보 · 최대 372시간(약 15.5일)", {size:9.5,col:T.muted,w:400});
+    s += t(cB, barY-11, "최대 372시간(약 15.5일)", {size:9.5,col:T.muted,w:400});
 
     // 기준시각 표시(왼쪽 시작점)
     s += `<line x1="${axX0}" y1="${barY-4}" x2="${axX0}" y2="${barB+34}" stroke="${T.accent}" stroke-width="1.4"/>`;
     s += `<polygon points="${axX0},${barY+barH/2-6} ${axX0+9},${barY+barH/2} ${axX0},${barY+barH/2+6}" fill="${T.accent}"/>`;
-    s += t(axX0-8, barY+18, "기준시각", {size:11,col:TEXT,w:700,anc:'end'});
-    s += t(axX0-8, barY+33, "발표 시점", {size:9.5,col:T.muted,w:400,anc:'end'});
+    s += t(axX0-8, barY+18, "기준 시각", {size:11,col:TEXT,w:700,anc:'end'});
+    s += t(axX0-8, barY+33, "ex) 2026-06-01", {size:9.5,col:T.muted,w:400,anc:'end'});
 
     // 하단 D+ 눈금
     D.dayTicks.forEach(d=>{
@@ -127,7 +127,8 @@
       s += `<line x1="${x}" y1="${barB}" x2="${x}" y2="${barB+7}" stroke="${focal?T.accent:T.muted}" stroke-width="${focal?1.4:1}"/>`;
       s += t(x, barB+21, "D+"+d, {size:focal?11:10,col:focal?T.accent:TEXT,w:focal?700:500});
     });
-    s += t(xOf(D.targetD*24), barB+35, "예측 목표", {size:9,col:T.accent,w:600,ls:0.04});
+    s += t(xOf(D.targetD*24), barB+35, "예측 한계", {size:9,col:T.accent,w:600,ls:0.04});
+    s += t(xOf(D.targetD*24), barB+48, "ex) 2026-06-16", {size:9,col:T.accent,w:600,ls:0.04});
 
     // ── 가운데 구분선 ──
     const divY=barB+60;

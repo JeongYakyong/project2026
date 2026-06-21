@@ -47,18 +47,18 @@
 
   const COLS = [
     { head:"초기 데이터", boxes:[
-        { id:"raw", n:"수집한 자료", sub:["Raw 데이터", "저장형식이 다른 데이터"], type:"data" },
+        { id:"raw", n:"수집한 자료", sub:["Raw 데이터", "저장형식이 다른 데이터"], type:"model" },
     ]},
     { head:"데이터 전처리", boxes:[
         { id:"proc", n:"데이터 전처리", sub:["· 결측치 및 데이터 구분", "· 시계열 데이터로 변환"], type:"model" },
     ]},
     { head:"정제 데이터", boxes:[
-        { id:"clean", n:"정돈된 데이터", sub:["모델 입력 및 분석가능"], type:"focal" },
+        { id:"clean", n:"정리된 데이터", sub:["모델 입력 및 분석가능"], type:"model" },
     ]},
   ];
 
   const EDGES = [
-    ["raw","proc","점검"], ["proc","clean","정돈"],
+    ["raw","proc","점검"], ["proc","clean","정리"],
   ];
 
   const LEGEND = [

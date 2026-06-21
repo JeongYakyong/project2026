@@ -18,7 +18,8 @@ production 3.89 동급)·낮 spread 10.3→8.9.
 
 ## 자산
 - `best_lt_D1-6.pth` = 파인튜닝본 / `best_lt_D7-15.pth` = 기존.
-- `calib_lt.json` = 216셀(초단·단 144 제거) / `scaler_exog.pkl`·`metadata_lt.pkl` = 기존 보존(HP·DMEAN/DSTD/RESID_STD 불변).
+- `calib_lt.json` = 216셀(D7-15 중·중장·장만). 빌더 `calibrate_lt.py`는 **D7-15만 굽도록 수정됨**(`SKIP_GROUPS={'초단','단'}`) → 데이터 쌓여 재실행해도 D1-6 무보정 유지(안전).
+- `scaler_exog.pkl`·`metadata_lt.pkl` = 기존 보존(HP·DMEAN/DSTD/RESID_STD 불변).
 - `metadata_ft.json` = 파인튜닝 전/후 val 기록.
 - 원본 백업 = `../weights_v4_orig`(롤백용, 며칠 운영 확인 후 삭제 가능).
 - 재현 = `finetune_land_lt_colab.ipynb` + `eda_scaler/finetune_split.csv`(격자 split p=1/6).

@@ -63,7 +63,7 @@ for s in ('left', 'bottom'): ax.spines[s].set_color(RULE)
 ax.tick_params(length=0)
 
 fig.text(0.012, 0.005,
-         "→ 그래서 D+8 이후 먼 미래는 노이즈가 된 날씨 예보 대신 과거 패턴·달력에 기대는 LGBM이 맡습니다.",
+         "→ 그래서 먼 미래일수록 모델은 노이즈가 된 날씨 예보보다 최근 같은 요일 실측(기준선)·달력에 더 기댑니다.",
          fontsize=8.6, color=MUTED)
 fig.subplots_adjust(top=0.82, bottom=0.18, left=0.09, right=0.97)
 fig.savefig(os.path.join(HERE, '5_forecast_skill.png'), bbox_inches='tight', dpi=150)

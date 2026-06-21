@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """5단계 EDA 보고서용 차트 (집 양식: 흰 배경·맑은 고딕).
-출력: 5_importance.png / 5_temp_demand.png / 5_season_hour.png"""
+출력: 5_corr.png / 5_temp_demand.png / 5_season_hour.png"""
 import os, sqlite3
 import numpy as np, pandas as pd
 import matplotlib as mpl, matplotlib.pyplot as plt
-import lightgbm as lgb
+import holidays as _holidays
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..', '..'))
 DB = os.path.join(ROOT, '1. data_fetcher_and_db', 'data', 'input_data_land.db')
-MODEL = os.path.join(ROOT, '5. land_demand_forecaster', 'model', 'models', 'lgbm_land_demand_v2hum.txt')
 
 INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
 RULE = '#d9dce3'
@@ -25,13 +24,17 @@ def clean(ax):
     ax.tick_params(length=0)
 
 # ── 데이터 로드 (4지점: 원주·서산·포항·영광 = 모델 정의) ──────────────
-ST = ['wonju', 'seosan', 'pohang', 'yeonggwang']
-pull = ['timestamp', 'real_demand_land'] + [f'temp_c_{s}' for s in ST]
+ST = ['wonju', 'seosan', 'pohang', 'yeonggwang']      # 기온·습도 4지점(모델 정의)
+SOL = ['seosan', 'yeonggwang']                         # 일사 2지점
+pull = (['timestamp', 'real_demand_land']
+        + [f'temp_c_{s}' for s in ST] + [f'humidity_{s}' for s in ST] + [f'solar_rad_{s}' for s in SOL])
 con = sqlite3.connect(DB)
 df = pd.read_sql(f"SELECT {', '.join(pull)} FROM historical", con, parse_dates=['timestamp'])
 con.close()
 df = df.sort_values('timestamp').reset_index(drop=True)
 df['temp_c'] = df[[f'temp_c_{s}' for s in ST]].mean(axis=1)
+df['humidity'] = df[[f'humidity_{s}' for s in ST]].mean(axis=1)
+df['solar_rad'] = df[[f'solar_rad_{s}' for s in SOL]].mean(axis=1)
 y = df['real_demand_land'].replace(0, np.nan)
 df['demand'] = y.interpolate('linear').ffill().bfill()
 df['hour'] = df.timestamp.dt.hour
@@ -40,43 +43,59 @@ df['season'] = df.month.map({12:'겨울',1:'겨울',2:'겨울',3:'봄',4:'봄',5
                              6:'여름',7:'여름',8:'여름',9:'가을',10:'가을',11:'가을'})
 
 # ════════════════════════════════════════════════════════════════════
-# (B) 피처 중요도 — LGBM(부스팅 트리) gain, 그룹 합산
+# (B) 피어슨 상관 — 수요와 각 요인의 선형 상관관계 (모델 무관 데이터 분석)
 # ════════════════════════════════════════════════════════════════════
-b = lgb.Booster(model_file=MODEL)
-gain = dict(zip(b.feature_name(), b.feature_importance(importance_type='gain')))
-GROUPS = [
-    ('과거 수요 패턴', ['lag336','lag504','rec168','lag168','rec24','lag24']),
-    ('요일 · 휴일',    ['day_type','dow_sin','dow_cos']),
-    ('기온',           ['temp_c4']),
-    ('일사 · 구름',    ['solar_rad','total_cloud','midlow_cloud']),
-    ('시간대',         ['hour_sin','hour_cos']),
-    ('계절(월)',       ['month_sin','month_cos']),
-    ('태양광 보급량',  ['cap_btmppa']),
-    ('습도',           ['humidity']),
-]
-tot = sum(gain.values())
-vals = [(name, 100*sum(gain.get(f,0) for f in fs)/tot) for name, fs in GROUPS]
-vals.sort(key=lambda x: x[1])
-labels = [v[0] for v in vals]; pcts = [v[1] for v in vals]
-colors = [ACCENT if l == '기온' else (MUTED if l in ('과거 수요 패턴','요일 · 휴일') else SOFT) for l in labels]
+df['feel'] = (df.temp_c - 18).abs()                      # 기온 체감(18°C 기준 절대차)
+df['lag24'] = df.demand.shift(24)
+df['lag168'] = df.demand.shift(168)
+_yrs = list(range(int(df.timestamp.dt.year.min()), int(df.timestamp.dt.year.max()) + 1))
+_kr = _holidays.SouthKorea(years=_yrs)
+_wend = df.timestamp.dt.dayofweek >= 5
+_ishol = df.timestamp.dt.normalize().map(lambda d: d.date() in _kr)
+df['nonwork'] = (_wend | _ishol).astype(float)           # 주말·공휴일
 
-fig, ax = plt.subplots(figsize=(7.4, 4.0))
-bars = ax.barh(labels, pcts, color=colors, height=0.66)
-for l, p in zip(labels, pcts):
-    ax.text(p + 0.6, l, f'{p:.0f}%', va='center', ha='left',
-            fontsize=10, color=(ACCENT if l == '기온' else MUTED),
-            fontweight=('bold' if l == '기온' else 'normal'))
-ax.set_xlim(0, max(pcts) * 1.15)
-ax.set_xlabel('모델이 참고하는 비중 (%)', fontsize=10)
-ax.set_title('모델은 무엇을 보고 수요를 맞히나', fontsize=14, fontweight='bold', color=INK, loc='left', pad=30)
-ax.text(0, 1.03, '부스팅 트리(LGBM)가 참고하는 정보 비중 · 큰 순서', transform=ax.transAxes,
+CC = [
+    ('1주 전 수요',          'lag168'),
+    ('하루 전 수요',         'lag24'),
+    ('기온 체감(더위·추위)', 'feel'),
+    ('일사량',               'solar_rad'),
+    ('기온(원본)',           'temp_c'),
+    ('습도',                 'humidity'),
+    ('주말·공휴일',          'nonwork'),
+]
+cc = df.dropna(subset=['demand'] + [c for _, c in CC])
+rv = [(name, float(np.corrcoef(cc.demand, cc[col])[0, 1])) for name, col in CC]
+rv.sort(key=lambda x: x[1])                               # 음→양 (barh 아래→위)
+names = [n for n, _ in rv]; rs = [r for _, r in rv]
+def barcol(n, r):
+    if n.startswith('기온 체감'): return ACCENT
+    return '#3b6ea5' if r >= 0 else '#9aa0ac'
+
+fig, ax = plt.subplots(figsize=(7.6, 4.3))
+ax.axvline(0, color=MUTED, lw=1, zorder=2)
+ax.barh(names, rs, color=[barcol(n, r) for n, r in zip(names, rs)], height=0.66, zorder=3)
+for n, r in zip(names, rs):
+    ax.text(r + (0.02 if r >= 0 else -0.02), n, f'{r:+.2f}', va='center',
+            ha=('left' if r >= 0 else 'right'), fontsize=10,
+            color=(ACCENT if n.startswith('기온 체감') else MUTED),
+            fontweight=('bold' if n.startswith('기온 체감') else 'normal'))
+ax.set_xlim(-0.62, 1.02)
+ax.set_xlabel('피어슨 상관계수 r   ·   +1=같이 오르내림 / -1=반대로', fontsize=10)
+ax.set_title('무엇이 수요와 함께 움직이나', fontsize=14, fontweight='bold', color=INK, loc='left', pad=30)
+ax.text(0, 1.03, '수요와 각 요인의 선형 상관관계(피어슨 r) · 모델과 무관한 데이터 분석', transform=ax.transAxes,
         fontsize=9.5, color=SOFT, ha='left')
+ti = names.index('기온(원본)')
+ax.annotate('원본 기온은 거의 0\n(더위·추위 둘 다 수요↑인 V자\n→ ‘체감’으로 봐야 보임)',
+            xy=(0, ti), xytext=(0.30, ti - 0.55),
+            fontsize=8.4, color=MUTED, va='center', ha='left',
+            arrowprops=dict(arrowstyle='->', color=SOFT, lw=1.1))
 clean(ax); ax.tick_params(axis='y', labelsize=10.5)
 fig.text(0.012, 0.005,
-         "‘과거 수요 패턴’에는 이미 계절·요일·시간 정보가 녹아 있어, 기온이 모델이 추가로 보는 가장 큰 날씨 요인입니다.",
-         fontsize=8.6, color=MUTED)
-fig.subplots_adjust(top=0.82, bottom=0.20, left=0.20, right=0.95)
-fig.savefig(os.path.join(HERE, '5_importance.png'), bbox_inches='tight', dpi=150)
+         "과거 수요(반복성)가 가장 강하고, 날씨는 기온을 ‘체감’으로 바꿔야 신호가 드러납니다. "
+         "일사는 한낮 효과가 계절·태양광에 따라 달라 단순 상관은 작습니다.",
+         fontsize=8.0, color=MUTED)
+fig.subplots_adjust(top=0.82, bottom=0.20, left=0.22, right=0.96)
+fig.savefig(os.path.join(HERE, '5_corr.png'), bbox_inches='tight', dpi=150)
 plt.close(fig)
 
 # ════════════════════════════════════════════════════════════════════
@@ -130,4 +149,4 @@ fig.savefig(os.path.join(HERE, '5_season_hour.png'), bbox_inches='tight', dpi=15
 plt.close(fig)
 
 print('OK  rows=%d  %s ~ %s' % (len(df), df.timestamp.min().date(), df.timestamp.max().date()))
-print('importance(%):', {l: round(p,1) for l, p in zip(labels, pcts)})
+print('corr(r):', {n: round(r, 3) for n, r in rv})

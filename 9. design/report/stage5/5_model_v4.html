@@ -42,13 +42,18 @@
     title:    "최근 실측에 모델이 '차이'만 더합니다",
     subtitle: "수요의 큰 틀(기준선)은 최근 실측이 알려주고, 딥러닝 모델은 날씨 때문에 생기는 "
             + "작은 차이만 맞춥니다. 그래서 먼 미래까지도 크게 어긋나지 않습니다.",
-    note:     "* 예측 거리 D+1~15는 같은 구조의 모델 15벌이 각각 맡습니다. "
-            + "예전엔 거리·시간대별로 두 모델(딥러닝·트리)이 나눠 맡았지만, 지금은 단일 구조로 통합했습니다.",
+    note:     "* 예: 지난 같은 요일 100 + 날씨 차이 +5 = 105 → (먼 미래는 보정 ×0.98) → 103 MW. "
+            + "예측 거리 D+1~15는 같은 구조 15벌이며, 한낮 과대(태양광)는 가까운 미래(D+1~6)는 모델 미세조정으로, "
+            + "먼 미래(D+7~15)는 보정표로 바로잡습니다.",
     footer:   "전국 수요 예측 · 5단계 단일 모델(v4) · 2026-06",
   };
 
-  // 한 줄짜리 쉬운 숫자 예시 (없으면 빈 문자열)
-  const EXAMPLE = "쉬운 예  ›  지난 같은 요일 100   +   날씨로 생긴 차이 +5   =   105   →   보정 ×0.98   →   103 MW";
+  // 하단 2구간 띠 — 지평별 교정 방식 (한낮 과대 바로잡기)
+  const ZONE_HEAD = "한낮 과대(태양광 급증)를 예측 거리에 따라 다르게 바로잡습니다";
+  const ZONES = [
+    { frac:0.40, acc:true,  title:"가까운 미래 · D+1~6", desc:"모델을 새 데이터로 미세조정(파인튜닝)" },
+    { frac:0.60, acc:false, title:"먼 미래 · D+7~15",    desc:"후처리 보정표로 교정" },
+  ];
 
   // 열(왼→오) · 각 열의 박스(위→아래). type: data | model | focal | store
   const COLS = [
@@ -65,7 +70,7 @@
         { id:"sum", n:"기준선 + 차이", sub:["= 예측 수요"], type:"focal" },
     ]},
     { head:"마무리 · 저장", boxes:[
-        { id:"calib", n:"③ 후처리 보정", sub:["계절·시간대별","남은 치우침 제거"], type:"model" },
+        { id:"calib", n:"③ 지평별 교정", sub:["가까운/먼 미래","방식이 다름 ↓"], type:"model" },
         { id:"out",   n:"예측 결과", sub:["시점별 · 지평별 수요"], type:"store" },
     ]},
   ];
@@ -109,9 +114,10 @@
     const colH = COLS.map(c=>c.boxes.reduce((s,b)=>s+boxH(b),0)+(c.boxes.length-1)*vGap);
     const maxColH = Math.max(...colH);
     const vbW = padX*2 + COLS.length*nodeW + (COLS.length-1)*colGapX;
-    const exH = EXAMPLE ? 32 : 0, exGap = EXAMPLE ? 24 : 0;
-    const exY = padTop + maxColH + exGap;
-    const legendY = exY + exH + 28, vbH = legendY + footPad;
+    const bandH = 46, headGap = 30;
+    const headerY = padTop + maxColH + headGap;
+    const bandTop = headerY + 12;
+    const legendY = bandTop + bandH + 28, vbH = legendY + footPad;
     const pos={};
     COLS.forEach((c,ci)=>{ const x=padX+ci*(nodeW+colGapX); let y=padTop+(maxColH-colH[ci])/2;
       c._headY=y-14; c._headX=x+nodeW/2;
@@ -130,10 +136,15 @@
              `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
       boxes+=t(p.cx, hasSub?p.y+22:p.cy+4, b.n, {size:12.5,col:TEXT,w:700});
       (b.sub||[]).forEach((ln,i)=>{ boxes+=t(p.cx,p.y+38+i*14,ln,{size:10,col:T.muted,w:400}); }); }));
-    // 쉬운 숫자 예시 띠
-    let example='';
-    if(EXAMPLE){ example=`<rect x="${padX}" y="${exY}" width="${vbW-padX*2}" height="${exH}" rx="6" fill="${T.accentTint}" stroke="${T.accent}" stroke-width="1"/>`+
-      t(vbW/2, exY+exH/2+4, EXAMPLE, {size:10,col:'#1a1a1a',w:600,ls:0.01}); }
+    // 지평별 교정 2구간 띠
+    let example=t(vbW/2, headerY, ZONE_HEAD, {size:9.5,col:T.soft,w:600,ls:0.01});
+    let zx=padX; const bTotW=vbW-padX*2, bgap=8;
+    ZONES.forEach(z=>{ const zw=(bTotW-bgap)*z.frac, f=z.acc?T.accentTint:T.store, st=z.acc?T.accent:T.muted;
+      example+=`<rect x="${zx}" y="${bandTop}" width="${zw}" height="${bandH}" rx="6" fill="${T.paper}"/>`+
+               `<rect x="${zx}" y="${bandTop}" width="${zw}" height="${bandH}" rx="6" fill="${f}" stroke="${st}" stroke-width="1.2"/>`;
+      example+=t(zx+zw/2, bandTop+19, z.title, {size:11,col:'#1a1a1a',w:700});
+      example+=t(zx+zw/2, bandTop+36, z.desc, {size:9,col:T.muted,w:400});
+      zx+=zw+bgap; });
     let legend=`<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
     let lx=padX,ly=legendY+10;
     LEGEND.forEach(it=>{ const s=STYLE[it.type]||STYLE.model;

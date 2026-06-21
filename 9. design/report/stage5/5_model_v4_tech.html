@@ -42,10 +42,11 @@
     title:    "PatchTST-Anchor : 레벨은 밖에서, 잔차만 모델이",
     subtitle: "과거 수요·기상을 PatchTST 인코더로 표현하고, 미래 기상이 닮은 과거 패치를 골라(cross-attention) "
             + "문맥을 뽑은 뒤, anchor·climatology를 헤드에 함께 넣어 잔차를 낸다. "
-            + "최종 수요 = anchor + 잔차, 여기에 후처리 보정을 곱한다.",
+            + "최종 수요 = anchor + 잔차이며, 한낮 과대예측은 지평에 따라 다르게 교정한다(아래 띠).",
     note:     "* 한 샘플 = 한 지평의 24시간 예측. anchor = 최근 2주 같은-요일 평균(저편향), clim = 13주 평균(저분산), "
             + "둘 다 origin(base 23:00) 이전 실측만 사용. RevIN·RobustScaler 적용. 손실 = SmoothL1. "
-            + "보정층은 재학습 없이 갱신 가능한 별도 층(없으면 무보정).",
+            + "BTM 태양광 급증(2025~)으로 한낮 과대 → D1-6 은 head 파인튜닝(인코더 동결, 2024-11~2025-11 재학습)으로 구조적 교정, "
+            + "D7-15 는 파인튜닝 시 과적합이라 후처리 보정표 유지.",
     footer:   "전국 수요 예측 · 5단계 model_lt.PatchTST_Anchor (v4) · 2026-06",
   };
 
@@ -63,7 +64,7 @@
     C:  { x:248, y:272, w:268, n:"잔차 헤드",        sub:["[ctx · 공변량 · 레벨] 520→24","+ 기상 bypass 264→24"], type:"stage", group:"model" },
     // ── 합산 · 보정 · 출력 (아래 레인) ──
     sum:  { x:230, y:392, w:184, n:"수요 = anchor + 잔차", sub:["24시간 · MW"],         type:"focal" },
-    cal:  { x:432, y:392, w:138, n:"후처리 보정",          sub:["× calib[계절·시각·지평]"], type:"model" },
+    cal:  { x:432, y:392, w:138, n:"후처리 보정 (D7~15)",  sub:["× calib[계절·시각·지평]"], type:"model" },
     out:  { x:588, y:392, w:154, n:"예측 결과",            sub:["est_horizon_land"],      type:"store" },
   };
 
@@ -85,8 +86,11 @@
     { f:"cal",t:"out", fp:"r", tp:"l" },
   ];
 
-  // 하단 띠
-  const BAND = "예측 거리 D+1 … D+15  ·  같은 구조 모델 15벌 (지평별 가중치만 다름 · offset=(n−1)×24h)";
+  // 하단 2구간 띠 — 지평별 한낮 과대 교정 차등
+  const ZONES = [
+    { frac:0.40, acc:true,  title:"D+1 ~ D+6 · 가까운 미래", desc:"파인튜닝본 head (인코더 동결·head 재학습) · 보정 없음" },
+    { frac:0.60, acc:false, title:"D+7 ~ D+15 · 먼 미래",    desc:"기존 v4 head · 후처리 보정(calib) 적용" },
+  ];
 
   const LEGEND = [
     { type:"data",  label:"입력 / 레벨" },
@@ -146,6 +150,13 @@
         labels+=`<rect x="${mx-w/2}" y="${my-18}" width="${w}" height="13" rx="2" fill="${T.paper}"/>`+
                 t(mx,my-8,e.label,{size:8,col:lc,w:600,ls:0.02}); } });
 
+    // D1~6 우회(보정 없이 바로) — cal 위로 elbow
+    { const sN=NODES.sum, oN=NODES.out, byY=sN.top-15;
+      arrows+=`<path d="M${sN.cx} ${sN.top} V${byY} H${oN.cx} V${oN.top-4}" fill="none" stroke="${T.muted}" stroke-width="1" marker-end="url(#arrow)"/>`;
+      const lab="D1~6 · 보정 없음", lw=lab.length*6.4+10, lmx=(sN.cx+oN.cx)/2;
+      labels+=`<rect x="${lmx-lw/2}" y="${byY-12}" width="${lw}" height="13" rx="2" fill="${T.paper}"/>`+
+              t(lmx, byY-2, lab, {size:8,col:T.muted,w:600,ls:0.02}); }
+
     // 박스
     for(const k in NODES){ const p=NODES[k], s=STYLE[p.type]||STYLE.model, hasSub=(p.sub||[]).length>0;
       boxes+=`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
@@ -153,11 +164,18 @@
       boxes+=t(p.cx, hasSub?p.y+21:p.cy+4, p.n, {size:12,col:TEXT,w:700});
       (p.sub||[]).forEach((ln,i)=>{ boxes+=t(p.cx,p.y+37+i*13.5,ln,{size:9.5,col:T.muted,w:400}); }); }
 
-    // 하단 띠 (모든 노드·컨테이너 중 가장 아래 기준)
+    // 하단 2구간 띠 — 지평별 한낮 과대 교정 차등
     const maxBottom=Math.max(cy1, ...Object.keys(NODES).map(k=>NODES[k].bottom));
-    const bandY=maxBottom+20, bandH=30;
-    let band=`<rect x="18" y="${bandY}" width="${VBW-36}" height="${bandH}" rx="6" fill="${T.stage}" stroke="${T.muted}" stroke-width="1"/>`+
-      t(VBW/2, bandY+19, BAND, {size:9.5,col:T.muted,w:600,ls:0.01});
+    const bandY=maxBottom+32, bandH=44, bx0=18, bTotW=VBW-36, bgap=8;
+    let band=t(VBW/2, bandY-9, "한낮 과대예측(BTM 태양광)을 지평에 따라 다르게 교정 — 같은 구조 15벌 중 D1-6 만 파인튜닝본",
+                {size:9,col:T.soft,w:600,ls:0.01});
+    let zx=bx0;
+    ZONES.forEach(z=>{ const zw=(bTotW-bgap)*z.frac, f=z.acc?T.accentTint:T.store, st=z.acc?T.accent:T.muted;
+      band+=`<rect x="${zx}" y="${bandY}" width="${zw}" height="${bandH}" rx="6" fill="${T.paper}"/>`+
+            `<rect x="${zx}" y="${bandY}" width="${zw}" height="${bandH}" rx="6" fill="${f}" stroke="${st}" stroke-width="1.2"/>`;
+      band+=t(zx+zw/2, bandY+18, z.title, {size:10.5,col:'#1a1a1a',w:700});
+      band+=t(zx+zw/2, bandY+34, z.desc, {size:8.5,col:T.muted,w:400});
+      zx+=zw+bgap; });
 
     // 범례
     const legendY=bandY+bandH+24;

@@ -48,11 +48,11 @@
 
   // 모델 / 데이터베이스(두 칸) / 대시보드 라벨
   const LABELS = {
-    model:    { title:"예측 모델", sub:["전력 수요", "신재생 발전", "천연가스 수요"] },
+    model:    { title:"예측 모델", sub:["전국 전력수요", "신재생 발전량", "천연가스 수요"] },
     dbTitle:  "데이터베이스",
     inputRow: { n:"입력 데이터", sub:"날씨·전력 실측·예보" },
     estRow:   { n:"예측 결과 테이블", sub:"모델이 만든 예측값" },
-    dash:     { n:"서비스 대시보드", sub:"표·그래프로 제공" },
+    dash:     { n:"서비스 대시보드", sub:"서버에서 활용" },
     a1:"① 입력 제공", a2:"② 결과 저장", a3:"③ 불러오기",
   };
   // ====================================================================== //
@@ -107,7 +107,7 @@
     // ── 데이터베이스 : 컨테이너 없이 라벨 + 두 칸 ──
     s += t(dbX+dbW/2, input.y-12, LABELS.dbTitle, {size:11,col:T.muted,w:700,ls:0.06});
     // 입력 데이터 칸
-    s += `<rect x="${input.x}" y="${input.y}" width="${input.w}" height="${input.h}" rx="6" fill="${T.store}" stroke="${T.muted}" stroke-width="1"/>`;
+    s += `<rect x="${input.x}" y="${input.y}" width="${input.w}" height="${input.h}" rx="6" fill="${T.paper}" stroke="${T.ink}" stroke-width="1"/>`;
     s += t(input.x+input.w/2, input.y+19, LABELS.inputRow.n, {size:11.5,col:TEXT,w:700});
     s += t(input.x+input.w/2, input.y+33, LABELS.inputRow.sub, {size:8.5,col:T.soft,w:400});
     // 예측 결과 테이블 칸 (강조)
