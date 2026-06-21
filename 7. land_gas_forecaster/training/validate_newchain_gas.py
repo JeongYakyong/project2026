@@ -66,17 +66,32 @@ def main():
     ap.add_argument('--limit', type=int, default=None, help='base 표본수(스트라이드 샘플, 스모크)')
     ap.add_argument('--horizons', default='1,2,3,7,12', help='평가 지평 (콤마)')
     ap.add_argument('--out', default=os.path.join(HERE, 'newchain_gas_backtest.parquet'))
+    ap.add_argument('--model', default=None, help="가스 모델 경로 override (예: foldC 봉인검증). 'foldC'=v3 foldC 단축")
+    ap.add_argument('--base-min', default=None, help='이 날짜 이상 base 만 평가(YYYY-MM-DD, 봉인검증용)')
     a = ap.parse_args()
     horizons = [int(x) for x in a.horizons.split(',')]
 
     chain = _imp('serve_chain_land_new', CHAIN_PY)
     chain.HZ = tuple(horizons)   # build_base 는 모듈 전역 HZ 를 순회 → 평가 지평만 돌게 제한
 
-    print('[load] 모델·자산 (수요 patchtst_lt v4+보정 / 신재생 landsolar504 / 가스 v2)')
+    # 가스 모델 override (봉인 체인 검증: train≤cutoff 모델로 cutoff 이후 base 만 평가)
+    gas_model = chain.sg.MODEL; gas_off = chain.sg._OFFSET
+    if a.model:
+        mdir = os.path.join(ROOT, '7. land_gas_forecaster', 'model')
+        if a.model == 'foldC':
+            gas_model = os.path.join(mdir, 'lgbm_land_gas_v3_foldC.txt')
+            gas_off = float(json.load(open(os.path.join(mdir, 'model_meta_gas_v3_foldC.json'),
+                                           encoding='utf-8'))['init_score'])
+        else:
+            gas_model = a.model
+        print(f'[override] 가스 모델 = {os.path.basename(gas_model)}  (offset {gas_off:.0f})')
+
+    print('[load] 모델·자산 (수요 patchtst_lt v4+보정 / 신재생 landsolar504 / 가스)')
     ctx = {
-        'gas_booster': lgb.Booster(model_file=chain.sg.MODEL),
-        'gas_off': chain.sg._OFFSET,
+        'gas_booster': lgb.Booster(model_file=gas_model),
+        'gas_off': gas_off,
         'gas_series': chain.sg.load_gas_series(),
+        'nuke_series': chain.sg.load_nuke_series(),     # v3 최근원전 피처용
         'A6': chain.serve6.load_assets(),
         'v4': chain.mlt.load_serve(DB, chain.LT_DIR),
         'con': sqlite3.connect(DB),
@@ -85,6 +100,8 @@ def main():
     sc = chain.bht.build_scratch(os.path.join(tempfile.gettempdir(), 'validate_newchain_gas.db'))
 
     bases = chain.list_bases()
+    if a.base_min:
+        bases = [b for b in bases if b[:10] >= a.base_min]
     if a.limit and len(bases) > a.limit:
         bases = bases[::max(1, len(bases) // a.limit)][:a.limit]
     print(f'[run] base {len(bases)}개  지평 {horizons}  ({bases[0][:10]} ~ {bases[-1][:10]})')

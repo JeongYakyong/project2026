@@ -1,0 +1,6 @@
+{
+  "init_score": 18834.308654087712,
+  "best_iteration": 546,
+  "cutoff": "2026-03-31",
+  "use": "봉인 체인 검증 전용(validate_newchain_gas --model foldC --base-min 2026-04-01). production 아님."
+}

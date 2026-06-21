@@ -1,0 +1,30 @@
+{
+  "version": "v3",
+  "features": [
+    "real_demand_land",
+    "renew_util",
+    "gas_lag168",
+    "gas_lag24",
+    "gas_rec24",
+    "gas_rec168",
+    "h",
+    "hour",
+    "dow",
+    "doy",
+    "nuke_rec24",
+    "nuke_rec168"
+  ],
+  "target": "gen_gas_kr (MW)",
+  "architecture": "Global+Horizon 가스 자기회귀 다지평(h 1..360=D+15) + 최근원전 관성피처",
+  "loss": "custom asymmetric L2 (낮09-15h over-pred ×4.0)",
+  "alpha": 4.0,
+  "init_score": 18732.217197905957,
+  "predict_note": "pred = booster.predict(X) + init_score",
+  "nuke_feat": "nuke_rec24/nuke_rec168 = origin 이하 최근 24h/168h 원전 평균(미래 원전 불필요·관성 대리)",
+  "renew_util": "renew_gen_total_kr / (solar_cap+wind_cap), kr_elec_capa.csv 월별",
+  "autoreg": "gas_lag168(h>168 NaN)/lag24(h<=24)/rec24/rec168, historical 실측",
+  "train": "walk-forward 전 가용데이터(2022~최신, 신레짐 포함)",
+  "best_iteration": 546,
+  "foldC_val": "train≤2026-03 / val 2026-04~06",
+  "note": "v3: 2026 야간 원전↓ 레짐 대응. 최근원전 피처+walk-forward(G-25). v2(2022-24·원전없음) 롤백 보존."
+}

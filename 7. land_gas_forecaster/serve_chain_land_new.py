@@ -114,12 +114,15 @@ def pick_bases(arg_base: str | None, backfill: int | None) -> list[str]:
 # ── 한 base 의 5→6→7 풀체인 (보정·블렌딩 포함) ────────────────────────────
 def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
     booster = ctx['gas_booster']; g_off = ctx['gas_off']
-    gas_series = ctx['gas_series']; A6 = ctx['A6']; v4 = ctx['v4']; con = ctx['con']
+    gas_series = ctx['gas_series']; nuke_series = ctx['nuke_series']; A6 = ctx['A6']; v4 = ctx['v4']; con = ctx['con']
 
     O = pd.Timestamp(base).normalize() + pd.Timedelta(hours=23)
     bht.set_scratch_forecast(sc, base)
     rec24g = float(gas_series.loc[O - pd.Timedelta(hours=23):O].mean())
     rec168g = float(gas_series.loc[O - pd.Timedelta(hours=167):O].mean())
+    # v3 최근원전 피처(관성 대리, origin 이하만) — 가스 자기회귀 시드와 동일 방식.
+    nrec24 = float(nuke_series.loc[O - pd.Timedelta(hours=23):O].mean())
+    nrec168 = float(nuke_series.loc[O - pd.Timedelta(hours=167):O].mean())
     if not (np.isfinite(rec24g) and np.isfinite(rec168g)):
         print(f"  [skip] base {base[:10]} 가스 자기회귀 시드(rec24/168) 결측")
         return pd.DataFrame()
@@ -160,6 +163,7 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
         gf['gas_lag24'] = np.where(H2 <= 24, gas_series.reindex(tg2 - pd.Timedelta(hours=24)).values, np.nan)
         gf['gas_rec24'] = rec24g; gf['gas_rec168'] = rec168g
         gf['h'] = H2; gf['hour'] = tg2.hour; gf['dow'] = tg2.dayofweek; gf['doy'] = tg2.dayofyear
+        gf['nuke_rec24'] = nrec24; gf['nuke_rec168'] = nrec168   # v3 최근원전
         gas_raw = booster.predict(gf[sg.FEATS]) + g_off
 
         rows.append(pd.DataFrame({
@@ -241,11 +245,12 @@ def main():
     print(f'[serve_chain_land_new] 대상 base {len(bases)}개: {bases[0][:10]} ~ {bases[-1][:10]}')
 
     # 공용 자산 1회 로드.
-    print('[load] 모델·자산 로드 (수요 patchtst_lt v4+보정 / 가스 v2 / 신재생)')
+    print('[load] 모델·자산 로드 (수요 patchtst_lt v4+보정 / 가스 v3 최근원전 / 신재생)')
     ctx = {
         'gas_booster': lgb.Booster(model_file=sg.MODEL),
         'gas_off': sg._OFFSET,
         'gas_series': sg.load_gas_series(),
+        'nuke_series': sg.load_nuke_series(),       # v3 최근원전 피처용
         'A6': serve6.load_assets(),
         'v4': mlt.load_serve(DB, LT_DIR),               # 수요 단일모델 v4 + calib_lt.json 자동
         'con': sqlite3.connect(DB),                     # predict_horizon 의 forecast_horizon 조회용

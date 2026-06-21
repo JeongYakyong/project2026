@@ -28,16 +28,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..'))
 DB   = os.path.join(ROOT, '1. data_fetcher_and_db', 'data', 'input_data_land.db')
 CAP_CSV = os.path.join(ROOT, '1. data_fetcher_and_db', 'second_dataset', 'kr_elec_capa.csv')
-MODEL = os.path.join(HERE, 'model', 'lgbm_land_gas_v2.txt')
-META  = os.path.join(HERE, 'model', 'model_meta_gas_v2.json')
+MODEL = os.path.join(HERE, 'model', 'lgbm_land_gas_v3.txt')   # v3(2026-06-21 G-25): 야간 레짐 대응(최근원전). v2 롤백 보존.
+META  = os.path.join(HERE, 'model', 'model_meta_gas_v3.json')
 CALIB_JSON = os.path.join(HERE, 'model', 'gas_serving_calib.json')
 
 DEMAND_COL = 'est_demand_land'           # 5단계
 RENEW_COL  = 'est_market_renew_land'     # 6단계 (시장 solar+wind)
 OUT_GEN = 'est_gas_gen_land'
 OUT_TON = 'est_gas_sendout_ton_land'
+# v3 피처 = v2 MIXED + nuke_rec24/nuke_rec168(origin 이하 최근 원전 평균, 관성 대리).
 FEATS = ['real_demand_land', 'renew_util', 'gas_lag168', 'gas_lag24', 'gas_rec24', 'gas_rec168',
-         'h', 'hour', 'dow', 'doy']
+         'h', 'hour', 'dow', 'doy', 'nuke_rec24', 'nuke_rec168']
 _OFFSET = float(json.load(open(META, encoding='utf-8'))['init_score'])
 HZ_FIT = [1, 2, 3, 7, 12]
 
@@ -137,6 +138,18 @@ def load_gas_series() -> pd.Series:
     d = d.sort_values('timestamp')
     idx = pd.date_range(d.timestamp.min(), d.timestamp.max(), freq='h')
     s = d.set_index('timestamp')['gen_gas_kr'].reindex(idx).replace(0, np.nan).interpolate('time', limit=6)
+    s.index.name = 'timestamp'
+    return s
+
+
+def load_nuke_series() -> pd.Series:
+    """historical 원전 발전 연속 시계열(결측만 시간보간, 0 보존) — v3 최근원전 피처(nuke_rec24/168) 용.
+    학습(exp_gas_regime.load_cont)과 동일하게 0 은 정상값으로 두고 보간 limit 6 만 적용."""
+    with _conn() as con:
+        d = pd.read_sql('SELECT timestamp, gen_nuclear_kr FROM historical', con, parse_dates=['timestamp'])
+    d = d.sort_values('timestamp')
+    idx = pd.date_range(d.timestamp.min(), d.timestamp.max(), freq='h')
+    s = d.set_index('timestamp')['gen_nuclear_kr'].reindex(idx).interpolate('time', limit=6)
     s.index.name = 'timestamp'
     return s
 

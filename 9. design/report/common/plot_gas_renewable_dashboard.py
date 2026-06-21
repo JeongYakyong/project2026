@@ -130,8 +130,8 @@ for i, (cat, color) in enumerate(CATS.items()):
             for m in range(1, 13)
             for s in [sub[(sub.category == cat) & (sub.month == m)]['supply']]]
     ax2.bar(x + (i-0.5)*bw, vals, width=bw, color=color, label=cat)
-style_axis(ax2, '② 같은 달 연도별 변동폭 — 발전이 더 출렁인다',
-           xlabel='월', ylabel='(최대−최소)/평균 (%)')
+style_axis(ax2, '② 발전용 가스와 도시가스의 연도별 변동폭',
+           ylabel='(최대 — 최소)/평균 (%)')
 ax2.set_xticks(x); ax2.set_xticklabels([f'{m}월' for m in range(1, 13)])
 ax2.legend(fontsize=FS_LEGEND, loc='upper right', framealpha=0.95, prop={'weight':'bold'})
 
@@ -158,17 +158,14 @@ ax4.axvspan(11, 15, color='#f5d76e', alpha=0.22)
 ax4.annotate('한낮 가스 감소\n(태양광이 밀어냄)', xy=(13, gas_hour.loc[11:15].min().min()),
              xytext=(15.2, gas_hour.min().min()+0.2), fontsize=FS_LEGEND, fontweight='bold',
              color='#a33', arrowprops=dict(arrowstyle='->', color='#a33', lw=1.6))
-style_axis(ax4, '④ 봄철(4~6월) 시간대별 가스 발전 — 한낮 덕 커브',
+style_axis(ax4, '④ 봄철(4~6월) 시간대별 가스 발전',
            xlabel='시각 (시)', ylabel='가스 발전 (GW)')
 ax4.set_xticks(range(0, 24, 3))
 ax4.legend(title='연도', fontsize=FS_LEGEND, loc='upper left', framealpha=0.95,
            prop={'weight':'bold'}, title_fontproperties={'weight':'bold','size':FS_LEGEND})
 
-fig.suptitle('천연가스 수요와 친환경 발전 — 핵심 지표 한눈에 보기',
+fig.suptitle('천연가스 수요의 변동과 신새쟁 발전량의 영향력',
              fontsize=FS_SUPTTL, fontweight='bold', y=0.985)
-fig.text(0.5, 0.012,
-         '자료: 한국가스공사 용도별 월 공급량 · KPX 시장참여 설비용량 · 전국 시간별 발전 실측(가스는 2022년부터).',
-         ha='center', fontsize=12, color='#888')
 fig.subplots_adjust(left=0.06, right=0.98, top=0.92, bottom=0.07, hspace=0.28, wspace=0.18)
 fig.savefig(OUT, dpi=150, facecolor='white')
 print('saved:', OUT)
