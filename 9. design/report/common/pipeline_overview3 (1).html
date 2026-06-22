@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서비스 제작 흐름</title>
+<!-- 시스템 폰트(맑은 고딕) 사용 — 외부 폰트 불필요 -->
+<style>
+  :root{
+    --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+    --accent:#eb6c36; --rule:rgba(45,49,66,0.12);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:#1a1a1a;
+    font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+    display:flex; justify-content:center;
+    padding:2rem 1rem;
+  }
+  .wrap{width:100%; max-width:720px}      /* ← 문서 폭. 더 좁히려면 이 값을 줄이세요 */
+  .eyebrow{
+    font-size:8px; font-weight:500; letter-spacing:0.18em;
+    text-transform:uppercase; color:#1a1a1a; margin:0 0 0.4rem;
+  }
+  h1{ font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1; }
+  .sub{font-size:13px; color:#1a1a1a; margin:0 0 1.25rem; line-height:1.45}
+  svg{width:100%; height:auto; display:block}
+  footer{
+    margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+    font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="서비스 제작 흐름도"></svg>
+
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 좌표·화살표는 자동 계산됩니다  ▼▼▼          -->
+<!-- ====================================================================== -->
+<script>
+  // ── 1) 머리말 ──────────────────────────────────────────────
+  const META = {
+    eyebrow:  "Data → Forecast → Serve",
+    title:    "서비스 제작 흐름",
+    subtitle: "데이터 수집부터 대시보드까지 — 데이터 분석(EDA·시계열)은 모든 모델 단계에 공통 적용",
+    footer:   "PROJECT.md · 예측 파이프라인 · 2026-06",
+  };
+
+  // ── 2) 노드 목록 (읽는 순서대로: 왼→오른쪽, 줄바꿈) ──────────
+  //   step = 동그라미에 들어갈 번호("" 면 점만)  /  n = 이름  /  sub = 작은 설명
+  //   type = focal(공통·주황) | model(예측 모델) | infra(데이터·서비스)
+  const NODES = [
+    { step:"1", n:"데이터 정리 및 분석",      sub:"정리 · EDA · 상관관계 도출",        type:"focal" },
+    { step:"2", n:"데이터 수집기",    sub:"공공 API 수집 · 처리 · 관리", type:"model" },
+    { step:"3", n:"전력수요 예측",    sub:"전국 전력수요 모델",          type:"model" },
+    { step:"4", n:"신재생 발전 예측", sub:"발전량 → 순부하(net_load) 산출", type:"model" },
+    { step:"5", n:"천연가스 수요 예측", sub:"발전용 가스 + 송출량",       type:"model" },
+    { step:"6", n:"서비스 대시보드",  sub:"시각화 · AI 브리핑 · API",    type:"model" },
+  ];
+
+  // ── 3) 노드 사이 화살표 라벨 (노드 수 - 1 개) ──────────────
+  const FLOW = ["", "데이터", "전력수요", "순부하", "결과"];
+
+  // ── 4) 배치 설정 ──────────────────────────────────────────
+  const CFG = {
+    cols:  3,    // 열 개수
+    nodeW: 192,  // 박스 가로
+    nodeH: 66,   // 박스 세로
+    gapX:  48,   // 열 간격
+    gapY:  66,   // 행 간격(줄바꿈 연결선이 지나갈 공간)
+    padX:  24,   // 좌우 여백
+    padTop:48,   // 위 여백
+  };
+
+  // ── 범례 항목 ─────────────────────────────────────────────
+  const LEGEND = [
+    { type:"focal", label:"공통 · 데이터 분석" },
+    { type:"model", label:"예측 모델 (3종)" },
+    { type:"infra", label:"데이터 · 서비스" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 엔진 (읽는 순서 배치 + 줄바꿈 연결선 자동 생성) ──
+  const T = {
+    paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+    accent:'#eb6c36', accentTint:'rgba(235,108,54,0.10)',
+    rule:'rgba(45,49,66,0.12)',
+    infraFill:'#eef0f3', infraStroke:'#2d3142',
+  };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const STYLE = {
+    focal: { fill:T.accentTint, stroke:T.accent,      dot:T.accent },
+    model: { fill:'#ffffff',    stroke:T.ink,         dot:T.ink    },
+    infra: { fill:T.infraFill,  stroke:T.infraStroke, dot:T.ink    },
+  };
+
+  // 읽는 순서 배치(스네이크 아님 — 항상 왼→오른쪽, 줄만 내려감)
+  const place = (i) => {
+    const { cols, nodeW, nodeH, gapX, gapY, padX, padTop } = CFG;
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const x = padX + col * (nodeW + gapX);
+    const y = padTop + row * (nodeH + gapY);
+    return { x, y, row, col, cx:x+nodeW/2, cy:y+nodeH/2, right:x+nodeW, bottom:y+nodeH };
+  };
+
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t = (x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={}) =>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+  const mono = (x,y,s,o={}) => t(x,y,s,{size:9, col:TEXT, w:400, ...o});
+
+  // 라벨 + 흰색 받침
+  const labelPill = (mx,my,txt) => {
+    if(!txt) return '';
+    const w = txt.length*9 + 12;
+    return `<rect x="${mx-w/2}" y="${my-8}" width="${w}" height="16" rx="2" fill="${T.paper}"/>`+
+           mono(mx, my+3, txt, { size:8, ls:0.05 });
+  };
+
+  function build() {
+    const { nodeW, nodeH, padX, gapX, gapY, cols } = CFG;
+    const rows  = Math.ceil(NODES.length / cols);
+    const vbW   = padX*2 + cols*nodeW + (cols-1)*gapX;
+    const lastY = CFG.padTop + rows*nodeH + (rows-1)*gapY;
+    const legendY = lastY + 26;
+    const vbH   = legendY + 30;
+
+    let arrows = '', labels = '', boxes = '';
+
+    // 화살표 + 라벨 (박스보다 먼저 → 뒤로 깔림)
+    for (let i = 0; i < NODES.length - 1; i++) {
+      const a = place(i), b = place(i+1);
+      if (a.row === b.row) {                         // ── 같은 줄: 가로 화살표
+        const x1 = a.right, x2 = b.x - 6, y = a.cy;
+        arrows += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${T.muted}" `+
+                  `stroke-width="1" marker-end="url(#arrow)"/>`;
+        labels += labelPill((x1+x2)/2, y-12, FLOW[i]);
+      } else {                                        // ── 줄바꿈: ㄴ자 연결선
+        const sx = a.cx, sy = a.bottom;
+        const ex = b.cx, ey = b.y - 6;
+        const ly = a.bottom + gapY/2;                 // 두 줄 사이 통로
+        const path = `M ${sx} ${sy} L ${sx} ${ly} L ${ex} ${ly} L ${ex} ${ey}`;  // 직각 ㄷ자
+        arrows += `<path d="${path}" fill="none" stroke="${T.muted}" stroke-width="1" `+
+                  `marker-end="url(#arrow)"/>`;
+        labels += labelPill((sx+ex)/2, ly, FLOW[i]);
+      }
+    }
+
+    // 박스
+    NODES.forEach((nd, i) => {
+      const p = place(i), s = STYLE[nd.type] || STYLE.model;
+      const filledDot = nd.step === "";              // 공통 = 채운 점
+      const dotFill   = filledDot ? s.dot : s.fill;
+      boxes +=
+        `<rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" rx="6" fill="${s.fill}" `+
+          `stroke="${s.stroke}" stroke-width="1"/>`+
+        `<circle cx="${p.x+15}" cy="${p.y+15}" r="9" fill="${dotFill}" stroke="${s.dot}" stroke-width="1"/>`+
+        (filledDot ? '' : t(p.x+15, p.y+18, nd.step, { size:9, col:TEXT })) +
+        t(p.cx, p.y+33, nd.n, { size:13, col:TEXT }) +
+        mono(p.cx, p.y+50, nd.sub);
+    });
+
+    // 범례 (하단 가로 띠)
+    let legend = `<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx = padX, ly = legendY + 12;
+    LEGEND.forEach(item => {
+      const s = STYLE[item.type] || STYLE.model;
+      legend += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
+                mono(lx+16, ly+10, item.label, { anc:'start', size:8, ls:0.03 });
+      lx += item.label.length*9 + 52;
+    });
+
+    const svg = document.getElementById('diagram');
+    svg.setAttribute('viewBox', `0 0 ${vbW} ${vbH}`);
+    svg.innerHTML =
+      `<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="6.5" refY="3" orient="auto">`+
+      `<polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker></defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+
+      arrows + labels + boxes + legend;
+
+    document.getElementById('eyebrow').textContent  = META.eyebrow;
+    document.getElementById('title').textContent    = META.title;
+    document.getElementById('subtitle').textContent = META.subtitle;
+    document.getElementById('footer').textContent   = META.footer;
+  }
+  build();
+</script>
+</body>
+</html>
