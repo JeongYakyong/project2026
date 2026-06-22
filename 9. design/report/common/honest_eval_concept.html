@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2단계 · 데이터 정리</title>
+<title>공통 · 정직한 평가</title>
 <!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
 <style>
   :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
@@ -28,7 +28,7 @@
   <p class="eyebrow" id="eyebrow"></p>
   <h1 id="title"></h1>
   <p class="sub" id="subtitle"></p>
-  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="데이터 정리 흐름도"></svg>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="정직한 평가 방식 비교"></svg>
   <p class="note" id="note"></p>
   <footer id="footer"></footer>
 </div>
@@ -38,33 +38,40 @@
 <!-- ====================================================================== -->
 <script>
   const META = {
-    eyebrow:  "STEP 2 · 데이터 정리",
-    title:    "데이터 정리",
-    subtitle: "받은 자료를 그대로 쓰지 않고, 점검하고 정돈한 뒤 사용합니다.",
-    note:     "* 제주 데이터도 위와 동일한 과정으로 정리됩니다.",
-    footer:   "데이터 수집·관리 · 2단계 정리 · 2026-06",
+    eyebrow:  "공통 원칙 · 정직한 평가",
+    title:    "예측에 '진짜 예보값'을 그대로 넣어 평가한다",
+    subtitle: "대부분의 연구는 이미 일어난 실제 날씨(실측)를 모델에 넣어 오차를 낮게 보고합니다. "
+            + "우리는 발표 시점에 실제로 가진 예보 날씨를, 그 편향·오차까지 그대로 넣어 "
+            + "모든 단계·모든 기준일·전 지평에서 평가합니다.",
+    note:     "* 같은 모델이라도 '실측'을 넣으면 오차가 낮게 보이고, '예보'를 넣으면 현장에서 실제로 겪는 오차가 나옵니다.",
+    footer:   "정직한 평가 원칙 · 수요·신재생·SMP·가스 전 단계 공통 · 2026-06",
   };
 
+  // 열(왼→오) · 각 열의 박스(위=흔한 연구 방식 / 아래=우리 방식). type: data | focal
   const COLS = [
-    { head:"초기 데이터", boxes:[
-        { id:"raw", n:"수집한 자료", sub:["Raw 데이터", "저장형식이 다른 데이터"], type:"model" },
+    { head:"① 모델에 넣는 날씨", boxes:[
+        { id:"wx_obs", n:"실측 기상", sub:["흔한 연구 방식", "실제로 관측된 값"], type:"data" },
+        { id:"wx_fc",  n:"예보 기상", sub:["우리 방식 · 전 단계", "편향·오차 그대로 포함"], type:"focal" },
     ]},
-    { head:"데이터 전처리", boxes:[
-        { id:"proc", n:"데이터 전처리", sub:["· 결측치 및 데이터 정제", "· 시계열 정리, EDA 진행 "], type:"model" },
+    { head:"② 평가 범위", boxes:[
+        { id:"sc_a", n:"일부 시점만", sub:["유리한 구간 위주", "느슨한 평가"], type:"data" },
+        { id:"sc_b", n:"모든 기준일 · 전 지평", sub:["D+1 ~ D+15 빠짐없이", "현장과 같은 순서"], type:"focal" },
     ]},
-    { head:"데이터 분석", boxes:[
-        { id:"clean", n:"정제 데이터", sub:["모델 입력 및 분석가능"], type:"model" },
+    { head:"③ 나오는 오차", boxes:[
+        { id:"er_a", n:"낙관적 오차", sub:["실제보다 낮게 나옴", "현장과 다름"], type:"data" },
+        { id:"er_b", n:"정직한 오차", sub:["현장과 같은 조건", "믿을 수 있는 수치"], type:"focal" },
     ]},
   ];
 
+  // 화살표: [출발 id, 도착 id, 라벨(생략 가능)]
   const EDGES = [
-    ["raw","proc","점검"], ["proc","clean","정리"],
+    ["wx_obs","sc_a"], ["sc_a","er_a"],
+    ["wx_fc","sc_b"],  ["sc_b","er_b"],
   ];
 
   const LEGEND = [
-    { type:"data",  label:"입력 자료" },
-    { type:"model", label:"정리 처리" },
-    { type:"focal", label:"정돈 완료" },
+    { type:"data",  label:"흔한 연구 방식 (실측 입력)" },
+    { type:"focal", label:"우리 방식 (예보 입력 · 전 단계)" },
   ];
   // ====================================================================== //
   // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
@@ -92,9 +99,7 @@
     `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
     `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
 
-  // 모든 박스를 같은 높이(가장 큰 박스 기준)로 통일
-  const BOX_H = Math.max(...COLS.flatMap(c=>c.boxes).map(b => 40 + (b.sub||[]).length*14));
-  function boxH(){ return BOX_H; }
+  function boxH(b){ const lines=(b.sub||[]).length; return 40 + lines*14; }
 
   function build(){
     const { nodeW, colGapX, padX, padTop, vGap, footPad } = CFG;
@@ -112,11 +117,13 @@
       c.boxes.forEach(b=>{
         const h = boxH(b);
         pos[b.id] = { x, y, w:nodeW, h, cx:x+nodeW/2, cy:y+h/2, left:x, right:x+nodeW };
-        b._h = h;  y += h + vGap;
+        b._h = h;
+        y += h + vGap;
       });
     });
 
     let arrows='', labels='', boxes='', heads='';
+
     EDGES.forEach(([f,to,lab])=>{
       const a=pos[f], b=pos[to]; if(!a||!b) return;
       const x1=a.right, y1=a.cy, x2=b.left-4, y2=b.cy;
@@ -132,14 +139,12 @@
 
     COLS.forEach(c=>c.boxes.forEach(b=>{
       const p=pos[b.id], s=STYLE[b.type]||STYLE.model;
-      const lines=(b.sub||[]).length;
+      const hasSub=(b.sub||[]).length>0;
       boxes += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
                `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
-      // 글자 묶음을 박스 안에서 세로 가운데로 정렬
-      const blockH = lines>0 ? 14 + lines*14 : 14;
-      const ny = p.y + (p.h - blockH)/2 + 12;
+      const ny = hasSub ? p.y+22 : p.cy+4;
       boxes += t(p.cx, ny, b.n, {size:12.5,col:TEXT,w:700});
-      (b.sub||[]).forEach((ln,i)=>{ boxes += t(p.cx, ny+16+i*14, ln, {size:10,col:T.muted,w:400}); });
+      (b.sub||[]).forEach((ln,i)=>{ boxes += t(p.cx, p.y+38+i*14, ln, {size:10,col:T.muted,w:400}); });
     }));
 
     let legend = `<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;

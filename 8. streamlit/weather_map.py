@@ -156,7 +156,7 @@ def _station_means(region: str, suffixes: list[str], date: str,
 
 
 def _station_means_fh(region: str, suffixes: list[str], date: str) -> dict[str, dict]:
-    """forecast_horizon(지평 아카이브) 09–15시 평균 — land 예보 전용(레거시 forecast 폐기 대체).
+    """forecast_horizon(지평 아카이브) 09–15시 평균 — 예보 전용(전국·제주 공용, 레거시 forecast 폐기 대체).
 
     예측은 timestamp 당 여러 base 가 있으므로 **최신 base** 행만 골라 freshest 예보를 쓴다
     (구 forecast 단일 스냅샷과 같은 의미).  컬럼명은 forecast 와 동일(KMA 기상)이라 _PREFIX 재사용.
@@ -182,14 +182,15 @@ def _station_means_fh(region: str, suffixes: list[str], date: str) -> dict[str, 
 def _build_zones(date: str, table: str) -> dict[str, dict]:
     """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산.
 
-    land 예보는 forecast_horizon(최신 base) — 레거시 forecast 폐기.  jeju 예보는 현행 forecast,
+    예보는 양 권역 모두 forecast_horizon(최신 base) — 레거시 forecast 폐기(전국 06-19·제주 06-20).
     실측은 양 권역 historical.
     """
     if table == "forecast":
         land = _station_means_fh("land", C.STATIONS_LAND, date)
+        jeju = _station_means_fh("jeju", ["west"], date)
     else:
         land = _station_means("land", C.STATIONS_LAND, date, table)
-    jeju = _station_means("jeju", ["west"], date, table)
+        jeju = _station_means("jeju", ["west"], date, table)
     clear = CLEARSKY_0915[int(date[5:7])]
 
     zones = {}

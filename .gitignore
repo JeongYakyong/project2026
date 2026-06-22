@@ -35,3 +35,12 @@ env/
 Thumbs.db
 desktop.ini
 .DS_Store
+~$*
+
+# ===== 외부 스킬 폴더 (프로젝트 코드 아님 — 커밋 제외, 2026-06-22) =====
+# 루트에 흩어진 외부 스킬 모음. 선행 / 로 루트에 고정해
+# 추적 중인 .claude/skills/diagram-design 과 충돌하지 않게 한다.
+/claude-code-skills/
+/diagram-design/
+/excalidraw-diagram-skill/
+.claude/skills/excalidraw-diagram/

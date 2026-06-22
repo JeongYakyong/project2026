@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-천연가스 가격 변동성 — 연도별 가격 등락폭 (보고서용 2패널)
+천연가스 가격 변동성 — 연도별 가격 등락폭 (보고서용 1패널)
 
-  왼쪽  ① 아시아 LNG 현물가격(JKM)   — 연도별 최저~최고 범위
-  오른쪽 ② 미국 천연가스 가격(Henry Hub) — 연도별 최저~최고 범위
+  한 그래프(같은 축)에 두 가격을 나란히 두어 변동성을 직접 비교한다.
+   · 아시아 LNG 현물가격(JKM)   — 막대를 꽉 채움(solid)
+   · 미국 천연가스 가격(Henry Hub) — 빗금(///)
 
-두 가격은 스케일이 매우 달라(JKM 최고 84 vs Henry Hub 최고 9.4) 패널을 나눈다.
-막대는 그 해의 '최저가~최고가' 구간(세로 막대), 막대 위 숫자는 등락폭(최고-최저).
+같은 $/MMBtu 축에 올리면, JKM이 Henry Hub보다 훨씬 크게 출렁인다는 점이
+한눈에 보인다(JKM 막대가 압도적으로 길고, Henry Hub 막대는 바닥에 깔린다).
+막대 = 그 해의 '최저가~최고가' 구간, 막대 위 숫자 = 등락폭(최고-최저).
 
 양식: 흰 배경 · 맑은 고딕 · 강조 주황(#eb6c36) — 9. design/drawing_rule.md 준수.
 
@@ -28,21 +30,27 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 # ▼▼▼  보통 여기 값만 고치면 됩니다  ▼▼▼
 # ────────────────────────────────────────────────────────────────────────────
 # 연도 라벨 (CSV의 '2026 (YTD)' → 보기 좋게)
-YEAR_LABELS = {'2026 (YTD)': '2026\n(연초~현재)'}
+YEAR_LABELS = {'2026 (YTD)': '2026'}
 
-# 막대 색: 연도별 그라데이션 (옅은 색 → 진한 빨강, 위기 해 2022가 가장 진함은 데이터로 결정)
-YEAR_GRAD = {'2022': '#8c1d1d', '2023': '#e3743a', '2024': '#f0a830',
-             '2025': '#4a9d6a', '2026 (YTD)': '#eb6c36'}
+# 제외할 연도 (2022는 JKM 84로 워낙 커서 빼면 세로축을 크게 줄일 수 있음)
+EXCLUDE_YEARS = ['2022']
+
+# 두 가격의 색 (연하게). JKM=강조 주황(채움), Henry Hub=차분한 청회색(빗금)
+C_JKM   = '#f0a878'   # JKM 채움색 (연한 주황)
+E_JKM   = '#d9572a'   # JKM 테두리
+C_HH    = '#cfd6e0'   # Henry Hub 채움색 (연한 청회색)
+E_HH    = '#5a6b86'   # Henry Hub 테두리·빗금색
 C_TEXT  = '#1a1a1a'
 
 # 글씨 크기 (문서 삽입용 — 크고 굵게)
 FS_TICK    = 16   # 눈금 글씨
 FS_AXLABEL = 17   # 축 제목
-FS_TITLE   = 18   # 패널 제목
-FS_VALUE   = 13   # 막대 위/안 숫자
-FS_SUPTTL  = 23   # 전체 제목
+FS_VALUE   = 13   # 막대 숫자
+FS_LEGEND  = 15   # 범례
+FS_SUPTTL  = 22   # 전체 제목
 
-BAR_W = 0.62
+BAR_W = 0.38      # 한 해에 두 막대가 나란히
+YTOP  = 60        # 세로축 상한 ($/MMBtu)
 # ────────────────────────────────────────────────────────────────────────────
 # ▲▲▲  여기까지  ▲▲▲
 # ────────────────────────────────────────────────────────────────────────────
@@ -53,76 +61,75 @@ OUT  = os.environ.get('CHART_OUTPUT', os.path.join(HERE, 'gas_price_volatility.p
 
 mpl.rcParams['font.family'] = 'Malgun Gothic'
 mpl.rcParams['axes.unicode_minus'] = False
+mpl.rcParams['hatch.linewidth'] = 1.4
 
 # ── 데이터 ──────────────────────────────────────────────────────────────────
-# 표 부분만 읽는다(7행: 헤더 + 5개 연도). 아래 출처 주석 줄은 건너뛴다.
+# 표 부분만 읽는다(헤더 + 5개 연도). 아래 출처 주석 줄은 건너뛴다.
 df = pd.read_csv(CSV, nrows=5)
 df = df.dropna(subset=['Year'])
+df = df[~df['Year'].astype(str).isin(EXCLUDE_YEARS)].reset_index(drop=True)
 years = df['Year'].astype(str).tolist()
+x = np.arange(len(years))
 
-# ── 공통: 축을 크고 굵게 ────────────────────────────────────────────────────
-def style_axis(ax, title, ylabel=None):
-    ax.set_title(title, fontsize=FS_TITLE, fontweight='bold', pad=12)
-    if ylabel:
-        ax.set_ylabel(ylabel, fontsize=FS_AXLABEL, fontweight='bold')
-    ax.tick_params(axis='both', labelsize=FS_TICK, width=1.4, length=6)
-    for lab in ax.get_xticklabels() + ax.get_yticklabels():
-        lab.set_fontweight('bold')
-    ax.grid(True, axis='y', color='#d8dbe0', lw=0.8, alpha=0.9)
-    ax.set_axisbelow(True)
-    for s in ax.spines.values():
-        s.set_edgecolor('#b9bdc6')
-
-
-def draw_panel(ax, lo_col, hi_col, rng_col, title, ylabel, ytop):
-    x = np.arange(len(years))
-    lo = df[lo_col].to_numpy(float)
-    hi = df[hi_col].to_numpy(float)
-    rng = df[rng_col].to_numpy(float)
-    colors = [YEAR_GRAD.get(y, '#9aa3b2') for y in years]
-
-    # 최저~최고 구간 막대 (floating bar)
-    ax.bar(x, hi - lo, bottom=lo, width=BAR_W, color=colors,
-           edgecolor='white', linewidth=1.0, zorder=3)
-
-    for xi, l, h, r in zip(x, lo, hi, rng):
-        # 막대 위: 등락폭(최고-최저) — 변동성의 핵심 숫자
-        ax.text(xi, h + ytop * 0.018, f'등락폭 {r:g}', ha='center', va='bottom',
-                fontsize=FS_VALUE, fontweight='bold', color=C_TEXT, zorder=5)
-        # 막대 아래: 최저 ~ 최고 (한 줄로 — 짧은 막대에서도 겹치지 않음)
-        ax.text(xi, l - ytop * 0.016, f'{l:g} ~ {h:g}', ha='center', va='top',
-                fontsize=FS_VALUE, fontweight='bold', color=C_TEXT, zorder=5)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels([YEAR_LABELS.get(y, y) for y in years])
-    ax.set_ylim(0, ytop)
-    style_axis(ax, title, ylabel)
-
-
-# ── 그림 (1×2) ──────────────────────────────────────────────────────────────
-fig = Figure(figsize=(15, 7.5))
+# ── 그림 (1패널) ─────────────────────────────────────────────────────────────
+fig = Figure(figsize=(11, 8))
 FigureCanvasAgg(fig)
 fig.patch.set_facecolor('white')
-ax1 = fig.add_subplot(1, 2, 1)
-ax2 = fig.add_subplot(1, 2, 2)
-for ax in (ax1, ax2):
-    ax.set_facecolor('white')
+ax = fig.add_subplot(1, 1, 1)
+ax.set_facecolor('white')
 
-draw_panel(ax1, 'JKM_Min', 'JKM_Max', 'JKM_Range',
-           '① 아시아 LNG 현물가격 (JKM)', '가격 ($/MMBtu)', ytop=95)
-draw_panel(ax2, 'HH_Min', 'HH_Max', 'HH_Range',
-           '② 미국 천연가스 가격 (Henry Hub)', '가격 ($/MMBtu)', ytop=11)
+# JKM (왼쪽 막대, 꽉 채움) / Henry Hub (오른쪽 막대, 빗금)
+ax.bar(x - BAR_W / 2, df['JKM_Max'] - df['JKM_Min'], bottom=df['JKM_Min'],
+       width=BAR_W, color=C_JKM, edgecolor=E_JKM, linewidth=1.4, zorder=3,
+       label='아시아 LNG 현물가격 (JKM)')
+ax.bar(x + BAR_W / 2, df['HH_Max'] - df['HH_Min'], bottom=df['HH_Min'],
+       width=BAR_W, facecolor=C_HH, edgecolor=E_HH, linewidth=1.4, hatch='///',
+       zorder=3, label='미국 천연가스 가격 (Henry Hub)')
 
-fig.suptitle('천연가스 가격 변동성 — 연도별 최저~최고 가격 범위',
-             fontsize=FS_SUPTTL, fontweight='bold', y=0.985)
+
+#def label_bar(xc, lo, hi, rng):
+#    ax.text(xc, hi + YTOP * 0.012, f'{rng:g}', ha='center', va='bottom',
+#            fontsize=FS_VALUE, fontweight='bold', color=C_TEXT, zorder=5)
+#    ax.text(xc, lo - YTOP * 0.014, f'{lo:g}~{hi:g}', ha='center', va='top',
+#            fontsize=FS_VALUE - 1.5, fontweight='bold', color=C_TEXT, zorder=5)
+
+
+#for i in range(len(years)):
+#    label_bar(x[i] - BAR_W / 2, df['JKM_Min'][i], df['JKM_Max'][i], df['JKM_Range'][i])
+#    label_bar(x[i] + BAR_W / 2, df['HH_Min'][i], df['HH_Max'][i], df['HH_Range'][i])
+
+# 핵심 메시지 주석 — JKM의 변동성이 압도적으로 크다
+ax.annotate('JKM과 Henry Hub 연간 천연가스 가격 변동성 비교',
+            xy=(x[0] - BAR_W / 4, df['JKM_Max'][0]), xytext=(0.5, 30),
+            fontsize=FS_LEGEND, fontweight='bold', color='black', va='center',
+            #arrowprops=dict(arrowstyle='->', color=E_JKM, lw=1.8),
+            bbox=dict(boxstyle='round,pad=0.4', fc='white', ec=E_JKM, lw=1.2))
+
+# 축·격자·테두리
+ax.set_xticks(x)
+ax.set_xticklabels([YEAR_LABELS.get(y, y) for y in years])
+ax.set_ylim(0, YTOP)
+ax.set_ylabel('가격 ($/MMBtu)', fontsize=FS_AXLABEL, fontweight='bold')
+ax.tick_params(axis='both', labelsize=FS_TICK, width=1.4, length=6)
+for lab in ax.get_xticklabels() + ax.get_yticklabels():
+    lab.set_fontweight('bold')
+ax.grid(True, axis='y', color='#d8dbe0', lw=0.8, alpha=0.9)
+ax.set_axisbelow(True)
+for s in ax.spines.values():
+    s.set_edgecolor('#b9bdc6')
+ax.legend(fontsize=FS_LEGEND, loc='upper right', framealpha=0.95,
+          prop={'weight': 'bold'})
+
+fig.suptitle('JKM과 Henry Hub 연간 천연가스 가격 변동성 비교',
+             fontsize=FS_SUPTTL, fontweight='bold', y=0.97)
 
 # 출처 (그림 하단)
-src = ('자료: 아시아 LNG 현물가격(JKM) — S&P Global Commodity Insights(Platts) JKM 현물가격   |   '
+src = ('출처: 아시아 LNG 현물가격(JKM) — S&P Global Commodity Insights(Platts), '
        '미국 천연가스 가격(Henry Hub) — 미국 에너지정보청(EIA)·NYMEX 현물가격\n'
-       '단위 $/MMBtu(백만BTU당 미국 달러).  2026년은 연초부터 현재까지 집계.')
-fig.text(0.5, 0.015, src, ha='center', va='bottom', fontsize=11.5,
+       )
+fig.text(0.05, 0.012, src, ha='left', va='bottom', fontsize=10.5,
          color='#4f5d75', linespacing=1.5)
 
-fig.subplots_adjust(left=0.07, right=0.97, top=0.88, bottom=0.16, wspace=0.18)
+fig.subplots_adjust(left=0.08, right=0.97, top=0.90, bottom=0.15)
 fig.savefig(OUT, dpi=150, facecolor='white')
 print('saved:', OUT)

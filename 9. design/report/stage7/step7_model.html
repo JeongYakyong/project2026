@@ -51,12 +51,13 @@
         { id:"dem",  n:"전국 수요 예측",  sub:["5단계 결과"],            type:"data" },
         { id:"renew",n:"신재생 예측",     sub:["6단계 결과 · 이용률"],   type:"data" },
         { id:"past", n:"가스 과거 실적",  sub:["하루·일주일 전 흐름"],   type:"data" },
+        { id:"nuke", n:"최근 원자력",     sub:["밤 가스를 메우는 양"],   type:"data" },
     ]},
     { head:"예측", boxes:[
         { id:"model", n:"가스 발전량 예측", sub:["부스팅 트리","지평별 D+1~15"], type:"focal" },
     ]},
-    { head:"보정 · 안정화", boxes:[
-        { id:"corr", n:"치우침 보정", sub:["낮/밤 분리 보정","장기 평년값 블렌딩"], type:"model" },
+    { head:"안정화", boxes:[
+        { id:"corr", n:"장기 안정화", sub:["먼 미래 평년값 블렌딩"], type:"model" },
     ]},
     { head:"최종 산출", boxes:[
         { id:"mw",  n:"가스 발전량",   sub:["MW"],            type:"model" },
@@ -67,7 +68,7 @@
   // 화살표: [출발 id, 도착 id, 라벨(생략 가능)]
   //  같은 열에 위아래로 놓인 두 박스를 이으면(예: mw→ton) 자동으로 세로 화살표가 됩니다.
   const EDGES = [
-    ["dem","model"], ["renew","model","이용률"], ["past","model","자기회귀"],
+    ["dem","model"], ["renew","model","이용률"], ["past","model","자기회귀"], ["nuke","model","관성"],
     ["model","corr"],
     ["corr","mw"],
     ["mw","ton","환산"],

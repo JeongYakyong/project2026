@@ -16,13 +16,14 @@ SD = os.path.join(ROOT, '1. data_fetcher_and_db', 'second_dataset')
 # ======================================================================
 #  ▼▼▼  바꿀 값(색·라벨·문구)은 여기 모여 있습니다  ▼▼▼
 # ======================================================================
-INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
+INK, MUTED, SOFT, ACCENT = '#2d3142', "#141618", '#7a8399', '#eb6c36'
 RULE = '#d9dce3'
 SEA_COL = {'겨울':'#4a78b5', '봄':'#5aa469', '여름':'#eb6c36', '가을':'#b58a3c'}
 START = '2021-01-01'
-TITLE    = "발전용 가스는 잔여수요와 강하게, 기온과는 약하게 상관"
-SUBTITLE = "일별 상관 (KOGAS 발전 송출량 · 전국 평균, 2021~2026) — 기온은 추위·더위가 상쇄돼 약하고, net_load가 둘을 모두 담습니다"
-XL_NET, XL_TMP = "잔여수요 net_load (GW)", "전국 평균기온 (°C)"
+TITLE    = "발전용 가스의 순 수요 및 기온과의 상관관계 분석"
+SUBTITLE = ""
+#"일별 상관 (KOGAS 발전 송출량 · 전국 평균, 2021~2026) — 기온은 추위·더위가 상쇄돼 약하고, net_load가 둘을 모두 담습니다"
+XL_NET, XL_TMP = "순 수요(Net_Load) (GW)", "전국 평균기온 (°C)"
 YL = "발전용 가스 송출량 (천 톤/일)"
 # ======================================================================
 
@@ -79,16 +80,16 @@ axB.plot(xb, np.polyval(cb, xb), color=INK, lw=2.2, zorder=4)
 axB.set_xlabel(XL_TMP, fontsize=10.5)
 axB.text(0.5, 0.93, f'r = {rT:.2f}', transform=axB.transAxes, fontsize=15, fontweight='bold',
          color='#7f9bb5', ha='center', va='top')
-axB.text(0.5, 0.85, '추우면 난방·더우면 냉방 → 양쪽 다 ↑\n(상쇄되어 단순상관 약함)', transform=axB.transAxes,
-         fontsize=9, color=MUTED, ha='center', va='top')
+axB.text(0.6, 0.85, '간절기 기간의 경우\n상쇄되어 상관관계가 실종)', transform=axB.transAxes,
+         fontsize=9, color=INK, ha='center', va='top')
 
-fig.suptitle(TITLE, fontsize=14.5, fontweight='bold', color=INK, x=0.012, ha='left', y=1.02)
+fig.suptitle(TITLE, fontsize=14.5, fontweight='bold', color=INK, x=0.012, ha='center', y=1.02)
 fig.text(0.012, 0.945, SUBTITLE, fontsize=9.3, color=SOFT, ha='left')
 handles = [plt.Line2D([0],[0], marker='o', ls='', mfc=c, mec='none', ms=7, label=s) for s,c in SEA_COL.items()]
 fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, -0.03), ncol=4, frameon=False, fontsize=9.5)
 fig.text(0.012, -0.115,
-         "출처: 전력거래소 계통 + KOGAS 일별 발전 송출량(corr 0.97·0.1526 ton/MWh로 정렬). n=%d일. "
-         "기온 단순상관은 약하지만, net_load는 추위·더위로 생기는 수요를 모두 담아 발전용 가스를 강하게 설명합니다." % len(d),
+         "출처: 전력거래소 계통통계 + KOGAS 일별 발전 송출량       "
+         "기온 단순상관은 약하지만, 순 수요는 첨두발전인 발전용 가스의 수요를 강하게 설명합니다.",
          fontsize=8.0, color=MUTED, ha='left')
 fig.subplots_adjust(top=0.86, bottom=0.16, left=0.085, right=0.985, wspace=0.08)
 fig.savefig(os.path.join(HERE, 'step7_gas_corr.png'), bbox_inches='tight', dpi=150)

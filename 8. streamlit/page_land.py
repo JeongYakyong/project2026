@@ -61,6 +61,59 @@ def render_forecast_check():
     B.render_brief_panel("fchk", day)
 
 
+def render_daily_sendout():
+    """일일 송출량(일단위, TON/day) — 발전용 막대 + 도시가스 on/off 누적(총 송출량).
+
+    발전용은 시간당 예측(5→6→7 체인)의 하루 합, 도시가스는 일단위 보조모델(10단계).
+    둘 다 단위 TON이라 그대로 더한다. 도시가스는 일단위라 일단위 화면에서만 합산 가능.
+    """
+    start, _, c_slider = C.day_navigator("ds")
+    lo, hi = C.land_date_range()
+    avail_end = pd.Timestamp(hi)
+
+    # 끝 날짜 슬라이더 (15일 창, 미래엔 D+표기) — 장지평과 같은 방식
+    win_end = max(start, min(avail_end, start + pd.Timedelta(days=14)))
+    options = list(pd.date_range(start, win_end, freq="D"))
+    end = c_slider.select_slider(
+        "예측 구간 끝 날짜", options=options, value=options[-1], key="ds_end",
+        format_func=lambda d: f"{d:%m-%d}" + (f" (D+{(d - ORIGIN).days})" if d >= TODAY else ""))
+
+    show_cg = st.toggle(
+        "도시가스 합산", value=True, key="ds_citygas",
+        help="켜면 발전용 위에 도시가스(난방 중심·일단위 보조모델, 10단계)를 쌓아 "
+             "'총 송출량'으로 봅니다. 발전용·도시가스 모두 단위는 TON입니다.")
+
+    daily = C.land_daily_sendout(start, end)
+    if daily.empty or daily["gen_ton"].dropna().empty:
+        st.warning(f"선택 구간의 일일 송출량 예측이 없습니다. (적재 범위: {lo} ~ {hi})")
+        return
+
+    fig = C.make_fig(height=460, ytitle="일 송출량 (TON/day)")
+    fig.add_bar(x=daily["date"], y=daily["gen_ton"], name="발전용 가스",
+                marker_color=C.COLOR["ton"],
+                hovertemplate="%{x|%m-%d}<br>발전용 %{y:,.0f} TON<extra></extra>")
+    if show_cg:
+        fig.add_bar(x=daily["date"], y=daily["citygas_ton"].fillna(0), name="도시가스(참고)",
+                    marker_color=C.COLOR["citygas"],
+                    hovertemplate="%{x|%m-%d}<br>도시가스 %{y:,.0f} TON<extra></extra>")
+        fig.update_layout(barmode="stack")
+    fig.update_xaxes(tickformat="%m-%d")
+    st.plotly_chart(fig, width="stretch")
+
+    gen_sum = daily["gen_ton"].sum()
+    cg_sum = daily["citygas_ton"].sum()
+    cols = st.columns(3)
+    cols[0].metric("발전용 송출량 (기간 합)", f"{gen_sum:,.0f} TON")
+    if show_cg:
+        cols[1].metric("도시가스 송출량 (기간 합)", f"{cg_sum:,.0f} TON")
+        cols[2].metric("총 송출량 (기간 합)", f"{gen_sum + cg_sum:,.0f} TON")
+
+    st.caption(
+        "발전용 = 시간당 예측(5→6→7 체인)의 하루 합계 · 도시가스 = 일단위 보조모델(10단계). "
+        "둘 다 단위가 TON이라 그대로 더합니다(막대 높이 = 그날 총 송출량). 도시가스는 "
+        "net_load·신재생과 무관한 기온 기반 **보조·참고**값으로, 일 실측이 없어 간접검증입니다.")
+
+
 # 누적 그룹 색 — 전력거래소 차트와 비슷한 톤 (원전 주황·가스 노랑·BTM/PPA 연분홍)
 MIX_COLORS = {"원전": "#f28e2b", "기타발전": "#9c755f", "가스": "#edc948",
               "태양광+풍력": "#59a14f", "BTM+PPA": "#f1a7c1"}
@@ -576,32 +629,16 @@ def _ds_tall(table: str):
                            extra=["base", "horizon_d"])
 
 
-def _ds_legacy_forecast():
-    st.warning("이 `forecast` 테이블은 timestamp 단일키 **롤링 스냅샷(과거=사실상 D+1)**입니다. "
-               "예측 정본이 아니며(→ est_horizon_land), 최신 서빙의 D+1~3 단기캐시로만 의미가 있습니다. "
-               "여기 `est_*` 컬럼은 폐기 대상입니다.")
-    lo, hi = C.table_range("land", "forecast")
-    rng = st.date_input("기간", value=(max(pd.Timestamp(lo), TODAY - pd.Timedelta(days=7)).date(),
-                        min(pd.Timestamp(hi), TODAY + pd.Timedelta(days=3)).date()),
-                        min_value=pd.Timestamp(lo).date(), max_value=pd.Timestamp(hi).date(),
-                        key="ds_range_forecast")
-    if len(rng) == 2:
-        s, e = _day_bounds(pd.Timestamp(rng[0]), pd.Timestamp(rng[1]))
-        _ds_db_browser("forecast", s, e, ["land_est_demand_da", "est_demand_land"])
-
-
 def render_data_status():
     st.subheader("데이터 적재 현황 (전국 DB)")
     st.caption("정본 — **est_horizon_land**(예측 아카이브)·**forecast_horizon**(기상 아카이브)·"
-               "**historical**(실측·KPX DA). `forecast`는 ⚠ 레거시 단기캐시(맨 아래).")
+               "**historical**(실측·KPX DA).")
     table = st.segmented_control("테이블", ["historical", "est_horizon_land", "forecast_horizon"],
                                  default="historical", key="ds_table") or "historical"
     if table in TALL_TABLES:
         _ds_tall(table)
     else:
         _ds_timestamp(table)
-    with st.expander("⚠ 레거시 단기캐시 — forecast 테이블 (예측 소스 아님)"):
-        _ds_legacy_forecast()
 
 
 def render_run_ops():
@@ -690,9 +727,12 @@ def render_run_ops():
 
 if menu == "종합":
     # 탭별 독립 네비게이터(표준 구조) — 기상개황은 새로고침 없는 슬림 버전
-    tab_now, tab_mix, tab_wx, tab_lh = st.tabs(["예측 확인", "발전데이터", "기상개황", "장지평 예측"])
+    tab_now, tab_daily, tab_mix, tab_wx, tab_lh = st.tabs(
+        ["예측 확인", "일일 송출량", "발전데이터", "기상개황", "장지평 예측"])
     with tab_now:
         render_forecast_check()
+    with tab_daily:
+        render_daily_sendout()
     with tab_mix:
         render_gen_mix()
     with tab_wx:

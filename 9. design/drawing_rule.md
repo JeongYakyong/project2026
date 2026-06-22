@@ -237,6 +237,19 @@ print(out)
 
 **전제 규칙(2026-06-20 추가):** matplotlib 차트를 그릴 때는 ① **반드시 `/matplotlib-render-review` 스킬**(렌더 → PNG를 Read로 검수 → 수정 루프)을 쓴다. ② **plot용 .py는 사용자가 직접 고치기 쉽게** — 바꿀 값(데이터·라벨·색·제목·축·범례)을 **파일 상단에 변수로 모으고** 한국어 주석으로 표시. ③ **글자와 그래프(선·점·막대·축)는 절대 겹치지 않게** 한다(아래 표로 수정).
 
+**전제 규칙(2026-06-22 추가) — 글자 굵기:** ④ **제목(title)·x축 눈금(xtick)·y축 눈금(ytick) 글자는 모두 굵게(bold)** 처리한다. 제목은 `set_title(..., fontweight="bold")`. 눈금은 rcParams에 굵기 옵션이 없으므로 **`tight_layout()` 다음, 저장 직전**에 굵게 칠해야 자동 눈금(날짜축 등)·쌍축(twinx)에도 확실히 반영된다:
+
+```python
+def _save(fig, path):  # 저장 도우미 — 모든 축의 눈금 글자를 굵게
+    for ax in fig.axes:                       # twinx 등 쌍축까지 포함
+        for lab in ax.get_xticklabels() + ax.get_yticklabels():
+            lab.set_fontweight("bold")
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+# 사용: fig.tight_layout(); _save(fig, 경로)
+```
+> `_style()`처럼 그리기 도중(=`tight_layout` 이전)에 굵게 칠하면 자동 눈금이 다시 그려질 때 굵기가 풀린다. 반드시 레이아웃 확정 후에 칠한다.
+
 차트는 각각 `_*.py` 스크립트가 만든다. **스크립트를 열어 아래 값만 고치고 다시 실행하면(`python 스크립트.py`) PNG가 그 자리에서 갱신된다.** (한 스크립트가 여러 PNG를 만들기도 함.)
 
 | 겹침 증상 | 고칠 곳 |

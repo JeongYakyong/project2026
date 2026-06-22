@@ -22,5 +22,5 @@
   "calendar_weight_minsu": 0.7,
   "calendar_mode": "base",
   "note": "g_d = (base_day(year)*effday_d + hdd_coef*HDD_d), 월합을 월모델 예측으로 재조정. 요일·공휴일 가중(effday)은 기저부하에만 적용(난방은 추운 평일에도 유지). effday_d = best_w*민수용 + (1-best_w)*산업용 유효일수.",
-  "units": "원자료 단위 미표기(월공급량·일최대와 동일 스케일)"
+  "units": "TON (2026-06-21 확인: 원천 CSV에 단위 표기는 없으나 '연도별 일일 최대 공급량' 한 테이블에서 발전[7-C에서 TON 확정]과 도시가스 일최대가 동일 스케일이고 연 환산이 한국 LNG 도입량과 정합 → 발전용과 같은 TON). 월공급량=ton/month, 일송출=ton/day."
 }

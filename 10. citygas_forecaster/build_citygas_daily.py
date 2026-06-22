@@ -18,12 +18,57 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-plt.rcParams["font.family"] = "Malgun Gothic"
-plt.rcParams["axes.unicode_minus"] = False
-plt.rcParams["figure.dpi"] = 120
-plt.rcParams["savefig.facecolor"] = "white"
-plt.rcParams["axes.facecolor"] = "white"
-plt.rcParams["figure.facecolor"] = "white"
+# ── 보고서 공통 스타일 (step7_gas_corr.py와 같은 계열) ───────────────────
+#   ▼▼▼ 색·계절 팔레트는 여기 한곳에서만 고치면 모든 그림에 반영됩니다 ▼▼▼
+INK, MUTED, SOFT, ACCENT = "#2d3142", "#141618", "#7a8399", "#eb6c36"
+RULE = "#d9dce3"                                  # 옅은 축선·구분선
+# 계절 색: 겨울=파랑, 봄=초록, 여름=주황, 가을=황토
+SEA_COL = {"겨울": "#4a78b5", "봄": "#5aa469", "여름": "#eb6c36", "가을": "#b58a3c"}
+SEA_OF = {12: "겨울", 1: "겨울", 2: "겨울", 3: "봄", 4: "봄", 5: "봄",
+          6: "여름", 7: "여름", 8: "여름", 9: "가을", 10: "가을", 11: "가을"}
+WEEKDAY_COL, WEEKEND_COL = "#9bb7d4", ACCENT      # Fig6 평일/주말 막대
+# ▲▲▲ 보통은 여기까지만 고치면 됩니다 ▲▲▲
+
+plt.rcParams.update({
+    "font.family": "Malgun Gothic", "axes.unicode_minus": False,
+    "figure.facecolor": "white", "axes.facecolor": "white", "savefig.facecolor": "white",
+    "axes.edgecolor": MUTED, "axes.labelcolor": INK, "text.color": INK,
+    "xtick.color": MUTED, "ytick.color": MUTED, "figure.dpi": 150,
+})
+
+
+def _style(ax):
+    """step7 양식의 축: 위/오른쪽 선 제거 · 남은 선은 옅게 · 눈금선 가늘게 · 점선 그리드."""
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    for sp in ("left", "bottom"):
+        ax.spines[sp].set_color(RULE)
+    ax.tick_params(length=0)
+    ax.grid(True, alpha=0.16)
+    ax.set_axisbelow(True)
+
+
+def _title(ax, s, loc="center"):
+    """굵은 제목(step7 양식). loc로 정렬 바꿈 — "left"(기본)·"center"·"right"."""
+    ax.set_title(s, fontsize=12.5, fontweight="bold", color=INK, loc=loc, pad=10)
+
+
+def _season_legend(fig, y=-0.05):
+    """하단 가운데 계절 범례(점 마커) — step7과 동일."""
+    handles = [plt.Line2D([0], [0], marker="o", ls="", mfc=c, mec="none", ms=7, label=s)
+               for s, c in SEA_COL.items()]
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, y),
+               ncol=4, frameon=False, fontsize=9)
+
+
+def _save(fig, path):
+    """저장 도우미 — 저장 직전 모든 축의 눈금 글자(xtick·ytick)를 굵게 처리한다.
+    (제목은 _title에서 이미 굵음.) 자동 눈금에도 확실히 반영되도록 tight_layout 다음에 부른다."""
+    for ax in fig.axes:
+        for lab in ax.get_xticklabels() + ax.get_yticklabels():
+            lab.set_fontweight("bold")
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
 
 ROOT = r"C:\Users\bjkim\Desktop\project2026"
 DATA = os.path.join(ROOT, "1. data_fetcher_and_db", "second_dataset")
@@ -261,7 +306,9 @@ def main():
         note="g_d = (base_day(year)*effday_d + hdd_coef*HDD_d), 월합을 월모델 예측으로 재조정. "
              "요일·공휴일 가중(effday)은 기저부하에만 적용(난방은 추운 평일에도 유지). "
              "effday_d = best_w*민수용 + (1-best_w)*산업용 유효일수.",
-        units="원자료 단위 미표기(월공급량·일최대와 동일 스케일)",
+        units="TON (2026-06-21 확인: 원천 CSV에 단위 표기는 없으나 '연도별 일일 최대 공급량' "
+              "한 테이블에서 발전[7-C에서 TON 확정]과 도시가스 일최대가 동일 스케일이고 연 환산이 "
+              "한국 LNG 도입량과 정합 → 발전용과 같은 TON). 월공급량=ton/month, 일송출=ton/day.",
     )
     with open(os.path.join(OUT, "model_params.json"), "w", encoding="utf-8") as f:
         json.dump(params, f, ensure_ascii=False, indent=2)
@@ -285,61 +332,71 @@ def main():
 
 
 def _figs(A, regions, B, df, dff, daily, anchors, base_anchors, base_by_year, c1_hdd, eff, best_w):
-    # Fig1: 36년 월별 추세
-    fig, ax = plt.subplots(figsize=(9, 3.4))
+    # Fig1: 월별 추세 (이동평균=짙은 잉크색 강조, 원자료=옅게)
+    fig, ax = plt.subplots(figsize=(6, 3.4))
     x = A["ym"].dt.to_timestamp()
-    ax.plot(x, A["nat"], lw=0.7, color="#9bb7d4", label="월별 전국 판매량")
-    ax.plot(x, A["nat"].rolling(12, center=True).mean(), lw=1.8, color="#1f4e79", label="12개월 이동평균")
-    ax.set_title("전국 도시가스 월별 판매량 (1989~2024)", fontsize=11)
-    ax.set_ylabel("월 판매량"); ax.legend(fontsize=8, frameon=False)
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "01_trend.png")); plt.close(fig)
+    ax.set_xlim(pd.Timestamp("2015-01-01"), pd.Timestamp("2024-12-31"))
+    ax.plot(x, A["nat"], lw=1.0, color=ACCENT, alpha=0.95, label="월별 전국 판매량")
+    ax.plot(x, A["nat"].rolling(12, center=True).mean(), lw=1.2, alpha=0.55, color=SOFT, label="12개월 이동평균")
+    _title(ax, "전국 도시가스 월별 판매량 (2015~2024)")
+    ax.set_ylabel("월 판매량"); ax.legend(fontsize=9, frameon=False, loc="upper right")
+    _style(ax)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "01_trend.png"))
 
-    # Fig2: 월별 계절성
+    # Fig2: 월별 계절성 — 박스를 계절 색으로
     A2 = A.copy(); A2["m"] = A2["ym"].dt.month
-    fig, ax = plt.subplots(figsize=(6.2, 3.4))
+    fig, ax = plt.subplots(figsize=(6.6, 3.6))
     data = [A2[A2["m"] == m]["nat"].values for m in range(1, 13)]
-    bp = ax.boxplot(data, patch_artist=True, widths=0.6)
-    for b in bp["boxes"]:
-        b.set(facecolor="#cfe0f1", edgecolor="#1f4e79")
-    for med in bp["medians"]: med.set(color="#c0392b")
+    bp = ax.boxplot(data, patch_artist=True, widths=0.62,
+                    medianprops=dict(color=INK, lw=1.3),
+                    whiskerprops=dict(color=MUTED), capprops=dict(color=MUTED),
+                    flierprops=dict(marker="o", ms=2.5, mfc=SOFT, mec="none", alpha=0.5))
+    for m, b in zip(range(1, 13), bp["boxes"]):
+        b.set(facecolor=SEA_COL[SEA_OF[m]], edgecolor="white", alpha=0.92)
     ax.set_xticklabels(range(1, 13)); ax.set_xlabel("월"); ax.set_ylabel("월 판매량")
-    ax.set_title("월별 계절성 — 겨울 난방 집중 (1989~2024)", fontsize=11)
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "02_seasonality.png")); plt.close(fig)
+    _title(ax, "월별 계절성 — 겨울 난방 집중 (1989~2024)")
+    _style(ax); _season_legend(fig)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "02_seasonality.png"))
 
-    # Fig3: 시도별 최근 1년 비중
+    # Fig3: 시도별 최근 1년 비중 — 1위만 강조색
     last12 = A.tail(12)[regions].sum().sort_values(ascending=False)
     share = (last12 / last12.sum() * 100)
-    fig, ax = plt.subplots(figsize=(7.2, 3.4))
-    ax.bar(range(len(share)), share.values, color="#1f4e79")
+    fig, ax = plt.subplots(figsize=(7.4, 3.6))
+    colors = [ACCENT if i == 0 else INK for i in range(len(share))]
+    ax.bar(range(len(share)), share.values, color=colors, width=0.72)
     ax.set_xticks(range(len(share))); ax.set_xticklabels(share.index, fontsize=8)
-    ax.set_ylabel("비중(%)"); ax.set_title("시도별 도시가스 비중 (최근 12개월)", fontsize=11)
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "03_region_share.png")); plt.close(fig)
+    ax.set_ylabel("비중(%)"); _title(ax, "시도별 도시가스 비중 (최근 12개월)")
+    _style(ax)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "03_region_share.png"))
 
-    # Fig4: 월 기온 vs 가스 (난방곡선)
-    fig, ax = plt.subplots(figsize=(5.6, 3.8))
-    sc = ax.scatter(df["tmean"], df["citygas"], c=df["ym"].dt.month, cmap="coolwarm_r", s=28)
+    # Fig4: 월 기온 ↔ 가스 — 계절 색 산점도(step7 양식의 대표 그림)
+    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+    df2 = df.copy(); df2["season"] = df2["ym"].dt.month.map(SEA_OF)
+    for s, c in SEA_COL.items():
+        g = df2[df2["season"] == s]
+        ax.scatter(g["tmean"], g["citygas"] / 1e6, s=34, c=c, alpha=0.8,
+                   edgecolors="none", label=s)
+    ax.axvline(BASE_TEMP, ls="--", lw=0.9, color=SOFT)
+    ax.text(BASE_TEMP + 0.5, 0.96, "난방 임계 18℃", transform=ax.get_xaxis_transform(),
+            fontsize=8.5, color=MUTED, va="top", ha="left")
     ax.set_xlabel("월평균 기온(℃)"); ax.set_ylabel("월 도시가스 공급량")
-    ax.set_title("월 기온 ↔ 가스 (난방 주도, 여름=기저)", fontsize=11)
-    ax.axvline(BASE_TEMP, ls="--", lw=0.8, color="grey")
-    cb = fig.colorbar(sc, ax=ax); cb.set_label("월", fontsize=8)
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "04_temp_curve.png")); plt.close(fig)
+    _title(ax, "월 기온 ↔ 가스 — 난방 주도, 여름은 기저")
+    _style(ax); _season_legend(fig)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "04_temp_curve.png"))
 
-    # Fig5: 월모델 실측 vs 예측 + holdout
+    # Fig5: 월모델 실측 vs 예측 + 검증구간
     fig, ax = plt.subplots(figsize=(9, 3.4))
     xm = dff["ym"].dt.to_timestamp()
-    ax.plot(xm, dff["citygas"], "o-", ms=3, lw=1, color="#1f4e79", label="실측")
-    ax.plot(xm, dff["pred"], lw=1.6, color="#c0392b", label="모델")
-    ax.axvspan(xm.iloc[-12], xm.iloc[-1], color="#f6e2b3", alpha=0.5, label="검증구간(최근12개월)")
-    ax.set_title("월 수요모델: 실측 vs 예측", fontsize=11); ax.set_ylabel("월 공급량")
-    ax.legend(fontsize=8, frameon=False, ncol=3); ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "05_monthly_fit.png")); plt.close(fig)
+    ax.plot(xm, dff["citygas"] / 1e6, "o-", ms=3, lw=1, color=INK, label="실측")
+    ax.plot(xm, dff["pred"] / 1e6, lw=2.0, color=ACCENT, label="모델")
+    ax.axvspan(xm.iloc[-12], xm.iloc[-1], color=ACCENT, alpha=0.08, label="검증구간(최근 12개월)")
+    _title(ax, "월 수요모델: 실측 vs 예측"); ax.set_ylabel("월 공급량 (백만 톤)")
+    _style(ax)
+    fig.legend(fontsize=9, frameon=False, ncol=3, loc="lower center", bbox_to_anchor=(0.5, -0.04))
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "05_monthly_fit.png"))
 
     # Fig6: 일분해 예시 — 겨울 평월(주말 보임) + 설 포함월(연휴 보임)
-    fig, axes = plt.subplots(1, 2, figsize=(9.8, 3.4))
+    fig, axes = plt.subplots(1, 2, figsize=(9.8, 3.6), sharey=True)
     for ax, ym, ttl in [(axes[0], pd.Period("2021-01", "M"), "2021년 1월 — 주말 약화"),
                         (axes[1], pd.Period("2021-02", "M"), "2021년 2월 — 설 연휴 급감")]:
         md = daily[daily["ym"] == ym].sort_values("date")
@@ -350,51 +407,59 @@ def _figs(A, regions, B, df, dff, daily, anchors, base_anchors, base_by_year, c1
         prof, hdd = daily_profile(md["tmean"].values, base_by_year[ym.year], c1_hdd,
                                   float(mrow["citygas"].iloc[0]), effday=effv)
         dow = md["date"].dt.dayofweek.values
-        colors = ["#c0392b" if w >= 5 else "#1f4e79" for w in dow]  # 주말 빨강
-        ax.bar(md["date"].dt.day, prof, color=colors, alpha=0.85)
+        colors = [WEEKEND_COL if w >= 5 else WEEKDAY_COL for w in dow]
+        ax.bar(md["date"].dt.day, prof, color=colors)
         ax2 = ax.twinx()
-        ax2.plot(md["date"].dt.day, md["tmean"], color="#e08a1e", lw=1.3)
-        ax2.set_ylabel("기온(℃)", color="#e08a1e", fontsize=8)
-        ax.set_title(ttl, fontsize=10); ax.set_xlabel("일")
-        ax.spines[["top"]].set_visible(False)
+        ax2.plot(md["date"].dt.day, md["tmean"], color=INK, lw=1.5)
+        ax2.set_ylabel("기온(℃)", color=INK, fontsize=9)
+        ax2.tick_params(length=0); ax2.spines[["top"]].set_visible(False)
+        ax2.spines[["right"]].set_color(RULE)
+        ax.set_title(ttl, fontsize=11, color=INK, loc="left"); ax.set_xlabel("일")
+        _style(ax)
     axes[0].set_ylabel("일 송출량(추정)")
-    fig.suptitle("월 총량을 일별 기온·요일·공휴일로 분해 (파랑=평일, 빨강=주말)", fontsize=11)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "06_daily_disagg.png")); plt.close(fig)
+    fig.suptitle("월 총량을 일별 기온·요일·공휴일로 분해", fontsize=12.5, fontweight="bold",
+                 color=INK, x=0.012, ha="left", y=1.02)
+    handles = [plt.Line2D([0], [0], marker="s", ls="", mfc=WEEKDAY_COL, mec="none", ms=8, label="평일"),
+               plt.Line2D([0], [0], marker="s", ls="", mfc=WEEKEND_COL, mec="none", ms=8, label="주말"),
+               plt.Line2D([0], [0], color=INK, lw=1.6, label="기온")]
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.04),
+               ncol=3, frameon=False, fontsize=9)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "06_daily_disagg.png"))
 
-    # Fig7: 일최대 앵커 검증 — 캘린더계수 적용 전(회색)/후(파랑)
+    # Fig7: 일최대 앵커 검증 — 캘린더계수 적용 전(옅은 외곽선)/후(짙은 점)
     if anchors is not None and not anchors.empty:
-        fig, ax = plt.subplots(figsize=(5.4, 4.8))
+        fig, ax = plt.subplots(figsize=(5.6, 4.8))
         allv = pd.concat([anchors[["obs_max", "pred_on_day"]],
                           base_anchors[["obs_max", "pred_on_day"]]])
         lim = [allv.min().min() * 0.95, allv.max().max() * 1.05]
-        ax.plot(lim, lim, ls="--", color="grey", lw=1, zorder=0)
-        ax.scatter(base_anchors["obs_max"], base_anchors["pred_on_day"], s=40,
-                   facecolors="none", edgecolors="#999999", label="기온만 (적용 전)")
-        ax.scatter(anchors["obs_max"], anchors["pred_on_day"], s=45, color="#1f4e79",
-                   label="+요일·공휴일 (적용 후)")
+        ax.plot(lim, lim, ls="--", color=SOFT, lw=1, zorder=0)
+        ax.scatter(base_anchors["obs_max"], base_anchors["pred_on_day"], s=42,
+                   facecolors="none", edgecolors=SOFT, label="기온만 (적용 전)")
+        ax.scatter(anchors["obs_max"], anchors["pred_on_day"], s=46, color=INK,
+                   label="+요일·공휴일 (적용 후)", zorder=3)
         for _, r in anchors.iterrows():
             ax.annotate(r["date"][:7], (r["obs_max"], r["pred_on_day"]), fontsize=7,
-                        xytext=(3, 3), textcoords="offset points")
+                        color=MUTED, xytext=(3, 3), textcoords="offset points")
         ax.set_xlabel("실측 일일 최대 송출량"); ax.set_ylabel("모델 예측(해당일)")
-        ax.set_title("연 1점 일최대 앵커 검증", fontsize=11)
-        ax.legend(fontsize=8, frameon=False, loc="upper left")
-        ax.spines[["top", "right"]].set_visible(False)
-        fig.tight_layout(); fig.savefig(os.path.join(FIG, "07_anchor_check.png")); plt.close(fig)
+        _title(ax, "연 1점 일최대 앵커 검증", loc="center")
+        ax.legend(fontsize=9, frameon=False, loc="upper left")
+        _style(ax)
+        fig.tight_layout(); _save(fig, os.path.join(FIG, "07_anchor_check.png"))
 
     # Fig8: 특수일 효과 (서울 기준, 평일 대비 감소율)
     sp = pd.read_csv(os.path.join(DATA, "한국가스공사_지역별 도시가스 수요의 특수일 효과_20220810.csv"),
                      encoding="euc-kr")
     pick = ["토요일", "일요일", "1월 1일", "설 당일", "추석 당일", "광복절", "크리스마스", "석가탄신일"]
     sp2 = sp[sp["특수일"].isin(pick)].set_index("특수일").reindex(pick)
-    fig, ax = plt.subplots(figsize=(7.4, 3.4))
+    fig, ax = plt.subplots(figsize=(7.6, 3.6))
     vals = sp2["서울"].values * 100
-    ax.bar(range(len(pick)), vals, color="#c0392b", alpha=0.85)
+    ax.bar(range(len(pick)), vals, color=ACCENT, alpha=0.9, width=0.72)
     ax.set_xticks(range(len(pick))); ax.set_xticklabels(pick, fontsize=8, rotation=20)
     ax.set_ylabel("평일 대비 수요 변화(%)")
-    ax.set_title("특수일 효과 — 연휴일수록 도시가스 수요 급감 (서울)", fontsize=11)
-    ax.axhline(0, color="grey", lw=0.8)
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout(); fig.savefig(os.path.join(FIG, "08_special_day.png")); plt.close(fig)
+    _title(ax, "특수일 효과 — 연휴일수록 도시가스 수요 급감 (서울)")
+    ax.axhline(0, color=MUTED, lw=0.8)
+    _style(ax)
+    fig.tight_layout(); _save(fig, os.path.join(FIG, "08_special_day.png"))
 
 
 if __name__ == "__main__":

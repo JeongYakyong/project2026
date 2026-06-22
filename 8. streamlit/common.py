@@ -25,8 +25,8 @@ STATIONS_LAND = ["daegwallyeong", "wonju", "seosan", "pohang", "yeonggwang"]
 
 # 색·선 규약: 실측 = solid, 예측 = dot
 COLOR = {"demand": "#1f77b4", "renew": "#2ca02c", "net_load": "#9467bd",
-         "gas": "#e377c2", "ton": "#8c564b", "temp": "#d62728",
-         "rad": "#ff7f0e", "wind": "#7f7f7f"}
+         "gas": "#e377c2", "ton": "#8c564b", "citygas": "#f2a93b",
+         "temp": "#d62728", "rad": "#ff7f0e", "wind": "#7f7f7f"}
 
 
 # ---------------------------------------------------------------- 조회 레이어
@@ -38,6 +38,18 @@ def query(region: str, sql: str, params: tuple = ()) -> pd.DataFrame:
     finally:
         con.close()
     return df
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def has_table(region: str, table: str) -> bool:
+    """테이블 존재 여부 — 보조 테이블(est_horizon_citygas 등)이 없는 DB도 안전하게 처리."""
+    con = sqlite3.connect(str(DB[region]))
+    try:
+        r = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (table,)).fetchone()
+        return r is not None
+    finally:
+        con.close()
 
 
 # ---------------------------------------------------------------- 운영 실행 (서빙 체인·수집)
@@ -127,6 +139,69 @@ def land_est_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
                          "WHERE timestamp BETWEEN ? AND ? GROUP BY timestamp) m "
                          "ON e.timestamp=m.timestamp AND e.horizon_d=m.h ORDER BY e.timestamp",
                  (start, end))
+
+
+# ---------------------------------------------------------------- 도시가스 지평 아카이브 (10단계, 보조·일단위)
+# 도시가스(난방 중심·기온 기반)는 발전용과 별개인 보조·참고 산출물. 일단위 모델이라
+# timestamp = 목표일 00:00. 발전용(ton/h)·도시가스(ton/day) 모두 단위 TON → 일단위에서 합산.
+CITYGAS_TABLE = "est_horizon_citygas"
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_citygas_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
+    """도시가스 일단위 송출 예측 — est_horizon_citygas(base × horizon_d × 목표일).
+
+    land_est_horizon 과 같은 정리축(latest/asof/fixed). 테이블 없으면 빈 프레임.
+    반환: timestamp(목표일 00:00) + base + horizon_d + est_citygas_sendout.
+    """
+    empty = pd.DataFrame(columns=["timestamp", "base", "horizon_d", "est_citygas_sendout"])
+    if not has_table("land", CITYGAS_TABLE):
+        return empty
+    cols = "timestamp, base, horizon_d, est_citygas_sendout"
+    if mode == "asof":
+        base = pd.Timestamp(value).strftime("%Y-%m-%d %H:%M:%S")
+        return query("land", f"SELECT {cols} FROM {CITYGAS_TABLE} "
+                             "WHERE base=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp",
+                     (base, start, end))
+    if mode == "fixed":
+        return query("land", f"SELECT {cols} FROM {CITYGAS_TABLE} "
+                             "WHERE horizon_d=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp",
+                     (int(value), start, end))
+    return query("land", f"SELECT e.timestamp, e.base, e.horizon_d, e.est_citygas_sendout "
+                         f"FROM {CITYGAS_TABLE} e JOIN (SELECT timestamp, MIN(horizon_d) h "
+                         f"FROM {CITYGAS_TABLE} WHERE timestamp BETWEEN ? AND ? GROUP BY timestamp) m "
+                         "ON e.timestamp=m.timestamp AND e.horizon_d=m.h ORDER BY e.timestamp",
+                 (start, end))
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_daily_sendout(start_day: pd.Timestamp, end_day: pd.Timestamp,
+                       mode: str = "latest", value=None) -> pd.DataFrame:
+    """일단위(TON/day) 송출량 — 발전용(시간당 합) + 도시가스(일단위 보조).
+
+    발전용 = est_horizon_land.est_gas_sendout_ton_land 를 날짜별 합(ton/h → ton/day).
+    도시가스 = est_horizon_citygas.est_citygas_sendout (이미 일단위). 둘 다 단위 TON.
+    반환: date · gen_ton · n_hours · citygas_ton · total_ton (날짜순).
+    """
+    s = start_day.strftime("%Y-%m-%d 00:00:00")
+    e = end_day.strftime("%Y-%m-%d 23:59:59")
+    g = land_est_horizon(mode, value, s, e)[["timestamp", "est_gas_sendout_ton_land"]].copy()
+    if g.empty:
+        gen = pd.DataFrame(columns=["date", "gen_ton", "n_hours"])
+    else:
+        g["date"] = g["timestamp"].dt.normalize()
+        gen = (g.groupby("date")
+                 .agg(gen_ton=("est_gas_sendout_ton_land", "sum"),
+                      n_hours=("est_gas_sendout_ton_land", "count")).reset_index())
+    c = land_citygas_horizon(mode, value, s, e)
+    if c.empty:
+        cg = pd.DataFrame(columns=["date", "citygas_ton"])
+    else:
+        c["date"] = c["timestamp"].dt.normalize()
+        cg = c[["date", "est_citygas_sendout"]].rename(columns={"est_citygas_sendout": "citygas_ton"})
+    out = pd.merge(gen, cg, on="date", how="outer").sort_values("date").reset_index(drop=True)
+    out["total_ton"] = out["gen_ton"].fillna(0) + out["citygas_ton"].fillna(0)
+    return out
 
 
 # ---------------------------------------------------------------- 최근 실측 DB 채움 (갭필 후 저장)
@@ -398,6 +473,7 @@ COVERAGE = {
         ("est_horizon_land", "net_load 예측 — 6단계", "est_net_load_land"),
         ("est_horizon_land", "가스 발전 예측 — 7단계", "est_gas_gen_land"),
         ("est_horizon_land", "가스 송출량 예측 — 7단계", "est_gas_sendout_ton_land"),
+        ("est_horizon_citygas", "도시가스 송출량 예측 — 10단계(보조)", "est_citygas_sendout"),
         ("forecast_horizon", "기상 예보 아카이브(서산 기온)", "temp_seosan"),
         ("historical", "수요 실측(KPX)", "real_demand_land"),
         ("historical", "신재생 실측(KPX)", "renew_gen_total_kr"),
@@ -406,12 +482,14 @@ COVERAGE = {
         ("historical", "기상 관측(서산 일사)", "solar_rad_seosan"),
     ],
     "jeju": [
-        ("forecast", "기상 예보(서부 기온)", "temp_west"),
-        ("forecast", "수요 예측 D+1 — 2단계", "jeju_est_demand_new"),
-        ("forecast", "net_load 예측 D+1 — 3단계", "est_net_load_jeju"),
-        ("forecast", "net_load 예측 하이브리드 — 3단계", "est_net_load_jeju_lh"),
-        ("forecast", "SMP D+1 — 4단계", "est_smp_jeju"),
-        ("forecast", "SMP D+2 — 4단계", "est_smp_jeju_d2"),
+        # 예측 정본 = est_horizon_jeju·est_smp_horizon_jeju(지평 아카이브). 기상 정본 = forecast_horizon.
+        ("est_horizon_jeju", "수요 예측 — 2단계", "est_demand_jeju"),
+        ("est_horizon_jeju", "net_load 예측 — 3단계", "est_net_load_jeju"),
+        ("est_horizon_jeju", "태양광 이용률 예측 — 3단계", "est_solar_util_jeju"),
+        ("est_horizon_jeju", "풍력 이용률 예측 — 3단계", "est_wind_util_jeju"),
+        ("est_smp_horizon_jeju", "SMP 예측 — 4단계", "est_smp"),
+        ("est_smp_horizon_jeju", "SMP 음수경보 — 4단계", "smp_danger"),
+        ("forecast_horizon", "기상 예보 아카이브(서부 기온)", "temp_west"),
         ("historical", "수요 실측(KPX)", "real_demand_jeju"),
         ("historical", "신재생 실측(KPX)", "real_renew_gen_jeju"),
         ("historical", "net_load 실측", "real_net_load_jeju"),
