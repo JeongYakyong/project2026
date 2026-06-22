@@ -51,12 +51,20 @@ def _conn():
     return sqlite3.connect(DB_PATH)
 
 
-def _da_lags():
-    """실측 DA 시간연속 시계열 → lag24/lag168 (D+2 앵커·주간교정). 누수 없음."""
+def _da_lags(end=None):
+    """실측 DA 시간연속 시계열 → lag24/lag168 (D+2 앵커·주간교정). 누수 없음.
+
+    end(서빙 타깃 끝 날짜)를 주면 인덱스를 그 날까지 늘려 미래 D+2 타깃의 lag도 만든다.
+    lag 값은 과거 발표 DA만 참조(lag24=하루 전·lag168=일주일 전)하므로 누수 없음 —
+    인덱스를 안 늘리면 발표 DA 끝(오늘) 이후 타깃의 lag가 통째로 NaN이 돼 그 base의 D+2가 빈다.
+    """
     with _conn() as con:
         s = pd.read_sql('SELECT timestamp, smp_jeju_da FROM historical ORDER BY timestamp',
                         con, parse_dates=['timestamp']).set_index('timestamp')['smp_jeju_da']
-    full = pd.date_range(s.index.min(), s.index.max(), freq='h')
+    hi = s.index.max()
+    if end is not None:
+        hi = max(hi, pd.Timestamp(f'{end} 23:00'))
+    full = pd.date_range(s.index.min(), hi, freq='h')
     s = s.reindex(full)
     return pd.DataFrame({'lag24': s.shift(24), 'lag168': s.shift(168)})
 
@@ -65,7 +73,7 @@ def _build_serving(start: str, end: str):
     """forecast 예측입력 + 실측 DA lag로 D+2 서빙 프레임 구성(평가용 rt 포함).
     Δ(전일대비) 피처는 전체 연속 프레임에서 계산 후 구간 절단 → 단일일 서빙도 정합."""
     fc = load_forecast(with_target=True)                  # net_load·est_demand·leads·hour·month·smp_jeju_da·rt (전구간)
-    lags = _da_lags()
+    lags = _da_lags(end)
     d = fc.join(lags, how='left').sort_index()
     # Step1 잔차회귀 변화량 피처 (forecast 예측 net_load·est_demand의 전일대비 변화)
     d['d_net_load'] = d['net_load'] - d['net_load'].shift(24)

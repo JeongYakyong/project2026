@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""전국 Solar/Wind → net_load 통합 서빙 (6-C). 채널 분리(G-13):
+"""전국 Solar/Wind → net_load 통합 서빙 (6-C). 채널 분리(G-13) + 장지평 재훈련(2026-06-22):
 
-  - SOLAR = PatchTST direct (landsolar504, D+1~D+15 전 지평 가중치). 입력결측 지평만 LGBM(6-A) 폴백.
-  - WIND  = LGBM 전 지평(6-A). PatchTST wind 미사용(자기상관 붕괴·forecast 풍속오차 증폭, 비중 작음).
+  - SOLAR = PatchTST(D1-6) ↔ 신규 LGBM(_final, D7-15) 부드러운 블렌딩(D7 교차, _blend_w).
+            단지평은 PatchTST 우위, 장지평은 지평인지+평년앵커 LGBM 우위(정직 검증). PatchTST 입력결측은 LGBM 단독.
+  - WIND  = 신규 LGBM(_final) 전 지평(지평인지+평년앵커, 2지점 대관령·영광).
   - 산출 2종: 시장 신재생(→7-A)과 전체 신재생(BTM/PPA 포함 → 7-Ar). 이용률 하나가 둘 다 구동(6-A2).
     total_solar_cap = market_cap + k(1+r)·ppa_cap (6-A2 검증, k·r = btm_ppa_recon_6a2.json).
 
@@ -30,10 +31,35 @@ DEVICE  = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 SOLAR_ST = ['yeonggwang', 'seosan', 'pohang']
 WIND_ST  = ['daegwallyeong', 'yeonggwang', 'pohang']
-SOLAR_PT_HORIZONS = list(range(1, 16))    # landsolar504 = D+1..D+15 전 지평 PatchTST 가중치
-LAND_HORIZONS = tuple(range(1, 16))    # D+1..D+15 연속 — 전 지평 PatchTST, 입력결측만 LGBM 폴백
+SOLAR_PT_HORIZONS = list(range(1, 16))    # landsolar504 = D+1..D+15 PatchTST 가중치(단지평 D1-6 사용·블렌딩)
+LAND_HORIZONS = tuple(range(1, 16))    # D+1..D+15 연속
 DEMAND_COLS = ['est_demand_land', 'land_est_demand_da']   # 5단계 우선 → KPX 폴백
 PL = 24
+
+# ── 장지평 LGBM(_final): 태양광=PatchTST(D1-6)와 블렌딩 / 풍력=전 지평 ─────────────
+#   2026-06-22 재훈련.  지평 인지(horizon_d)+평년(기후값) 앵커로 '멀어질수록 평년 수축'을
+#   모델이 직접 학습(손튜닝 블렌딩 가중치 없음).  정직 비교(대상시각 교차검증·전진분할)에서
+#   태양광 D7+ -9~-21%p, 풍력 전 지평(전진 70.0→50.2%) 개선 확인.  검증=training/_train_lgbm_lh.py.
+LH_SOLAR_ST = ['pohang', 'yeonggwang', 'seosan']     # 태양광 3지점(사용자 확정)
+LH_WIND_ST  = ['daegwallyeong', 'yeonggwang']        # 풍력 2지점(사용자 확정)
+LH_KDAMP = 0.3
+LH_DAY_THR = 0.01                                    # 낮 판정: 평년 태양광 이용률 > 1%
+LH_SOLAR_FEATS = ([f'{p}_{st}' for st in LH_SOLAR_ST
+                   for p in ('radiation', 'total_cloud', 'midlow_cloud', 'solar_damping')]
+                  + ['clim_solar', 'season_grp', 'hour_sin', 'hour_cos', 'horizon_d'])
+LH_WIND_FEATS = ([f'{p}_{st}' for st in LH_WIND_ST
+                  for p in ('wind_spd_10m', 'wd_sin_10m', 'wd_cos_10m')]
+                 + ['clim_wind', 'season_grp', 'hour_sin', 'hour_cos', 'horizon_d'])
+
+
+def _season_grp(m):              # 가을(10,11)=봄과 한 묶음(사용자 확정)
+    if m in (12, 1, 2): return 0
+    if m in (6, 7, 8, 9): return 2
+    return 1
+
+
+def _blend_w(n):                 # 태양광 PatchTST→LGBM 인수인계: D5→0, D7→0.5(교차), D9→1
+    return float(np.clip((n - 5) / 4.0, 0.0, 1.0))
 
 OUT = dict(su='est_solar_util_land', wu='est_wind_util_land', sg='est_solar_gen_land',
            wg='est_wind_gen_land', mr='est_market_renew_land', tr='est_true_renew_land',
@@ -91,9 +117,12 @@ def load_assets(force=False):
         if not os.path.exists(p): continue
         m = PatchTST_Weather_Model(len(FF)+1, pred_len=PL, **HP).to(DEVICE)
         m.load_state_dict(torch.load(p, map_location=DEVICE)); m.eval(); pt[n] = m
-    m_solar = lgb.Booster(model_file=os.path.join(MOD, 'lgbm_land_solar_util.txt'))
-    m_wind  = lgb.Booster(model_file=os.path.join(MOD, 'lgbm_land_wind_util.txt'))
-    m6a = json.load(open(os.path.join(MOD, 'model_meta_6a.json'), encoding='utf-8'))
+    # 신규 장지평 LGBM(_final) + 메타(피처·평년앵커·낮판정).  옛 _util LGBM 은 nouse 로 이관.
+    solar_lgb = lgb.Booster(model_file=os.path.join(MOD, 'lgbm_land_solar_final.txt'))
+    wind_lgb  = lgb.Booster(model_file=os.path.join(MOD, 'lgbm_land_wind_final.txt'))
+    lh = json.load(open(os.path.join(MOD, 'lh_final_meta.json'), encoding='utf-8'))
+    clim_solar = {tuple(int(x) for x in k.split('-')): float(v) for k, v in lh['clim_solar'].items()}
+    clim_wind  = {tuple(int(x) for x in k.split('-')): float(v) for k, v in lh['clim_wind'].items()}
     recon = json.load(open(os.path.join(MOD, 'btm_ppa_recon_6a2.json'), encoding='utf-8'))
     # ppa_cap(월)
     ppa = pd.read_csv(PPA_CSV, encoding='cp949'); _g = ppa['기간'].astype(str)
@@ -111,7 +140,9 @@ def load_assets(force=False):
     h = h.apply(pd.to_numeric, errors='coerce')
     wx_clim = h.groupby([h.index.month, h.index.hour]).mean()
     _A = dict(pt=pt, scaler=scaler, FF=FF, SEQ=SEQ, K_DAMP=K_DAMP, HP=HP,
-              m_solar=m_solar, m_wind=m_wind, SOLAR_FEATS=m6a['solar_feats'], WIND_FEATS=m6a['wind_feats'],
+              solar_lgb=solar_lgb, wind_lgb=wind_lgb,
+              SOLAR_FEATS=lh['solar_feats'], WIND_FEATS=lh['wind_feats'],
+              clim_solar=clim_solar, clim_wind=clim_wind, DAY_THR=float(lh.get('day_thr', LH_DAY_THR)),
               k=recon['k'], r=recon['r'], ppa=ppa, wx_clim=wx_clim, canon=canon)
     return _A
 
@@ -187,17 +218,32 @@ def _solar_pt(con, origin, n, A):
     with torch.no_grad(): return np.clip(A['pt'][n](b).squeeze(0).cpu().numpy(), 0, 1)
 
 
-# ── LGBM 피처(평균) 빌드 ──
-def _lgbm_feats(wx, A):
-    d = pd.DataFrame(index=wx.index)
-    d['solar_rad'] = wx[[f'solar_rad_{s}' for s in SOLAR_ST]].mean(1)
-    d['total_cloud'] = wx[[f'total_cloud_{s}' for s in SOLAR_ST]].mean(1)
-    d['solar_damping'] = _damping_series(wx.index, wx[[f'rainfall_{s}' for s in SOLAR_ST]].mean(1), A['K_DAMP'])
-    d['wind_spd'] = wx[[f'wind_spd_{s}' for s in WIND_ST]].mean(1)
-    d['wd_sin'] = wx[[f'wd_sin_{s}' for s in WIND_ST]].mean(1); d['wd_cos'] = wx[[f'wd_cos_{s}' for s in WIND_ST]].mean(1)
-    d['hour_sin'] = np.sin(2*np.pi*d.index.hour/24); d['hour_cos'] = np.cos(2*np.pi*d.index.hour/24)
-    d['doy_sin'] = np.sin(2*np.pi*d.index.dayofyear/365); d['doy_cos'] = np.cos(2*np.pi*d.index.dayofyear/365)
-    return d
+# ── 장지평 LGBM 피처 빌드(학습기 _gen_lgbm_lh 와 서빙 공용 SSOT) ──
+def _build_lh_feats(wx, n, ctx):
+    """그날 기상(wx, 24h) + 평년앵커(월×시각) + 달력 → LGBM 피처.  학습·서빙이 같은 이
+    함수를 써서 train-serve 일치 보장.  wx 컬럼 = _day_weather 출력(solar_rad_/total_cloud_/
+    midlow_cloud_/rainfall_/wind_spd_/wd_sin_/wd_cos_).  ctx = clim_solar/clim_wind 보유(A 또는 학습 ctx)."""
+    idx = wx.index
+    hr = np.asarray(idx.hour); mo = np.asarray(idx.month)
+    M = pd.DataFrame(index=idx)
+    day_m = (hr >= 6) & (hr <= 20)
+    for st in LH_SOLAR_ST:
+        M[f'radiation_{st}'] = np.asarray(wx[f'solar_rad_{st}'], float)
+        M[f'total_cloud_{st}'] = np.asarray(wx[f'total_cloud_{st}'], float)
+        M[f'midlow_cloud_{st}'] = np.asarray(wx[f'midlow_cloud_{st}'], float)
+        rsum = float(np.nansum(np.asarray(wx[f'rainfall_{st}'], float)[day_m]))   # 그날 주간 강수합
+        M[f'solar_damping_{st}'] = float(np.exp(-LH_KDAMP * min(max(rsum, 0.0), 20.0)))
+    for st in LH_WIND_ST:
+        M[f'wind_spd_10m_{st}'] = np.asarray(wx[f'wind_spd_{st}'], float)
+        M[f'wd_sin_10m_{st}'] = np.asarray(wx[f'wd_sin_{st}'], float)
+        M[f'wd_cos_10m_{st}'] = np.asarray(wx[f'wd_cos_{st}'], float)
+    cs = ctx['clim_solar']; cw = ctx['clim_wind']
+    M['clim_solar'] = [cs.get((int(a), int(b)), np.nan) for a, b in zip(mo, hr)]
+    M['clim_wind']  = [cw.get((int(a), int(b)), np.nan) for a, b in zip(mo, hr)]
+    M['season_grp'] = np.array([_season_grp(int(a)) for a in mo], dtype='int32')
+    M['hour_sin'] = np.sin(2*np.pi*hr/24); M['hour_cos'] = np.cos(2*np.pi*hr/24)
+    M['horizon_d'] = int(n)
+    return M
 
 
 def _latest(con, day, cap_col):
@@ -220,15 +266,23 @@ def _predict_day(con, origin, n, A):
     d = pd.Timestamp(origin).normalize() + pd.Timedelta(days=n)
     idx = pd.date_range(d, periods=PL, freq='h')
     wx, wsrc = _day_weather(con, d, A)
-    feat = _lgbm_feats(wx, A)
-    # SOLAR: PatchTST 우선, 실패 시 LGBM 폴백
-    ssrc = 'patchtst'
-    try:
-        if n not in A['pt']: raise ValueError('no PT weight')
-        su = _solar_pt(con, origin, n, A)
-    except Exception:
-        su = np.clip(A['m_solar'].predict(feat[A['SOLAR_FEATS']].values), 0, 1); ssrc = 'lgbm'
-    wu = np.clip(A['m_wind'].predict(feat[A['WIND_FEATS']].values), 0, 1)
+    F = _build_lh_feats(wx, n, A)
+    # WIND: 신규 LGBM(전 지평)
+    wu = np.clip(A['wind_lgb'].predict(F[A['WIND_FEATS']]), 0, 1)
+    # SOLAR LGBM(낮만 예측, 밤=0)
+    is_day = np.asarray(F['clim_solar'], float) > A['DAY_THR']
+    su_lgb = np.where(is_day, np.clip(A['solar_lgb'].predict(F[A['SOLAR_FEATS']]), 0, 1), 0.0)
+    # SOLAR: PatchTST(D1-6) ↔ LGBM(D7-15) 부드러운 블렌딩(D7 교차)
+    w = _blend_w(n); ssrc = f'lgb(w{w:.2f})'
+    if w < 1.0:
+        try:
+            if n not in A['pt']: raise ValueError('no PT weight')
+            su_patch = _solar_pt(con, origin, n, A)
+            su = (1.0 - w) * su_patch + w * su_lgb; ssrc = f'patch{1-w:.2f}+lgb{w:.2f}'
+        except Exception:
+            su = su_lgb; ssrc = 'lgb(patch실패)'
+    else:
+        su = su_lgb
     # 용량
     scap = _latest(con, d, 'gen_solar_capacity_kr'); wcap = _latest(con, d, 'gen_wind_capacity_kr')
     if scap is None or wcap is None: raise ValueError('capacity 추정 불가')

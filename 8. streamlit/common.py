@@ -26,7 +26,7 @@ STATIONS_LAND = ["daegwallyeong", "wonju", "seosan", "pohang", "yeonggwang"]
 # 색·선 규약: 실측 = solid, 예측 = dot
 COLOR = {"demand": "#1f77b4", "renew": "#2ca02c", "net_load": "#9467bd",
          "gas": "#e377c2", "ton": "#8c564b", "citygas": "#f2a93b",
-         "temp": "#d62728", "rad": "#ff7f0e", "wind": "#7f7f7f"}
+         "smp": "#d62728", "temp": "#d62728", "rad": "#ff7f0e", "wind": "#7f7f7f"}
 
 
 # ---------------------------------------------------------------- 조회 레이어
@@ -114,31 +114,40 @@ def land_date_range() -> tuple[str, str]:
     return str(df.loc[0, "lo"])[:10], str(df.loc[0, "hi"])[:10]
 
 
-@st.cache_data(ttl=CACHE_TTL)
-def land_est_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
-    """지평 아카이브에서 예측 시계열을 뽑는다 — 세 가지 정리축.
+def _hz_select(region: str, table: str, cols: list[str],
+               mode: str, value, start: str, end: str) -> pd.DataFrame:
+    """지평 아카이브(base × horizon_d × timestamp)에서 예측 시계열을 뽑는 공용 SQL — 세 정리축.
 
     mode='latest' : 목표시각마다 '가장 최근 발행본'(가장 짧은 지평) — 운영 best(과거=사실상 D+1).
-    mode='asof'   : value=발행시각(base) 고정 → 그 발행본이 내다본 전 구간(D+1~D+15).
+    mode='asof'   : value=발행시각(base) 고정 → 그 발행본이 내다본 전 구간.
     mode='fixed'  : value=지평(정수 k) 고정 → 모든 목표를 '정확히 k일 전 발행'으로.
-    반환: timestamp + base + horizon_d + HZ_EST_COLS.
+    반환: timestamp + base + horizon_d + cols.  land·jeju 공통(테이블/컬럼만 다름).
     """
-    cols = ", ".join(HZ_EST_COLS)
+    collist = ", ".join(cols)
     if mode == "asof":
         base = pd.Timestamp(value).strftime("%Y-%m-%d %H:%M:%S")
-        return query("land", f"SELECT timestamp, base, horizon_d, {cols} FROM {HZ_TABLE} "
+        return query(region, f"SELECT timestamp, base, horizon_d, {collist} FROM {table} "
                              "WHERE base=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp",
                      (base, start, end))
     if mode == "fixed":
-        return query("land", f"SELECT timestamp, base, horizon_d, {cols} FROM {HZ_TABLE} "
+        return query(region, f"SELECT timestamp, base, horizon_d, {collist} FROM {table} "
                              "WHERE horizon_d=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp",
                      (int(value), start, end))
-    ecols = ", ".join(f"e.{c}" for c in HZ_EST_COLS)
-    return query("land", f"SELECT e.timestamp, e.base, e.horizon_d, {ecols} FROM {HZ_TABLE} e "
-                         f"JOIN (SELECT timestamp, MIN(horizon_d) h FROM {HZ_TABLE} "
+    ecols = ", ".join(f"e.{c}" for c in cols)
+    return query(region, f"SELECT e.timestamp, e.base, e.horizon_d, {ecols} FROM {table} e "
+                         f"JOIN (SELECT timestamp, MIN(horizon_d) h FROM {table} "
                          "WHERE timestamp BETWEEN ? AND ? GROUP BY timestamp) m "
                          "ON e.timestamp=m.timestamp AND e.horizon_d=m.h ORDER BY e.timestamp",
                  (start, end))
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def land_est_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
+    """전국 예측 지평 아카이브(est_horizon_land) — _hz_select 의 land 래퍼.
+
+    반환: timestamp + base + horizon_d + HZ_EST_COLS. 정리축 의미는 _hz_select 참고.
+    """
+    return _hz_select("land", HZ_TABLE, HZ_EST_COLS, mode, value, start, end)
 
 
 # ---------------------------------------------------------------- 도시가스 지평 아카이브 (10단계, 보조·일단위)
@@ -310,6 +319,74 @@ def land_day_compare(day: pd.Timestamp, use_live: bool = True,
                      mode: str = "latest", value=None) -> pd.DataFrame:
     """선택일 00~23시 비교 프레임 (land_range_compare의 하루 버전)."""
     return land_range_compare(day, day, use_live=use_live, mode=mode, value=value)
+
+
+# ---------------------------------------------------------------- 제주 지평 아카이브·비교 (2→3→4)
+# 제주는 수요(2)·신재생/net_load(3) 예측을 est_horizon_jeju, SMP(4)를 est_smp_horizon_jeju 에 적재.
+# 발행본(base)=전날 21:00(육지 23:00과 다름)·지평 D+1~7(SMP는 D+1~2). 실측 live 보강은 없음(서버 cron).
+JEJU_HZ_TABLE = "est_horizon_jeju"
+JEJU_SMP_TABLE = "est_smp_horizon_jeju"
+JEJU_EST_COLS = ["est_demand_jeju", "est_solar_gen_jeju", "est_wind_gen_jeju", "est_net_load_jeju"]
+JEJU_SMP_COLS = ["est_smp", "smp_neg_proba", "smp_danger"]
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_date_range() -> tuple[str, str]:
+    """제주 예측 표시 가능 목표시각 범위 — est_horizon_jeju 기준."""
+    df = query("jeju", f"SELECT MIN(timestamp) lo, MAX(timestamp) hi FROM {JEJU_HZ_TABLE} "
+                       "WHERE est_demand_jeju IS NOT NULL")
+    return str(df.loc[0, "lo"])[:10], str(df.loc[0, "hi"])[:10]
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_horizon_range() -> tuple[int, int]:
+    """제주 예측 지평(D+) 범위 — est_horizon_jeju 기준(현재 D+1~7)."""
+    df = query("jeju", f"SELECT MIN(horizon_d) lo, MAX(horizon_d) hi FROM {JEJU_HZ_TABLE}")
+    return int(df.loc[0, "lo"]), int(df.loc[0, "hi"])
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
+                       mode: str = "latest", value=None) -> pd.DataFrame:
+    """[start_day 00시, end_day 23시] 제주 MW 비교(수요·신재생·net_load) + 실측.
+
+    mode/value = 예측 정리축(latest/asof/fixed). 종합 화면은 latest 로 선택일부터 D+1~D+k 창을 본다
+    (목표시각마다 가장 최근 발행본 — 발행본 구멍에 강건, 미래 구간은 자연히 긴 지평으로 채워짐).
+    신재생 예측 = 태양광+풍력 발전 예측 합. net_load 실측 = 수요−신재생(예측과 같은 기준 재구성).
+    KPX 제주 하루전 수요예측(jeju_est_demand_da)은 비교용 참조로 그대로 싣는다(각 날짜의 하루 전 발표분).
+    실측 live 보강 없음(서버 cron 전담). SMP(4)는 별도 jeju_smp_frame 으로 다룬다.
+    """
+    s = start_day.strftime("%Y-%m-%d 00:00:00")
+    e = end_day.strftime("%Y-%m-%d 23:00:00")
+    base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
+    est = _hz_select("jeju", JEJU_HZ_TABLE, JEJU_EST_COLS, mode, value, s, e)
+    act = query("jeju", "SELECT timestamp, real_demand_jeju, real_renew_gen_jeju, "
+                        "real_solar_gen_jeju, real_wind_gen_jeju, jeju_est_demand_da "
+                        "FROM historical WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp", (s, e))
+    df = (base.merge(est, on="timestamp", how="left")
+              .merge(act, on="timestamp", how="left"))
+    df["est_renew_gen_jeju"] = df[["est_solar_gen_jeju", "est_wind_gen_jeju"]].sum(axis=1, min_count=1)
+    df["real_net_load_jeju"] = df["real_demand_jeju"] - df["real_renew_gen_jeju"]
+    return df
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_smp_frame(start_day: pd.Timestamp, end_day: pd.Timestamp,
+                   mode: str = "asof", value=None) -> pd.DataFrame:
+    """[start_day 00시, end_day 23시] 제주 SMP 비교 — 예측(est_smp_horizon_jeju) + 하루전 SMP.
+
+    참조선 = 하루전 SMP(smp_jeju_da). 실시간 SMP(smp_jeju_rt) 수집이 끊겨 이를 대체로 쓴다.
+    smp_danger = 음수가격 위험(0/1). 종합 화면은 latest 로 선택일부터 48시간 창을 본다(SMP는 D+1·D+2만 발행).
+    """
+    s = start_day.strftime("%Y-%m-%d 00:00:00")
+    e = end_day.strftime("%Y-%m-%d 23:00:00")
+    base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
+    est = _hz_select("jeju", JEJU_SMP_TABLE, JEJU_SMP_COLS, mode, value, s, e)[
+        ["timestamp"] + JEJU_SMP_COLS]
+    act = query("jeju", "SELECT timestamp, smp_jeju_da FROM historical "
+                        "WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp", (s, e))
+    return (base.merge(est, on="timestamp", how="left")
+                .merge(act, on="timestamp", how="left"))
 
 
 MIX_GEN_COLS = ["gen_nuclear_kr", "gen_coal_kr", "gen_localcoal_kr", "gen_oil_kr",
@@ -596,7 +673,7 @@ def hz_hover(df: pd.DataFrame):
         if pd.isna(bb) or pd.isna(hh):
             cd.append(["—"])
         else:
-            cd.append([f"발행 {pd.Timestamp(bb):%Y-%m-%d} 23시 · D+{int(hh)}"])
+            cd.append([f"발행 {pd.Timestamp(bb):%Y-%m-%d %H시} · D+{int(hh)}"])
     tmpl = ("%{x|%m-%d %H시} · %{y:,.0f} MW<br>%{customdata[0]}"
             "<extra>%{fullData.name}</extra>")
     return cd, tmpl
