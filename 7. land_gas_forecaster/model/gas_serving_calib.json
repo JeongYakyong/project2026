@@ -1,6 +1,8 @@
 {
   "calibration_enabled": false,
   "calibration_off_note": "2026-06-15 OFF — 백테스트가 겨울 위주라 calib(>1)가 여름엔 raw 과대를 거꾸로 키움(raw +5%→final +13%). 적합값은 아래 보존. 1년치(여름·가을 포함) 데이터 확보 후 true 로 되돌려 재적합/재적용.",
+  "blend_enabled": false,
+  "blend_off_note": "2026-06-22 OFF — 6단계 G-27 장지평 재훈련 후 가스 정직 재검증(est_horizon_land 189 base): 옛(06-15·옛 6단계 적합) 블렌딩이 새 체인에서 D+5~15 전 계절 MAPE 악화(전체 9.69→10.04%·D+15 11.19→12.09%)하고, v3 가 고친 겨울 밤 과소를 2022-24 옛 원전레짐 기후값으로 되돌림(겨울밤 D13-15 raw −0.3%→블렌딩 −4.2%, 여름밤 +5.6→+8.6%). 새 6단계가 '멀수록 평년 수축'을 직접 학습해 블렌딩이 중복·역효과. raw v3 이미 중심화 → 제거. blend_weight_by_horizon 적합값은 아래 보존(되돌리기).",
   "bias_calib": 1.07602,
   "bias_calib_by_horizon_daypart": {
     "1": {

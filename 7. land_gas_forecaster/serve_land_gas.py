@@ -60,7 +60,16 @@ def _load_calib():
     else:
         day = {int(k): float(v['day']) for k, v in dp.items()}
         night = {int(k): float(v['night']) for k, v in dp.items()}
-    w = {int(k): float(v) for k, v in c.get('blend_weight_by_horizon', {}).items()}
+    if not c.get('blend_enabled', True):
+        # ★기후값 블렌딩 OFF (2026-06-22): 6단계 G-27 장지평 재훈련 후 가스 정직 재검증 결과,
+        # 옛(06-15·옛 6단계) 적합 블렌딩이 새 체인에서 D+5~15 전 계절 MAPE 를 키우고(전체
+        # 9.69→10.04%·D+15 +0.9%p) v3 가 고친 겨울 밤 과소를 2022–24 옛 원전레짐 기후값으로
+        # 되돌린다(겨울밤 D13-15 raw −0.3% → 블렌딩 후 −4.2%).  새 6단계가 '멀수록 평년 수축'을
+        # 직접 학습하면서 블렌딩의 변동축소 효과가 중복·역효과가 됨.  raw v3 가 새 체인서 이미
+        # 중심화 → 블렌딩 제거.  w 적합값은 JSON 에 보존하고 모든 지평 0(블렌딩 없음)으로 반환.
+        w = {int(k): 0.0 for k in c.get('blend_weight_by_horizon', {})}
+    else:
+        w = {int(k): float(v) for k, v in c.get('blend_weight_by_horizon', {}).items()}
     clim = c.get('climatology', {'window_days': 7, 'years': '2022-2024'})
     return day, night, float(c['conv_ton_per_mwh']), w, clim
 

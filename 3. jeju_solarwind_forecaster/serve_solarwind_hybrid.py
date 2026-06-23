@@ -36,6 +36,46 @@ JEJU_HORIZONS = (1, 2, 3, 4, 5, 6, 7)
 # 모델은 해질녘/밤에 가짜 이용률(겨울 18h ~0.15, 최대 92MW)을 흘림 — 천문 일출일몰로 차단.
 JEJU_LAT, JEJU_LON, SOLAR_ELEV_MIN = 33.38, 126.55, 5.0   # 제주 남/서 태양광권역 대표 좌표
 
+# 풍력 입력 풍속 QM 보정(사용자 확정 2026-06-23): NWP 예보 풍속 → 학습 분포(실측) 분위수 매핑.
+# 풍력 LGBM 은 실측 풍속으로 학습했으나 서빙은 NWP 를 먹어 분포 불일치(특히 east +1.4m/s 과대)
+# → 이용률 +7.5%p 과대예측. QM 으로 입력을 학습 분포에 정합. 풍력 입력만 보정(태양광 무관).
+# 검증(전 기간 OOF, 단지평): nMAE 13.57→11.27%·bias +7.5→+1.4%p. 강풍(실측≥12)은 NWP 한계로
+# 보정 못 함(가스 관점 보수적). 적합=training/fit_wind_qm.py, 상세=training/REPORT_wind_qm.md.
+APPLY_WIND_QM = True
+WIND_QM_JSON = os.path.join(HERE, 'lgbm_models', 'wind_qm.json')
+_WQM = None
+
+
+def _wind_qm():
+    """QM 보정표 로드(메모이즈). {station: (fc_q, obs_q)}. 없거나 끄면 {}."""
+    global _WQM
+    if _WQM is not None:
+        return _WQM
+    if not (APPLY_WIND_QM and os.path.exists(WIND_QM_JSON)):
+        _WQM = {}; return _WQM
+    d = json.load(open(WIND_QM_JSON, encoding='utf-8'))
+    _WQM = {st: (np.asarray(v['fc_q'], float), np.asarray(v['obs_q'], float))
+            for st, v in d['stations'].items()}
+    return _WQM
+
+
+def _apply_wind_qm(wx):
+    """서빙 풍속(예보)을 실측 분포로 분위수 매핑(단조). NaN(기후값 폴백)은 통과.
+    build_features 직전에 호출 — wind_zone_east 도 보정된 east 에서 파생됨."""
+    qm = _wind_qm()
+    if not qm:
+        return wx
+    wx = wx.copy()
+    for st in ('west', 'east'):
+        col = f'wind_spd_{st}'
+        if col in wx.columns and st in qm:
+            fc_q, obs_q = qm[st]
+            v = pd.to_numeric(wx[col], errors='coerce').values.astype(float)
+            m = np.isfinite(v)
+            v[m] = np.clip(np.interp(v[m], fc_q, obs_q), 0, None)
+            wx[col] = v
+    return wx
+
 
 def _daylight_mask(idx) -> np.ndarray:
     """태양 고도 >= SOLAR_ELEV_MIN(5°) 인 시각 = 낮(True). pvlib 기준, 입력은 KST 가정."""
@@ -157,6 +197,7 @@ def _wind_util(con, origin, n, assets):
     _ms, m_wind, meta, clim, wx_clim = L_assets
     d = pd.Timestamp(origin).normalize() + pd.Timedelta(days=n)
     wx, src = L._day_weather(con, d, wx_clim)
+    wx = _apply_wind_qm(wx)   # NWP 풍속 → 실측 분포 QM 보정(풍력 입력만)
     feat, _ = L.build_features(wx, clim=clim)
     return np.clip(m_wind.predict(feat[meta['WIND_FINAL']]), 0, 1), src
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """8단계 공용 레이어 — DB 조회(읽기 전용)·KPX 실시간 수급·단가 환산·적재 현황·운영 실행."""
 from pathlib import Path
+import importlib
 import subprocess
 import sys
 import sqlite3
@@ -216,13 +217,24 @@ def land_daily_sendout(start_day: pd.Timestamp, end_day: pd.Timestamp,
 # ---------------------------------------------------------------- 최근 실측 DB 채움 (갭필 후 저장)
 # 원칙(사용자 2026-06-15): DB에 현재 시각까지 데이터가 있으면 DB에서 읽고, 없으면(뒤처졌으면)
 # 그 부족분만 KPX 라이브 수집 → historical 에 저장.  매번 전체를 다시 긁지 않는다.
+# region별 실시간 보강 설정 — (실측 판정 컬럼, fetcher 모듈, fetcher 함수명).
+# 수집·저장 로직은 똑같고 호출하는 KPX 창구만 다르다:
+#   land = sukub(수급) + 발전실적 두 창구  /  jeju = chejusukub 한 창구(수급+신재생 한 번에).
+_LIVE_FETCH = {
+    "land": ("real_demand_land", "api_fetchers_land", ("fetch_kpx_land", "fetch_land_power")),
+    "jeju": ("real_demand_jeju", "api_fetchers_jeju", ("fetch_kpx_jeju",)),
+}
+
+
 @st.cache_data(ttl=300, show_spinner="최신 실측을 받아 DB에 채우는 중...")
-def ensure_recent(day_str: str) -> int:
-    """그 날 historical 이 '현재 가용 시각'까지 비었으면 KPX(수급+발전) 부족분만 수집→DB 저장.
+def ensure_recent(region: str, day_str: str) -> int:
+    """그 날 historical 이 '현재 가용 시각'까지 비었으면 KPX 부족분만 수집→DB 저장.
 
     DB가 이미 충분하면 수집하지 않고 0 반환(= DB에서 읽으면 됨).  5분 캐시로 호출 빈도 제한.
     미래일은 즉시 0.  표시 전용 라이브가 아니라 historical 에 partial_upsert 로 영속 저장한다.
+    region 으로 호출 창구만 갈린다(land=sukub / jeju=chejusukub) — 로직은 동일.
     """
+    demand_col, module, fn_names = _LIVE_FETCH[region]
     now = pd.Timestamp.now()
     day = pd.Timestamp(day_str).normalize()
     if day > now.normalize():
@@ -230,27 +242,27 @@ def ensure_recent(day_str: str) -> int:
     # 그 날 채워져야 할 마지막 시각(오늘이면 직전 정시, 과거일이면 23시)
     last_needed = (now.floor("h") - pd.Timedelta(hours=1)) if day == now.normalize() \
         else day + pd.Timedelta(hours=23)
-    with sqlite3.connect(str(DB["land"])) as con:
+    with sqlite3.connect(str(DB[region])) as con:
         row = con.execute(
-            "SELECT MAX(timestamp) FROM historical WHERE timestamp BETWEEN ? AND ? "
-            "AND real_demand_land IS NOT NULL",
+            f"SELECT MAX(timestamp) FROM historical WHERE timestamp BETWEEN ? AND ? "
+            f"AND {demand_col} IS NOT NULL",
             (f"{day_str} 00:00:00", f"{day_str} 23:00:00")).fetchone()
     have = pd.Timestamp(row[0]) if row and row[0] else None
     if have is not None and have >= last_needed:
         return 0  # DB 충분 — 라이브 수집 안 함 (DB에서 읽는다)
 
-    # 부족 → KPX 수급+발전 그 날치만 수집해 historical 에 partial upsert (영속)
+    # 부족 → KPX 그 날치만 수집해 historical 에 partial upsert (영속)
     if str(CORE) not in sys.path:
         sys.path.insert(0, str(CORE))
     try:
-        from api_fetchers_land import fetch_kpx_land, fetch_land_power
+        mod = importlib.import_module(module)
         from _common import partial_upsert
     except Exception:
         return 0
     parts = []
-    for fn in (fetch_kpx_land, fetch_land_power):
+    for name in fn_names:
         try:
-            d = fn(day_str, day_str, progress=False)
+            d = getattr(mod, name)(day_str, day_str, progress=False)
             if d is not None and not d.empty:
                 if "timestamp" in d.columns:
                     d = d.set_index("timestamp")
@@ -263,7 +275,7 @@ def ensure_recent(day_str: str) -> int:
     wide = pd.concat(parts, axis=1)
     wide.index = wide.index.strftime("%Y-%m-%d %H:%M:%S")
     wide.index.name = "timestamp"
-    n = partial_upsert("historical", wide, DB["land"])
+    n = partial_upsert("historical", wide, DB[region])
     query.clear()   # DB 갱신 → 조회 캐시 무효화
     return n
 
@@ -294,7 +306,7 @@ def land_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
         today = pd.Timestamp.now().normalize()
         for day in pd.date_range(start_day.normalize(), end_day.normalize(), freq="D"):
             if 0 <= (today - day).days <= 3:
-                ensure_recent(day.strftime("%Y-%m-%d"))
+                ensure_recent("land", day.strftime("%Y-%m-%d"))
 
     est = land_est_horizon(mode, value, s, e)
     # KPX DA는 historical에 완전 적재(forecast 스냅샷판은 결측 많음 → 폐기). 동일 값.
@@ -326,7 +338,8 @@ def land_day_compare(day: pd.Timestamp, use_live: bool = True,
 # 발행본(base)=전날 21:00(육지 23:00과 다름)·지평 D+1~7(SMP는 D+1~2). 실측 live 보강은 없음(서버 cron).
 JEJU_HZ_TABLE = "est_horizon_jeju"
 JEJU_SMP_TABLE = "est_smp_horizon_jeju"
-JEJU_EST_COLS = ["est_demand_jeju", "est_solar_gen_jeju", "est_wind_gen_jeju", "est_net_load_jeju"]
+JEJU_EST_COLS = ["est_demand_jeju", "est_solar_gen_jeju", "est_wind_gen_jeju", "est_net_load_jeju",
+                 "est_solar_util_jeju", "est_wind_util_jeju"]
 JEJU_SMP_COLS = ["est_smp", "smp_neg_proba", "smp_danger"]
 
 
@@ -345,19 +358,25 @@ def jeju_horizon_range() -> tuple[int, int]:
     return int(df.loc[0, "lo"]), int(df.loc[0, "hi"])
 
 
-@st.cache_data(ttl=CACHE_TTL)
 def jeju_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
-                       mode: str = "latest", value=None) -> pd.DataFrame:
+                       use_live: bool = True, mode: str = "latest", value=None) -> pd.DataFrame:
     """[start_day 00시, end_day 23시] 제주 MW 비교(수요·신재생·net_load) + 실측.
 
     mode/value = 예측 정리축(latest/asof/fixed). 종합 화면은 latest 로 선택일부터 D+1~D+k 창을 본다
     (목표시각마다 가장 최근 발행본 — 발행본 구멍에 강건, 미래 구간은 자연히 긴 지평으로 채워짐).
     신재생 예측 = 태양광+풍력 발전 예측 합. net_load 실측 = 수요−신재생(예측과 같은 기준 재구성).
     KPX 제주 하루전 수요예측(jeju_est_demand_da)은 비교용 참조로 그대로 싣는다(각 날짜의 하루 전 발표분).
-    실측 live 보강 없음(서버 cron 전담). SMP(4)는 별도 jeju_smp_frame 으로 다룬다.
+    실측 보강은 육지와 동일 — 최근 구간이 DB에 비면 chejusukub 에서 부족분만 채운다(ensure_recent).
+    SMP(4)는 별도 jeju_smp_frame 으로 다룬다.
     """
     s = start_day.strftime("%Y-%m-%d 00:00:00")
     e = end_day.strftime("%Y-%m-%d 23:00:00")
+    # DB가 최근 구간(오늘 포함 3일 이내)을 못 따라왔으면 그 부족분만 채워 최신화한 뒤 DB에서 읽는다.
+    if use_live:
+        today = pd.Timestamp.now().normalize()
+        for day in pd.date_range(start_day.normalize(), end_day.normalize(), freq="D"):
+            if 0 <= (today - day).days <= 3:
+                ensure_recent("jeju", day.strftime("%Y-%m-%d"))
     base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
     est = _hz_select("jeju", JEJU_HZ_TABLE, JEJU_EST_COLS, mode, value, s, e)
     act = query("jeju", "SELECT timestamp, real_demand_jeju, real_renew_gen_jeju, "
@@ -389,6 +408,154 @@ def jeju_smp_frame(start_day: pd.Timestamp, end_day: pd.Timestamp,
                 .merge(act, on="timestamp", how="left"))
 
 
+# 검증탭 4개 모델 — (표시 라벨, est 컬럼, 실측 컬럼, 지표종류, 설비용량 컬럼).  SMP는 검증탭에서 제외.
+#   수요   = MAPE          (분모=실측수요, 크고 안정).
+#   순수요 = nMAE          (분모=평균 |net_load| — net_load는 설비용량이 없고 한낮 0 근처라 MAPE는 튐).
+#   태양광·풍력 = capmae   (MAE ÷ 설비용량 — 신재생 예측의 표준 nMAE. 저발전 시간 분모 0 문제 회피).
+JEJU_ACC_SPECS = [
+    ("수요", "est_demand_jeju", "real_demand_jeju", "mape", None),
+    ("순수요", "est_net_load_jeju", "real_net_load_jeju", "nmae", None),
+    ("태양광", "est_solar_gen_jeju", "real_solar_gen_jeju", "capmae", "real_solar_capacity_jeju"),
+    ("풍력", "est_wind_gen_jeju", "real_wind_gen_jeju", "capmae", "real_wind_capacity_jeju"),
+]
+JEJU_ACC_MODELS = [s[0] for s in JEJU_ACC_SPECS]   # ["수요","순수요","태양광","풍력"]
+
+
+def _jeju_acc_join(start: str | None, end: str | None) -> pd.DataFrame:
+    """검증용 est_horizon_jeju × historical 조인 (검증기간=실측 대상 timestamp). 파생 net_load·설비용량 포함."""
+    where, params = [], []
+    if start:
+        where.append("e.timestamp >= ?"); params.append(f"{start} 00:00:00")
+    if end:
+        where.append("e.timestamp <= ?"); params.append(f"{end} 23:59:59")
+    wsql = ("WHERE " + " AND ".join(where)) if where else ""
+    df = query("jeju", f"""
+        SELECT e.timestamp, e.horizon_d AS hz,
+               e.est_demand_jeju, e.est_net_load_jeju, e.est_solar_gen_jeju, e.est_wind_gen_jeju,
+               h.real_demand_jeju, h.real_renew_gen_jeju, h.real_solar_gen_jeju, h.real_wind_gen_jeju,
+               h.real_solar_capacity_jeju, h.real_wind_capacity_jeju
+        FROM {JEJU_HZ_TABLE} e JOIN historical h ON e.timestamp = h.timestamp {wsql}
+        ORDER BY e.timestamp
+    """, tuple(params))
+    if not df.empty:
+        df["real_net_load_jeju"] = df["real_demand_jeju"] - df["real_renew_gen_jeju"]
+    return df
+
+
+def _acc_metric(g: pd.DataFrame, ec: str, ac: str, kind: str, cap_col):
+    """(값%, 표본). capmae = MAE ÷ 설비용량(설비용량 기준 nMAE), 그 외 = error_metrics 의 mape/nmae.
+
+    error_metrics 가 |실측|>1e-6 인 시간만 쓰므로 태양광 MAE 는 사실상 낮만 — 그 낮 MAE 를 설비용량으로 나눈다.
+    """
+    m = error_metrics(g[ec], g[ac])
+    if not m:
+        return None, 0
+    if kind == "capmae":
+        cap = g[cap_col].dropna().mean()
+        if not cap or cap <= 0:
+            return None, m["n"]
+        return m["mae"] / cap * 100, m["n"]
+    return m[kind], m["n"]
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_horizon_accuracy(start: str | None = None, end: str | None = None) -> pd.DataFrame:
+    """제주 4개 모델의 지평별 정확도 — 검증기간(실측 대상일 = 타깃 timestamp) 안에서 D+1~7 집계.
+
+    수요 = MAPE, 순수요 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE(MAE÷설비용량), 단위 %.
+    est_horizon_jeju(D+1~7) × historical 실측. 미래 대상일·실측 없는 칸은 자동 제외.
+    반환: index=지평(D+1..), 컬럼=모델별 지표(%, 없으면 None) + 표본(시간).
+    """
+    mw = _jeju_acc_join(start, end)
+    if mw.empty:
+        return pd.DataFrame()
+    rows = []
+    for hz in range(1, int(mw["hz"].max()) + 1):
+        g = mw[mw["hz"] == hz]
+        rec, n = {"지평": f"D+{hz}"}, 0
+        for label, ec, ac, kind, cap_col in JEJU_ACC_SPECS:
+            v, nn = _acc_metric(g, ec, ac, kind, cap_col)
+            rec[label] = round(v, 1) if v is not None else None
+            n = max(n, nn)
+        rec["표본"] = n
+        rows.append(rec)
+    return pd.DataFrame(rows).set_index("지평")
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_daily_accuracy(start: str, end: str | None, k: int) -> pd.DataFrame:
+    """선택 지평 D+k에서 검증기간의 '일별' 정확도 추이 — index=날짜, 컬럼=모델별 지표(%).
+
+    수요 = MAPE, 순수요 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE. 하루 표본 < 8이면 그 날 그 모델은 NaN(낮만인 태양광 보호).
+    맑은 날 정확하다가 특정일 급등 = 그 날 기상 급변(비·구름) 신호로 읽는다.
+    """
+    mw = _jeju_acc_join(start, end)
+    if mw.empty:
+        return pd.DataFrame()
+    mw = mw[mw["hz"] == k]
+    if mw.empty:
+        return pd.DataFrame()
+    grp = mw.groupby(mw["timestamp"].dt.date)
+    out = {}
+    for label, ec, ac, kind, cap_col in JEJU_ACC_SPECS:
+        def _daily(g, ec=ec, ac=ac, kind=kind, cap_col=cap_col):
+            v, nn = _acc_metric(g, ec, ac, kind, cap_col)
+            return v if (v is not None and nn >= 8) else float("nan")
+        out[label] = grp.apply(_daily, include_groups=False)
+    res = pd.DataFrame(out)
+    res.index = pd.to_datetime(res.index)
+    return res
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_renew_capacity() -> tuple[float, float]:
+    """제주 태양광·풍력 설비용량(MW) — historical 최신값. 합산 신재생 이용률 계산용."""
+    df = query("jeju", "SELECT real_solar_capacity_jeju s, real_wind_capacity_jeju w FROM historical "
+                       "WHERE real_solar_capacity_jeju IS NOT NULL ORDER BY timestamp DESC LIMIT 1")
+    if df.empty:
+        return float("nan"), float("nan")
+    return float(df.loc[0, "s"]), float(df.loc[0, "w"])
+
+
+# 데이터 현황 히트맵 항목 — (라벨, 테이블, 컬럼, 장지평여부).
+# 장지평(D+3 이상) 수집 가능=예보(green) / 불가=실측·근일(blue). SMP는 D+1·D+2뿐이라 장지평 불가(blue).
+JEJU_COVERAGE_ITEMS = [
+    ("수요 예측", "est_horizon_jeju", "est_demand_jeju", True),
+    ("net_load 예측", "est_horizon_jeju", "est_net_load_jeju", True),
+    ("태양광 예측", "est_horizon_jeju", "est_solar_gen_jeju", True),
+    ("풍력 예측", "est_horizon_jeju", "est_wind_gen_jeju", True),
+    ("기상 예보", "forecast_horizon", "temp_west", True),
+    ("SMP 예측", "est_smp_horizon_jeju", "est_smp", False),
+    ("하루전 SMP", "historical", "smp_jeju_da", False),
+    ("수요 실측", "historical", "real_demand_jeju", False),
+    ("신재생 실측", "historical", "real_renew_gen_jeju", False),
+]
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def jeju_coverage_daily(days_back: int = 30, days_fwd: int = 7) -> pd.DataFrame:
+    """제주 주요 항목의 일별 적재율(0~1) — index=항목, columns=날짜(MM-DD). 데이터 현황 히트맵용.
+
+    하루 = 24시간 기준 채워진 비율. 예측 tall 테이블(est_horizon_*)은 목표시각 distinct 기준
+    (어느 발행본이든 그 시각을 덮으면 셈) — 발행본별이 아니라 '그 시각 예측이 있나'를 본다.
+    """
+    today = pd.Timestamp.now().normalize()
+    lo, hi = today - pd.Timedelta(days=days_back), today + pd.Timedelta(days=days_fwd)
+    s, e = lo.strftime("%Y-%m-%d 00:00:00"), hi.strftime("%Y-%m-%d 23:00:00")
+    dates = pd.date_range(lo, hi, freq="D")
+    out = {}
+    for label, table, col, _lh in JEJU_COVERAGE_ITEMS:
+        if not has_table("jeju", table) or col not in table_columns("jeju", table):
+            out[label] = [0.0] * len(dates)
+            continue
+        df = query("jeju", f"SELECT substr(timestamp, 1, 10) d, COUNT(DISTINCT timestamp) n "
+                           f"FROM {table} WHERE {col} IS NOT NULL AND timestamp BETWEEN ? AND ? "
+                           "GROUP BY d", (s, e))
+        m = dict(zip(df["d"], df["n"]))
+        out[label] = [min(1.0, m.get(d.strftime("%Y-%m-%d"), 0) / 24) for d in dates]
+    return pd.DataFrame(out, index=[d.strftime("%m-%d") for d in dates]).T
+
+
 MIX_GEN_COLS = ["gen_nuclear_kr", "gen_coal_kr", "gen_localcoal_kr", "gen_oil_kr",
                 "gen_hydro_kr", "gen_pumped_kr", "gen_nre_kr", "gen_gas_kr",
                 "gen_solar_market_kr", "gen_wind_kr", "gen_solar_btm_kr", "gen_solar_ppa_kr"]
@@ -404,7 +571,7 @@ def land_day_mix(day: pd.Timestamp, use_live: bool = True) -> pd.DataFrame:
     e = day.strftime("%Y-%m-%d 23:00:00")
     # 최근 구간(오늘 포함 3일 이내)이 DB에 비었으면 부족분만 채워 최신화 — 그 외엔 DB만 읽음
     if use_live and 0 <= (pd.Timestamp.now().normalize() - day.normalize()).days <= 3:
-        ensure_recent(day.strftime("%Y-%m-%d"))
+        ensure_recent("land", day.strftime("%Y-%m-%d"))
     base = pd.DataFrame({"timestamp": pd.date_range(s, e, freq="h")})
     cols = ", ".join(MIX_GEN_COLS)
     df = base.merge(query("land", f"""
@@ -464,7 +631,7 @@ def land_daily_error_history(end_day: str, days: int = 30,
     for name, (ec, ac, kind) in pairs.items():
         def _daily(g, ec=ec, ac=ac, kind=kind):
             v = g[[ec, ac]].dropna()
-            if len(v) < 12:
+            if len(v) < 12:              # 하루 절반 이상 쌓인 날만(진행 중 오늘은 오후 늦게부터 표시)
                 return float("nan")
             err = (v[ec] - v[ac]).abs()
             return float(err.mean() / v[ac].abs().mean() * 100) if kind == "nmae" \
@@ -653,12 +820,21 @@ def make_fig(height: int = 420, ytitle: str = "MW") -> go.Figure:
     return fig
 
 
+# 시간당 점을 둥근 곡선으로 잇는 정도(0~1.3). 시각화 전용 — 직선 이음의 각진 느낌을 부드럽게.
+# 클수록 더 둥글지만 급변 구간(태양광 일출 등)에서 곡선이 0 아래로 살짝 휠 수 있어 보수적으로 0.6.
+LINE_SMOOTHING = 0.6
+
+
 def add_actual(fig: go.Figure, ts, y, name: str, color: str, **kw):
-    fig.add_trace(go.Scatter(x=ts, y=y, name=name, line=dict(color=color, width=2), **kw))
+    fig.add_trace(go.Scatter(x=ts, y=y, name=name,
+                             line=dict(color=color, width=2, shape="spline",
+                                       smoothing=LINE_SMOOTHING), **kw))
 
 
 def add_forecast(fig: go.Figure, ts, y, name: str, color: str, **kw):
-    fig.add_trace(go.Scatter(x=ts, y=y, name=name, line=dict(color=color, dash="dot", width=2), **kw))
+    fig.add_trace(go.Scatter(x=ts, y=y, name=name,
+                             line=dict(color=color, dash="dot", width=2, shape="spline",
+                                       smoothing=LINE_SMOOTHING), **kw))
 
 
 def hz_hover(df: pd.DataFrame):
@@ -799,7 +975,7 @@ def day_navigator(prefix: str, ndays: tuple[int, int, int] | None = None,
     i = 3
     if refresh:
         if cols[i].button("실시간 새로고침", key=f"{prefix}_refresh", width="stretch",
-                          help="실측(KPX sukub·발전실적)을 다시 불러옵니다 (표시 전용)"):
+                          help="최근 구간 실측(KPX 수급·발전실적)을 다시 불러옵니다"):
             clear_live_caches()
         i += 1
     n = None

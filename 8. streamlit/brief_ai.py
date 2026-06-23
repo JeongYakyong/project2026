@@ -327,18 +327,45 @@ def generate_brief(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
 
 # ============================================================ UI 패널
 _KINDS = {"종합 요약": "overview", "송출량 요약": "sendout", "기상 요약": "weather"}
+_KIND_REV = {v: k for k, v in _KINDS.items()}
 
 
-def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1):
-    """예측 확인/장지평 탭에 끼우는 브리핑 패널 — 요약 종류·N일 선택 + 생성 버튼.
+def render_brief_display(prefix: str, start_day: pd.Timestamp, days: int = 1):
+    """생성된 브리핑을 가져와 표시만 한다(생성 버튼 없음) — 메인·예측확인 탭 공용.
+
+    생성은 '운영 실행' 메뉴에서 한다. 같은 브리핑을 두 탭에서 동시에 렌더하므로,
+    보이지 않는 prefix 마커(display:none)로 Streamlit 요소 ID 충돌을 막는다.
+    """
+    sd = start_day.strftime("%Y-%m-%d")
+    saved = store.latest_for(sd, days=days)
+    mark = f"<span style='display:none'>·{prefix}</span>"
+    if saved and saved.get("brief_text"):
+        st.markdown(saved["brief_text"] + mark, unsafe_allow_html=True)
+        st.caption(f"💾 {sd} · {_KIND_REV.get(saved['kind'], saved['kind'])} · "
+                   f"{saved.get('created_at', '')} — ‘운영 실행’ 메뉴에서 생성·갱신합니다.{mark}",
+                   unsafe_allow_html=True)
+    else:
+        st.caption(f"아직 생성된 브리핑이 없습니다 — **운영 실행** 메뉴에서 생성하세요.{mark}",
+                   unsafe_allow_html=True)
+
+
+def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1,
+                       fixed_n: int | None = None):
+    """예측 확인/장지평/메인 탭에 끼우는 브리핑 패널 — 요약 종류·N일 선택 + 생성 버튼.
 
     원시 시계열은 LLM에 가지 않는다: 코드가 사실표를 만들고, 버튼을 눌러야만 Gemini를 호출한다.
+    fixed_n 을 주면 구간 슬라이더를 숨기고 그 지평(예: 메인=1일)으로 고정한다.
     """
-    c0, c1 = st.columns([2.2, 1.4], vertical_alignment="bottom")
-    klabel = c0.segmented_control("요약 종류", list(_KINDS), default="종합 요약",
-                                  key=f"{prefix}_bk") or "종합 요약"
-    n = c1.slider("브리핑 구간 (선택일부터 N일)", 1, 15, default_n, key=f"{prefix}_bn",
-                  help="사전 적재 예측을 읽기만 하므로 길게 잡아도 지연 없음")
+    if fixed_n is not None:
+        n = fixed_n
+        c_kind, c_gen = st.columns([2.7, 1.1], vertical_alignment="bottom")
+    else:
+        # 컨트롤 한 줄 — 구간(N일) → 요약 종류 → 생성 버튼 순서로 흐르게 배치
+        c_n, c_kind, c_gen = st.columns([1.7, 2.0, 1.1], vertical_alignment="bottom")
+        n = c_n.slider("① 브리핑 구간 (선택일부터 N일)", 1, 15, default_n, key=f"{prefix}_bn",
+                       help="사전 적재 예측을 읽기만 하므로 길게 잡아도 지연 없음")
+    klabel = c_kind.segmented_control("요약 종류" if fixed_n else "② 요약 종류", list(_KINDS),
+                                      default="종합 요약", key=f"{prefix}_bk") or "종합 요약"
     kind = _KINDS[klabel]
 
     # 사실표 구성 — 코드가 확정(LLM 무관). 실패해도 패널은 살아 있게.
@@ -352,8 +379,7 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1)
     res_key = f"{prefix}_bres_{kind}_{start_day:%Y%m%d}_{n}"
     saved = store.load(sd, n, kind)           # (시작일·지평·종류)로 저장된 브리핑
 
-    cgen, cinfo = st.columns([1.2, 3], vertical_alignment="center")
-    if cgen.button("AI 브리핑 생성", key=f"{prefix}_bgen", type="primary"):
+    if c_gen.button("③ AI 브리핑 생성", key=f"{prefix}_bgen", type="primary", width="stretch"):
         with st.spinner("Gemini가 통계 요약을 해설하는 중..."):
             text = generate_brief(kind, fact_text)
         # 생성 즉시 별도 저장소에 적재(upsert) — 같은 카테고리는 갱신
@@ -362,7 +388,7 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1)
         saved = {"brief_text": text, "created_at": ca}
         st.rerun()
     if saved:
-        cinfo.caption(f"💾 저장됨 · {sd} · 지평 {n}일 · {klabel} · {saved.get('created_at', '')}")
+        st.caption(f"💾 저장됨 · {sd} · 지평 {n}일 · {klabel} · {saved.get('created_at', '')}")
 
     # 표시 우선순위: 이번 세션 생성분 → 저장소의 기존 브리핑
     show = st.session_state.get(res_key) or (saved or {}).get("brief_text")
@@ -373,10 +399,15 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1)
 
     with st.expander("브리핑 근거 — 코드가 확정한 사실(이 수치 밖은 창작 금지)"):
         st.code(fact_text)
+    # '저장된 브리핑' 목록은 종합 화면 밖(운영 실행)으로 — render_saved_briefs() 참조.
 
-    rows = store.list_all(region="land", limit=30)
-    if rows:
-        with st.expander(f"저장된 브리핑 ({len(rows)}건) — 카테고리: 시작일·지평·종류"):
-            tbl = pd.DataFrame(rows)[["start_date", "days", "kind", "created_at", "preview"]]
-            tbl.columns = ["시작일", "지평(일)", "종류", "저장시각", "미리보기"]
-            st.dataframe(tbl, width="stretch", hide_index=True, height=240)
+
+def render_saved_briefs(region: str = "land", limit: int = 30):
+    """저장된 브리핑 기록 표 — 종합 화면이 아닌 조용한 위치(운영 실행)에 둔다."""
+    rows = store.list_all(region=region, limit=limit)
+    if not rows:
+        st.caption("저장된 브리핑이 아직 없습니다.")
+        return
+    tbl = pd.DataFrame(rows)[["start_date", "days", "kind", "created_at", "preview"]]
+    tbl.columns = ["시작일", "지평(일)", "종류", "저장시각", "미리보기"]
+    st.dataframe(tbl, width="stretch", hide_index=True, height=300)

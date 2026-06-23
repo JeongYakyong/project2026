@@ -49,16 +49,25 @@ def render_forecast_check():
     render_series_compare(df, prefix="fchk", gear_col=cap)
     st.caption(f"표시 기준: {day:%Y-%m-%d} · {label}")
 
-    # 하단 — 선택일 가스 송출량 지표 4개
+    # 하단 — 선택일 송출량 지표 5개 (전국 천연가스 = 발전용 + 도시가스 보조)
     ton = df["est_gas_sendout_ton_land"]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("발전용 가스 하루 예상 송출량", f"{ton.sum():,.0f} TON")
-    c2.metric("시간당 가스 최대 예상 송출량", f"{ton.max():,.0f} TON/h")
-    c3.metric("시간당 가스 최소 예상 송출량", f"{ton.min():,.0f} TON/h")
-    c4.metric("가스발전 합", f"{df['est_gas_gen_land'].sum() / 1000:,.1f} GWh")
+    gen_ton = float(ton.sum())
+    daily = C.land_daily_sendout(day, day)
+    cg_vals = daily["citygas_ton"].dropna() if "citygas_ton" in daily.columns else pd.Series(dtype=float)
+    has_cg = not cg_vals.empty
+    cg_ton = float(cg_vals.sum()) if has_cg else 0.0
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("전국 천연가스 예상 송출량", f"{gen_ton + cg_ton:,.0f} TON",
+              help="발전용 가스 + 도시가스(보조·참고)의 하루 합. 둘 다 단위는 TON입니다.")
+    c2.metric("발전용 가스 예상 송출량", f"{gen_ton:,.0f} TON",
+              help="5→6→7 체인이 예측한 시간당 송출량의 하루 합")
+    c3.metric("도시가스 예상 송출량", f"{cg_ton:,.0f} TON" if has_cg else "—",
+              help="난방 중심·기온 기반 일단위 보조모델(10단계). 일 실측이 없어 참고값입니다.")
+    c4.metric("시간당 최대 예상 송출량", f"{ton.max():,.0f} TON/h")
+    c5.metric("시간당 최소 예상 송출량", f"{ton.min():,.0f} TON/h")
 
     st.markdown("##### AI 브리핑")
-    B.render_brief_panel("fchk", day)
+    B.render_brief_display("fchk", day)  # 표시 전용(생성은 운영 실행)
 
 
 def render_daily_sendout():
@@ -183,6 +192,7 @@ COMPARE_SERIES = [
     ("전력수요 예측", "est_demand_land", "est", C.COLOR["demand"], True),
     ("가스발전 실측", "gen_gas_kr", "act", C.COLOR["gas"], True),
     ("가스발전 예측", "est_gas_gen_land", "est", C.COLOR["gas"], True),
+    ("천연가스 송출량(TON/h)", "est_gas_sendout_ton_land", "ton", C.COLOR["ton"], True),
     ("신재생 실측", "renew_gen_total_kr", "act", C.COLOR["renew"], True),
     ("신재생 예측", "est_market_renew_land", "est", C.COLOR["renew"], True),
     ("net_load 실측", "real_net_load", "act", C.COLOR["net_load"], False),
@@ -192,20 +202,23 @@ COMPARE_SERIES = [
 
 
 def render_series_compare(df: pd.DataFrame, prefix: str, height: int = 460,
-                          gear_col=None):
+                          gear_col=None, show_ton: bool = True):
     """⚙️ 선택형 예측 vs 실측 비교 plot — 예측 확인·장지평 탭 공용 컴포넌트.
 
     gear_col을 주면 ⚙️ popover를 그 자리(예: 네비게이터 행)에 렌더.
+    show_ton=False면 천연가스 송출량(TON/h) 보조축 계열을 빼고 MW 계열만 본다(장지평=일별 집중).
     """
+    series = [s for s in COMPARE_SERIES if show_ton or s[2] != "ton"]
     if gear_col is None:
         gear_col, _ = st.columns([1, 5])
     with gear_col.popover("⚙️ 표시 데이터"):
         chosen = {label: st.checkbox(label, value=default, key=f"{prefix}_s_{col}")
-                  for label, col, _, _, default in COMPARE_SERIES}
+                  for label, col, _, _, default in series}
 
     cd, tmpl = C.hz_hover(df)
     fig = C.make_fig(height=height)
-    for label, col, kind, color, _ in COMPARE_SERIES:
+    use_y2 = False
+    for label, col, kind, color, _ in series:
         if not chosen[label]:
             continue
         if kind == "act":
@@ -215,15 +228,68 @@ def render_series_compare(df: pd.DataFrame, prefix: str, height: int = 460,
                             line=dict(color=color, dash="dash", width=2),
                             hovertemplate="%{x|%m-%d %H시} · %{y:,.0f} MW<br>"
                             "KPX 하루전 발표(D+1)<extra>%{fullData.name}</extra>")
+        elif kind == "ton":
+            # 송출량(TON/h)은 가스 발전 MW의 약 0.15배라 같은 축에선 바닥에 깔린다
+            # → 오른쪽 보조축(y2)으로 올려 같은 plot 안에서 읽기 쉽게 한다.
+            fig.add_scatter(x=df["timestamp"], y=df[col], name=label, yaxis="y2",
+                            mode="lines", line=dict(color=color, dash="dot", width=2.5),
+                            customdata=cd,
+                            hovertemplate="%{x|%m-%d %H시} · %{y:,.0f} TON/h<br>"
+                            "%{customdata[0]}<extra>%{fullData.name}</extra>")
+            use_y2 = True
         else:
             C.add_forecast(fig, df["timestamp"], df[col], f"{label} (MW)", color,
                            customdata=cd, hovertemplate=tmpl)
+    if use_y2:
+        fig.update_layout(
+            margin=dict(t=30, b=10, l=10, r=80),
+            yaxis2=dict(title=dict(text="송출량 (TON/h)", standoff=8,
+                                   font=dict(size=12, color=C.COLOR["ton"])),
+                        overlaying="y", side="right", showgrid=False, rangemode="tozero",
+                        tickfont=dict(size=11.5, color=C.COLOR["ton"])))
     fig.update_xaxes(range=[df["timestamp"].min(), df["timestamp"].max()])
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"{prefix}_series")
+    if use_y2:
+        st.caption("오른쪽 축 = 천연가스 송출량(TON/h, 발전량 × 0.1521) · 왼쪽 축 = MW. "
+                   "⚙️ 표시 데이터에서 다른 계열과 함께 켜고 끌 수 있습니다.")
 
 
-def render_weather():
-    """기상개황 — 8권역 초록 choropleth(Leaflet 임베드, visual.md A안) + 간략 권역 테이블."""
+def _hero_gas(day, dplus):
+    """선택일 예상 가스 송출량(+시계열)·전력수요(예측·실측)·순수요 dict — hero 오른쪽 패널용.
+
+    예측 없으면 None. 시계열은 24시간 값 리스트(None=결측)로 넘겨 패널에서 스파크라인으로 그린다.
+    """
+    gdf = C.land_day_compare(day)
+    gton = gdf["est_gas_sendout_ton_land"]
+    if gton.dropna().empty:
+        return None
+    daily = C.land_daily_sendout(day, day)
+    cg = daily["citygas_ton"].dropna() if "citygas_ton" in daily.columns else pd.Series(dtype=float)
+    cg_ton = float(cg.sum()) if not cg.empty else None
+    gen = float(gton.sum())
+
+    def spark(s):
+        return [None if pd.isna(v) else round(float(v)) for v in s]
+
+    dem, dem_real = gdf["est_demand_land"], gdf["real_demand_land"]
+    nl = gdf["est_net_load_land"]
+    return {"dplus": int(dplus), "gen_ton": gen,
+            "max_ton": float(gton.max()), "min_ton": float(gton.min()),
+            "citygas_ton": cg_ton, "total_ton": gen + (cg_ton or 0.0),
+            "gas_spark": spark(gton),
+            "demand_peak": float(dem.max()) if dem.notna().any() else None,
+            "demand_spark": spark(dem),
+            "demand_real_spark": spark(dem_real) if dem_real.notna().any() else None,
+            "nl_min": float(nl.min()) if nl.notna().any() else None,
+            "nl_max": float(nl.max()) if nl.notna().any() else None}
+
+
+def render_hero():
+    """종합 메인 hero — 전국 기상 지도 + 간결 날씨 패널 + 예상 가스 송출량 패널.
+
+    날씨(지도) → 신재생 강도(왼쪽 패널) → 가스 송출(오른쪽 패널)을 한 화면으로 잇는다.
+    권역별 상세(예보 대 실측)는 아래 expander 로 접어 둔다.
+    """
     import streamlit.components.v1 as components
     import weather_map as W
 
@@ -232,9 +298,9 @@ def render_weather():
                    "다음 세션 디자인 개편에서 정리 예정입니다.")
         return
 
-    day, _, cap = C.day_navigator("wx", refresh=False)
+    day, _, cap = C.day_navigator("hero", refresh=False)
     dplus = (day - TODAY).days
-    cap.caption(f"{day:%Y-%m-%d} · 09–15시 평균(일사·기온·풍속·강수) 기준 — 별도 시각 선택 없음")
+    cap.caption(f"{day:%Y-%m-%d} · 09–15시 평균 기준 · 날씨 → 신재생 → 가스 한눈 브리핑")
 
     date = day.strftime("%Y-%m-%d")
     zones = W.zone_day(date)
@@ -243,30 +309,30 @@ def render_weather():
         st.warning(f"{date} 예보가 없습니다 (KIMG 예보 보유 범위 밖).")
         return
 
-    components.html(W.build_html(day, dplus, zones, util), height=620)
+    util_act = W.national_util_actual(date) if dplus <= 0 else None
+    components.html(
+        W.build_html(day, dplus, zones, util, gas=_hero_gas(day, dplus),
+                     util_act=util_act, humidity=W.national_humidity(date)),
+        height=620)
 
-    # 간략 테이블 — 8권역 기상상태 + 전국 이용률 예측(6단계 서빙값).
-    # 과거·당일은 실측 병기: 셀 = 예보 → 실측 (기상 ASOS · 이용률 KPX 역산).
+    # 지도 아래 — AI 종합 브리핑(운영 실행에서 생성된 것을 가져와 표시만) → 권역별 상세
+    st.markdown("##### AI 종합 브리핑")
+    B.render_brief_display("hero", day)
+
+    with st.expander("권역별 상세 · 예보 대 실측 (8권역 표)"):
+        _hero_weather_table(date, dplus, zones)
+
+
+def _hero_weather_table(date, dplus, zones):
+    """hero 아래 expander — 8권역 기상상태 표(예보 → 실측 병기). 이용률 카드는 왼쪽 패널로 이동."""
+    import weather_map as W
+
+    # 8권역 표 — 과거·당일은 실측 병기: 셀 = 예보 → 실측 (기상 ASOS).
     past = dplus <= 0
     act_zones = W.zone_actual(date) if past else {}
-    act_util = W.national_util_actual(date) if past else {"solar": None, "wind": None}
 
     def cell(est, act):
         return est if act is None else f"{est} → {act}"
-
-    m1, m2, m3 = st.columns([1, 1, 3])
-    m1.metric("전국 태양광 이용률(예측)",
-              "—" if util["solar"] is None else f"{util['solar']:.1f}%",
-              f"실측 {act_util['solar']:.1f}%" if act_util["solar"] is not None
-              else "—" if util["solar_max"] is None else f"최대 {util['solar_max']:.1f}%",
-              delta_color="off",
-              help="평균 = 09–15시 · 최대 = 그날 시간별 최대 · 과거 날짜는 KPX 실측 병기")
-    m2.metric("전국 풍력 이용률(예측)",
-              "—" if util["wind"] is None else f"{util['wind']:.1f}%",
-              f"실측 {act_util['wind']:.1f}%" if act_util["wind"] is not None
-              else "—" if util["wind_max"] is None else f"최대 {util['wind_max']:.1f}%",
-              delta_color="off",
-              help="평균 = 24시간 · 최대 = 그날 시간별 최대 · 과거 날짜는 KPX 실측 병기")
 
     rows = []
     for name, z in zones.items():
@@ -290,7 +356,7 @@ def render_weather():
                            else f"{z['wa']['pct']}%" if past else f"{z['wa']['pct']}% {z['wa']['lab']}",
                            f"{a['wa']['pct']}%" if a_ok and a["wa"] is not None else None),
         })
-    m3.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True, height=320)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True, height=320)
     if past:
         st.caption("과거·당일 — 셀 표기 = **예보 → 실측** (예보 = rolling D+1 발행분, "
                    "기상 실측 = ASOS 관측, 이용률 실측 = KPX 발전실적 역산). "
@@ -334,11 +400,14 @@ def render_longhorizon():
     if gm:
         c3.metric("가스 MAPE", f"{gm['mape']:.1f} %", f"bias {gm['bias']:+.1f}%", delta_color="off")
 
-    render_series_compare(df, prefix="lh", height=480)
+    render_series_compare(df, prefix="lh", height=480, show_ton=False)
     st.caption(f"예측 기준: **{label}**. 발행일·지평을 바꿔가며 같은 구간을 볼 수 있습니다 — "
                "'지평 고정'으로 D+1과 D+12를 비교하면 멀리서 본 예측도 정확도가 비슷한 것"
                "(지평 평평, 체인 검증 D+1≈D+12)을 확인할 수 있습니다. "
                "미래 구간은 실측이 없어 예측만 표시되고, KPX 수요예측(DA)은 D+1 발행분만 비교에 포함됩니다.")
+
+    with st.expander("일일 송출량 — 발전용 + 도시가스 합산 (일단위 TON/day)"):
+        render_daily_sendout()
 
 
 # ================================================================ 수요 예측
@@ -346,13 +415,16 @@ def render_forecast_menu():
     # 상단 컨트롤 — 날짜 내비(7일 고정) + '지평 D+k' 하나로 정리(예측기준 3모드·표시기간 슬라이더 제거).
     # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 아래 '정확도 평가' 탭이 담당.
     start, _, cap = C.day_navigator("fm")
-    end = start + pd.Timedelta(days=6)
     meta = C.land_horizon_meta()
-    k = st.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
-                  key="fm_hzk", help="그 지평의 시계열을 봅니다. D+1은 KPX 하루전 예측과도 비교됩니다.")
+    # 슬라이더를 날짜 내비 우측 슬롯(cap)에 배치 — 캡션은 그 아래 전체폭으로 내림.
+    k = cap.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
+                   key="fm_hzk", help="그 지평의 시계열을 봅니다. D+1은 KPX 하루전 예측과도 비교됩니다.")
+    # 표시 구간을 지평 길이에 비례시킴 — D+1은 1일, D+15는 15일. 지평이 짧을수록 좁게 봐서 가독성↑.
+    win = k
+    end = start + pd.Timedelta(days=win - 1)
     mode, value, label = "fixed", k, f"D+{k} (각 날짜를 {k}일 전에 예측)"
-    cap.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} (7일) · {label} · "
-                "실측 ━ / 예측 ··· / KPX DA ╌")
+    st.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} ({win}일) · {label} · "
+               "실측 ━ / 예측 ··· / KPX DA ╌")
 
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or (df["est_demand_land"].isna().all() and df["real_demand_land"].isna().all()):
@@ -406,8 +478,7 @@ def render_forecast_menu():
         render_validation(df)
 
     with t5:
-        st.caption("발행본을 모아 본 D+1~D+15 지평별 정확도 — 수요·net_load·가스 = MAPE, 신재생 = nMAE, "
-                   "단위 %. 긴 지평은 실측이 있는(더 오래된) 발행본에서 채워집니다.")
+        st.caption("발행본을 모아 본 D+1~D+15 지평별 정확도(단위 %). 긴 지평은 더 오래된 발행본에서 채워집니다.")
         render_horizon_accuracy()
 
 
@@ -458,17 +529,84 @@ def render_validation(df: pd.DataFrame):
                "실측은 KPX 실시간(sukub·발전실적)으로 보강되며, 오차를 숨기지 않습니다(§5.4).")
 
 
-def _show_acc_table(acc: pd.DataFrame):
+# 지평별 곡선·일별 추이·카드 공용 — (라벨, land_horizon_accuracy 컬럼, COLOR 키, 지표).
+HZ_ACC_SPECS = [("수요", "수요 MAPE", "demand", "MAPE"),
+                ("신재생", "신재생 nMAE", "renew", "nMAE"),
+                ("net_load", "net_load MAPE", "net_load", "MAPE"),
+                ("가스", "가스 MAPE", "gas", "MAPE")]
+
+
+def _show_horizon_curve(acc: pd.DataFrame):
+    """지평별 정확도 곡선(x=지평·y=오차율) + 정확한 수치 표는 expander. 제주 '② 지평별 성능'과 같은 양식."""
     if acc.empty:
         st.caption("집계할 적재분이 없습니다.")
-    else:
+        return
+    hz_num = [int(s[2:]) for s in acc.index]          # "D+3" → 3
+    fig = C.make_fig(height=400, ytitle="오차율 (%)")
+    for label, col, ckey, _kind in HZ_ACC_SPECS:
+        if col in acc.columns:
+            fig.add_scatter(x=hz_num, y=acc[col], name=label, mode="lines+markers",
+                            line=dict(color=C.COLOR[ckey], width=2.2), marker=dict(size=6),
+                            connectgaps=False,
+                            hovertemplate="D+%{x} · %{y:.1f}%<extra>" + label + "</extra>")
+    fig.update_xaxes(title="지평 (며칠 전에 예측했는지)", tickmode="array",
+                     tickvals=hz_num, ticktext=list(acc.index))
+    st.plotly_chart(fig, width="stretch")
+    st.caption("지평이 길수록(오른쪽) 오차가 커지는 추세 · 수요·net_load·가스=MAPE, 신재생=nMAE.")
+    with st.expander("정확한 수치 표로 보기"):
         st.dataframe(acc, width="stretch", height=560)
 
 
+def render_daily_trend_land():
+    """일별 정확도 추이 — 기간 + 지평 D+k. x=날짜·y=오차율(%). 제주 '① 일별 정확도 추이'를 전국에 이식.
+
+    특정일 급등 = 그 날 기상 급변(비·구름) 신호. 데이터 = land_daily_error_history(fixed D+k).
+    """
+    meta = C.land_horizon_meta()
+    PERIODS = {"1주": 7, "2주": 14, "한달": 30, "3개월": 92, "6개월": 183}
+    # 라벨 글자를 좁은 컬럼에 따로 넣어 컨트롤 왼쪽에 가로로 붙임(세로 라벨 대신 한 줄).
+    lp, cp, lh, ch, _ = st.columns([0.4, 3.4, 0.4, 1.1, 1.3], vertical_alignment="center")
+    lp.markdown("**기간**")
+    psel = cp.segmented_control("기간", list(PERIODS), default="한달", key="ldt_period",
+                                label_visibility="collapsed") or "한달"
+    lh.markdown("**지평**")
+    k = ch.selectbox("지평", list(range(meta["h_lo"], meta["h_hi"] + 1)),
+                     format_func=lambda d: f"D+{d}", key="ldt_hz",
+                     label_visibility="collapsed", help="각 날짜를 k일 전에 예측한 값")
+    days = PERIODS[psel]
+
+    # 선택 지평 카드 — 최근 기간 전체에서 D+k 정확도(4개 모델 한눈). 지표종류는 아래 캡션에서 안내.
+    cutoff = (TODAY - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
+    acc_h = C.land_horizon_accuracy(start=cutoff)
+    hz_lbl = f"D+{k}"
+    if not acc_h.empty and hz_lbl in acc_h.index:
+        row = acc_h.loc[hz_lbl]
+        cards = st.columns(4)
+        for col, (title, ac_col, _ckey, _kind) in zip(cards, HZ_ACC_SPECS):
+            v = row[ac_col] if ac_col in row and pd.notna(row[ac_col]) else None
+            col.metric(title, "—" if v is None else f"{v:.1f} %")
+
+    daily = C.land_daily_error_history(TODAY.strftime("%Y-%m-%d"), days=days, mode="fixed", value=k)
+    if daily.empty or daily.dropna(how="all").empty:
+        st.caption("이 기간·지평에 집계할 적재분이 없습니다.")
+        return
+    fig = C.make_fig(height=400, ytitle="오차율 (%)")
+    for label, _col, ckey, _kind in HZ_ACC_SPECS:
+        if label in daily.columns:
+            fig.add_scatter(x=daily.index, y=daily[label], name=label, mode="lines+markers",
+                            line=dict(color=C.COLOR[ckey], width=2.2), marker=dict(size=5),
+                            connectgaps=False,
+                            hovertemplate="%{x|%m-%d} · %{y:.1f}%<extra>" + label + "</extra>")
+    st.plotly_chart(fig, width="stretch")
+    st.caption(f"D+{k} 일별 오차율(수요·net_load·가스=MAPE, 신재생=nMAE) · 솟은 날 = 그 날 기상 급변으로 빗나간 날.")
+
+
 def render_horizon_accuracy():
-    """지평별 정확도 — 기간별(프리셋+직접설정) / 계절별(봄·여름·가을·겨울) 탭."""
-    tabs = st.tabs(["기간별", "봄", "여름", "가을", "겨울"])
+    """지평별 정확도 — 일별 추이(꺾은선·카드) + 기간별/계절별 지평 곡선(꺾은선 + 표 expander)."""
+    tabs = st.tabs(["일별 추이", "기간별", "봄", "여름", "가을", "겨울"])
     with tabs[0]:
+        render_daily_trend_land()
+    with tabs[1]:
         PERIODS = {"7일": 7, "14일": 14, "한달": 30, "3개월": 92, "직접 설정": None}
         psel = st.segmented_control("기간", list(PERIODS), default="한달",
                                     key="hzacc_period") or "한달"
@@ -486,11 +624,11 @@ def render_horizon_accuracy():
         else:
             cutoff = (TODAY - pd.Timedelta(days=PERIODS[psel])).strftime("%Y-%m-%d")
             acc = C.land_horizon_accuracy(start=cutoff)
-        _show_acc_table(acc)
-    for i, seas in enumerate(["봄", "여름", "가을", "겨울"], start=1):
+        _show_horizon_curve(acc)
+    for i, seas in enumerate(["봄", "여름", "가을", "겨울"], start=2):
         with tabs[i]:
             st.caption(f"{seas}({'·'.join(f'{m}월' for m in C.SEASON_MONTHS[seas])}) — 전 기간 발행본 대상")
-            _show_acc_table(C.land_horizon_accuracy(season=seas))
+            _show_horizon_curve(C.land_horizon_accuracy(season=seas))
 
 
 # ================================================================ 데이터 현황
@@ -521,21 +659,75 @@ DS_GROUPS = {
 }
 
 
-def _coverage_heatmap(heat: pd.DataFrame, end: pd.Timestamp):
+# 데이터 성격별 색 — historical 적재 히트맵을 출처/성격으로 구분(셀 진하기 = 적재율).
+DS_GROUP_COLORS = {
+    "ASOS 관측": "#0891b2",          # 기상 관측(실측)
+    "KPX 수급 sukub": "#2563eb",     # 전력 수급(실측)
+    "KPX 발전실적": "#059669",       # 발전원별 실적(실측)
+    "KPX DA·SMP": "#d97706",         # 하루전 예보·가격
+    "파생 용량·이용률": "#7c3aed",   # 계산값
+    "기타": "#94a3b8",
+}
+
+
+def _hist_group(col: str) -> str:
+    """historical 컬럼 → 데이터 성격 그룹(전체 피처 히트맵 색 구분용). DS_GROUPS 대표 컬럼과 같은 분류."""
+    c = col.lower()
+    if col.endswith("_da") or c.startswith("smp_"):
+        return "KPX DA·SMP"
+    if "utilization" in c or "capacity" in c:
+        return "파생 용량·이용률"
+    if any(k in c for k in ("temp_c", "solar_rad", "wind_spd", "humid", "rainfall",
+                            "cloud", "snow", "wd_cos", "wd_sin")):
+        return "ASOS 관측"
+    if "demand" in c or "supply" in c or "reserve" in c:
+        return "KPX 수급 sukub"
+    if c.startswith("gen_") or "renew" in c or "net_load" in c:
+        return "KPX 발전실적"
+    return "기타"
+
+
+def _coverage_heatmap(heat: pd.DataFrame, end: pd.Timestamp, row_groups=None):
+    """6시간 블록 적재율 히트맵. row_groups(행별 성격 그룹) 주면 그룹마다 다른 색(셀 진하기=적재율)."""
+    import numpy as np
     import plotly.graph_objects as go
 
-    fig = go.Figure(go.Heatmap(
-        z=heat.values, x=heat.columns, y=heat.index,
-        colorscale=[[0, "#f1f5f9"], [1, "#059669"]], zmin=0, zmax=1,
-        hovertemplate="%{y}<br>%{x} ~ +6h · 적재율 %{z:.0%}<extra></extra>",
-        showscale=False))
+    cov = heat.values.astype(float)              # 실제 적재율 0~1
+    fig = go.Figure()
+    if row_groups is None:
+        fig.add_trace(go.Heatmap(
+            z=cov, x=heat.columns, y=heat.index,
+            colorscale=[[0, "#f1f5f9"], [1, "#059669"]], zmin=0, zmax=1,
+            hovertemplate="%{y}<br>%{x} ~ +6h · 적재율 %{z:.0%}<extra></extra>", showscale=False))
+    else:
+        # 그룹마다 색띠 1개씩 — z를 그룹 띠 [i/N,(i+1)/N] 안에서 적재율로 채운다(단일 트레이스라 hover 정확).
+        order = list(dict.fromkeys(row_groups))
+        n = len(order)
+        gi = np.array([order.index(g) for g in row_groups])[:, None]   # (행,1)
+        # 적재율에 0.999를 곱해 띠 경계에 정확히 안 닿게(경계값이 다음 띠 연한색으로 튀는 것 방지).
+        z = np.where(np.isnan(cov), np.nan, (gi + np.clip(cov, 0, 1) * 0.999) / n)
+        light = "#f1f5f9"
+        cs = []
+        for i, g in enumerate(order):                                   # 띠마다 연한색→그룹색, 경계는 급단차
+            cs += [[i / n, light], [(i + 1) / n, DS_GROUP_COLORS.get(g, "#94a3b8")]]
+        fig.add_trace(go.Heatmap(
+            z=z, x=heat.columns, y=heat.index, customdata=cov, hoverongaps=False,
+            colorscale=cs, zmin=0, zmax=1, showscale=False,
+            hovertemplate="%{y}<br>%{x} ~ +6h · 적재율 %{customdata:.0%}<extra></extra>"))
     fig.update_layout(height=max(360, 16 * len(heat.index) + 80),
                       margin=dict(t=10, b=10, l=10, r=10),
                       yaxis=dict(autorange="reversed", tickfont=dict(size=11)))
     if end >= TODAY:
         fig.add_vline(x=pd.Timestamp.now(), line_dash="dot", line_color="#dc2626")
     st.plotly_chart(fig, width="stretch")
-    st.caption("셀 = 6시간 블록의 적재율(흰색 0% → 초록 100%). "
+    if row_groups is not None:
+        used = list(dict.fromkeys(row_groups))
+        legend = " &nbsp; ".join(
+            f"<span style='color:{DS_GROUP_COLORS.get(g, '#94a3b8')};font-size:1.1em'>■</span> {g}"
+            for g in used)
+        st.markdown(f"<div style='font-size:.85rem;color:#64748b'>색 = 데이터 성격 &nbsp; {legend}</div>",
+                    unsafe_allow_html=True)
+    st.caption("셀 진하기 = 6시간 블록의 적재율(연할수록 0% → 진할수록 100%). "
                "빨간 점선 = 현재 시각. 행 자체가 없는 구간도 0%로 표시됩니다.")
 
 
@@ -577,19 +769,20 @@ def _ds_timestamp(table: str):
         ["적재 히트맵 — fetcher 요약", "적재 히트맵 — 전체 피처", "DB 직접 조회"])
     with tab_sum:
         heat = C.coverage_heat("land", table, s, e)
-        reps, labels = [], []
+        reps, labels, rgroups = [], [], []
         for gname, cols in groups:
             for col in cols:
                 if col in heat.index:
-                    reps.append(col); labels.append(f"[{gname}]  {col}")
+                    reps.append(col); labels.append(f"[{gname}]  {col}"); rgroups.append(gname)
         sub = heat.loc[reps]; sub.index = labels
-        _coverage_heatmap(sub, end)
+        _coverage_heatmap(sub, end, row_groups=rgroups)
         with st.expander("항목별 신선도 요약 (정본 테이블)"):
             st.dataframe(C.coverage_table("land"), width="stretch", hide_index=True)
             st.caption("수집은 crontab 백그라운드에서만 갱신됩니다(API 한도 보호). "
                        "예측 정본 = est_horizon_land · 기상 정본 = forecast_horizon.")
     with tab_full:
-        _coverage_heatmap(C.coverage_heat("land", table, s, e), end)
+        heat_full = C.coverage_heat("land", table, s, e)
+        _coverage_heatmap(heat_full, end, row_groups=[_hist_group(c) for c in heat_full.index])
     with tab_db:
         _ds_db_browser(table, s, e, [g[1][0] for g in groups])
 
@@ -724,19 +917,27 @@ def render_run_ops():
                 st.error(f"실패 (종료코드 {rc})")
             st.code(out or "(출력 없음)")
 
+    st.divider()
+    st.subheader("AI 브리핑 생성")
+    st.caption("메인·예측확인 탭은 여기서 생성된 브리핑을 **가져와 표시만** 합니다(읽기 전용). "
+               "선택한 날짜로 1일 브리핑을 생성·저장하며, 같은 날짜·종류는 갱신됩니다.")
+    bday = st.date_input("브리핑 날짜", value=TODAY.date(), key="ops_brief_day")
+    B.render_brief_panel("ops", pd.Timestamp(bday), fixed_n=1)
+
+    with st.expander("저장된 AI 브리핑 기록 (시작일·지평·종류)"):
+        B.render_saved_briefs("land")
+
 
 if menu == "종합":
-    # 탭별 독립 네비게이터(표준 구조) — 기상개황은 새로고침 없는 슬림 버전
-    tab_now, tab_daily, tab_mix, tab_wx, tab_lh = st.tabs(
-        ["예측 확인", "일일 송출량", "발전데이터", "기상개황", "장지평 예측"])
+    # 메인 hero(기상 지도 + 가스 송출량)를 첫 탭으로. 기상개황 탭은 hero 로 흡수.
+    tab_hero, tab_now, tab_mix, tab_lh = st.tabs(
+        ["메인", "예측 확인", "발전데이터", "장지평 예측"])
+    with tab_hero:
+        render_hero()
     with tab_now:
         render_forecast_check()
-    with tab_daily:
-        render_daily_sendout()
     with tab_mix:
         render_gen_mix()
-    with tab_wx:
-        render_weather()
     with tab_lh:
         render_longhorizon()
 elif menu == "검증":

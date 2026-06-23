@@ -179,6 +179,39 @@ def _station_means_fh(region: str, suffixes: list[str], date: str) -> dict[str, 
     return out
 
 
+def _util_label(pct: float) -> str:
+    """이용률 %를 정성 라벨로 — 제주 풍력 활성도용(고산 풍속 칸 대신, 제주 분포 기준)."""
+    if pct >= 45:
+        return "매우 강함"
+    if pct >= 28:
+        return "강함"
+    if pct >= 15:
+        return "보통"
+    if pct >= 7:
+        return "약함"
+    return "미약"
+
+
+@st.cache_data(ttl=C.CACHE_TTL)
+def jeju_wind_util(date: str, forecast: bool) -> float | None:
+    """제주 그날 풍력 이용률(%) — 고산 풍속을 육지 풍속 칸에 넣으면 과대표시(≥6m/s 49%→'최적' 77%)되어,
+    제주 자체 값을 쓴다. forecast=True면 제주 3단계 예측(est_wind_util_jeju, 최신 base),
+    False면 실측 CF(real_wind_gen ÷ capacity). 둘 다 그날 평균(%). 데이터 없으면 None.
+    """
+    s, e = f"{date} 00:00:00", f"{date} 23:00:00"
+    if forecast:
+        df = C.query("jeju",
+                     "SELECT est_wind_util_jeju u FROM est_horizon_jeju eh "
+                     "WHERE timestamp BETWEEN ? AND ? AND est_wind_util_jeju IS NOT NULL "
+                     "AND base=(SELECT MAX(base) FROM est_horizon_jeju "
+                     "WHERE timestamp=eh.timestamp AND est_wind_util_jeju IS NOT NULL)", (s, e))
+        return None if df.empty or df["u"].isna().all() else float(df["u"].mean()) * 100
+    df = C.query("jeju", "SELECT real_wind_gen_jeju g, real_wind_capacity_jeju c FROM historical "
+                 "WHERE timestamp BETWEEN ? AND ? AND real_wind_gen_jeju IS NOT NULL "
+                 "AND real_wind_capacity_jeju > 0", (s, e))
+    return None if df.empty else float((df["g"] / df["c"]).mean()) * 100
+
+
 def _build_zones(date: str, table: str) -> dict[str, dict]:
     """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산.
 
@@ -202,6 +235,12 @@ def _build_zones(date: str, table: str) -> dict[str, dict]:
             ratio = float(min(1.0, max(0.0, w["rad"] / clear)))
         rain = w["rain"] if w["rain"] is not None and not pd.isna(w["rain"]) else 0.0
         rainy = ok and rain >= RAIN_MMH
+        # 제주 풍력 활성도 = 고산 풍속을 육지 칸에 넣으면 과대표시 → 제주 자체 이용률을 직접 사용.
+        if name == "제주":
+            wu = jeju_wind_util(date, table == "forecast")
+            wa = None if wu is None else {"pct": int(round(wu)), "lab": _util_label(wu)}
+        else:
+            wa = wind_act(w["wind"])
         zones[name] = {
             "mem": z["mem"], "stname": z["stname"], "solar": z["solar"], "wind": z["wind"],
             "lat": z["lat"], "lon": z["lon"], "ok": bool(ok),
@@ -212,7 +251,7 @@ def _build_zones(date: str, table: str) -> dict[str, dict]:
             "sky": sky_of(w["cloud"], w["rain"], w["temp"], ratio) if ok
                    else {"emo": "", "t": "—"},
             "sa": solar_act(ratio, rainy),
-            "wa": wind_act(w["wind"]),
+            "wa": wa,
         }
     return zones
 
@@ -312,13 +351,26 @@ _TEMPLATE = """<!DOCTYPE html>
   #map{position:absolute;inset:0;}
   .leaflet-container{font-family:inherit;background:#e8edf2;}
 
-  .panel{position:fixed;top:12px;left:12px;z-index:1000;width:280px;background:var(--panel);
-    border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(15,23,42,.10);overflow:hidden;}
-  .panel__head{padding:12px 16px 10px;border-bottom:1px solid var(--line);}
-  .panel__eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);}
-  .panel__title{font-size:16px;font-weight:800;margin:3px 0 0;line-height:1.25;}
-  .panel__title .conf{font-size:11px;font-weight:600;margin-left:6px;}
-  .panel__body{padding:11px 16px 13px;}
+  /* 좌우(A·C) 흰 그라데이션 — 중국·일본을 덮어 한국(B)만 남기고 정보영역을 비운다.
+     z=450: 타일·면(200·400) 위, 권역 라벨·툴팁(600·650) 아래라 라벨은 그대로 보인다. */
+  .fade{position:fixed;top:0;bottom:0;z-index:450;pointer-events:none;}
+  .fade--l{left:0;width:34%;background:linear-gradient(to right,#fff 0%,#fff 42%,rgba(255,255,255,0) 100%);}
+  .fade--r{right:0;width:34%;background:linear-gradient(to left,#fff 0%,#fff 42%,rgba(255,255,255,0) 100%);}
+
+  .panel{position:fixed;top:12px;left:12px;z-index:1000;width:min(31%,410px);background:var(--panel);
+    border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 28px rgba(15,23,42,.10);overflow:hidden;}
+  .panel__head{padding:14px 18px 12px;border-bottom:1px solid var(--line);}
+  .panel__eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);}
+  .panel__title{font-size:20px;font-weight:800;margin:0;line-height:1.25;}
+  .panel__title .unit{font-size:13px;font-weight:600;color:var(--sub);margin-left:2px;}
+  .panel__sub{font-size:13px;font-weight:600;color:var(--sub);margin-top:4px;line-height:1.35;}
+  .conf{font-size:12px;font-weight:600;}
+  .panel__body{padding:13px 18px 15px;}
+
+  .wxstats{display:flex;gap:9px;margin-top:11px;}
+  .wxstat{flex:1;text-align:center;background:#f8fafc;border:1px solid var(--line);border-radius:11px;padding:8px 6px;}
+  .wxstat__k{font-size:11px;font-weight:700;color:var(--sub);white-space:nowrap;}
+  .wxstat__v{font-size:18px;font-weight:800;color:var(--ink);margin-top:2px;font-variant-numeric:tabular-nums;}
 
   .modes{display:flex;gap:5px;margin-bottom:4px;}
   .mchip{flex:1;text-align:center;padding:7px 4px;border-radius:9px;border:1px solid var(--line);
@@ -341,20 +393,55 @@ _TEMPLATE = """<!DOCTYPE html>
 
   .divider{height:1px;background:var(--line);margin:10px 0 10px;}
 
-  .verdict{padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--line);}
-  .verdict__top{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--sub);}
-  .verdict__bar{display:flex;height:8px;border-radius:5px;overflow:hidden;margin:8px 0 9px;background:#e2e8f0;}
+  .verdict{padding:14px 16px;border-radius:12px;background:#f8fafc;border:1px solid var(--line);}
+  .verdict__top{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--ink);}
+  .verdict__bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:11px 0 12px;background:#e2e8f0;}
   .verdict__bar > span{display:block;height:100%;transition:width .3s;background:var(--green);}
-  .verdict__msg{font-size:12.5px;line-height:1.5;color:var(--ink);}
-  .verdict__msg b{font-weight:800;}
+  .verdict__msg{font-size:15px;line-height:1.75;color:var(--sub);}
+  .verdict__msg b{font-weight:800;color:var(--ink);}
+
+  /* 이용률 카드 2개(태양광·풍력) — 왼쪽 패널, verdict 아래 */
+  .ucards{display:flex;gap:9px;margin-top:11px;}
+  .ucard{flex:1;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;}
+  .ucard__k{font-size:12px;font-weight:700;color:var(--sub);white-space:nowrap;}
+  .ucard__v{font-size:23px;font-weight:800;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums;}
+  .ucard__v small{font-size:13px;font-weight:600;color:var(--sub);margin-left:1px;}
+  .ucard__s{font-size:11.5px;color:#94a3b8;font-weight:600;margin-top:2px;}
 
   .legend{margin-top:10px;font-size:11px;color:var(--sub);line-height:1.55;}
   .legend b{color:var(--ink);}
 
+  /* ── 메인 hero: 표시 설정 접기(details) + 오른쪽 가스 송출량 패널 ── */
+  .more{margin-top:11px;}
+  .more > summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:700;color:var(--sub);
+    padding:8px 11px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;user-select:none;}
+  .more > summary::-webkit-details-marker{display:none;}
+  .more > summary:before{content:"⚙ ";opacity:.7;}
+  .more > summary:hover{border-color:#cbd5e1;color:var(--ink);}
+  .more[open] > summary{margin-bottom:9px;}
+  .more .modes{margin-bottom:4px;}
+
+  .panel--gas{left:auto;right:12px;width:min(27%,330px);}
+  .panel--gas .panel__title{font-size:27px;}
+  .panel--gas .divider{margin:11px 0;}
+  .gasrow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;margin:9px 0;}
+  .gasrow .gk{display:flex;align-items:center;gap:8px;color:var(--sub);font-weight:600;}
+  .gasrow .gk i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .gasrow .gv{font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink);}
+  .gasrow .gv small{font-weight:600;color:#94a3b8;margin-left:3px;font-size:11.5px;}
+
+  /* 전력수요 미니 시계열(스파크라인) — 오른쪽 패널 하단 */
+  .dem__top{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;}
+  .dem__top .gk{color:var(--sub);font-weight:700;}
+  .dem__top .gv{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .dem__top .gv small{font-weight:600;color:#94a3b8;margin-left:3px;font-size:11.5px;}
+  .sparklab{font-size:11.5px;font-weight:700;color:var(--sub);margin-top:9px;}
+  .spark{display:block;width:100%;height:44px;margin-top:7px;}
+
   .wxwrap{background:none!important;border:none!important;}
   .wx{transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1px;pointer-events:none;}
   .wx .emo{font-size:22px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,.3));}
-  .wx .nm{font-size:11px;font-weight:800;color:#0f172a;background:rgba(255,255,255,.85);
+  .wx .nm{font-size:11px;font-weightNORTH_TRIM:800;color:#0f172a;background:rgba(255,255,255,.85);
     padding:1px 6px;border-radius:7px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.14);}
   .wx .nm small{font-weight:600;color:#475569;}
 
@@ -379,39 +466,47 @@ _TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <div id="map"></div>
+<div class="fade fade--l"></div>
+<div class="fade fade--r"></div>
 
 <div class="panel">
   <div class="panel__head">
-    <div class="panel__eyebrow">기상개황 · 8권역</div>
-    <h1 class="panel__title">__DATE_LABEL__<span class="conf" style="color:__CONF_C__">__CONF_T__</span></h1>
+    <h1 class="panel__title">__DATE_LABEL__ 종합 브리핑</h1>
+    <div class="panel__sub">기상개황 및 가스 송출량 · D__DPLUS__<span class="conf" style="color:__CONF_C__"> · __CONF_T__</span></div>
   </div>
   <div class="panel__body">
-    <div class="modes">
-      <div class="mchip active" data-m="gen">신재생 강도</div>
-      <div class="mchip" data-m="rad">일사</div>
-      <div class="mchip" data-m="wind">풍속</div>
-    </div>
-    <div id="toggles">
-      <label class="toggle" data-k="solar">
-        <input type="checkbox" id="ck-solar" checked />
-        <span class="swatch"><svg viewBox="0 0 10 10"><path d="M1 5l2.5 2.5L9 2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span class="lab">태양광 발전</span><span class="dot"></span>
-      </label>
-      <label class="toggle" data-k="wind">
-        <input type="checkbox" id="ck-wind" checked />
-        <span class="swatch"><svg viewBox="0 0 10 10"><path d="M1 5l2.5 2.5L9 2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span class="lab">풍력 발전</span><span class="dot"></span>
-      </label>
-    </div>
-    <div class="divider"></div>
     <div class="verdict">
       <div class="verdict__top"><span id="v-ico">☀️</span><span id="v-name">—</span></div>
       <div class="verdict__bar"><span id="v-strength"></span></div>
       <div class="verdict__msg" id="v-msg">—</div>
     </div>
-    <div class="legend" id="legend"></div>
+    __WX_STATS__
+    __UTIL_CARDS__
+    <details class="more">
+      <summary>표시 설정 · 일사 / 풍속 보기</summary>
+      <div class="modes">
+        <div class="mchip active" data-m="gen">신재생 강도</div>
+        <div class="mchip" data-m="rad">일사</div>
+        <div class="mchip" data-m="wind">풍속</div>
+      </div>
+      <div id="toggles">
+        <label class="toggle" data-k="solar">
+          <input type="checkbox" id="ck-solar" checked />
+          <span class="swatch"><svg viewBox="0 0 10 10"><path d="M1 5l2.5 2.5L9 2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="lab">태양광 발전</span><span class="dot"></span>
+        </label>
+        <label class="toggle" data-k="wind">
+          <input type="checkbox" id="ck-wind" checked />
+          <span class="swatch"><svg viewBox="0 0 10 10"><path d="M1 5l2.5 2.5L9 2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="lab">풍력 발전</span><span class="dot"></span>
+        </label>
+      </div>
+      <div class="legend" id="legend"></div>
+    </details>
   </div>
 </div>
+
+__GAS_PANEL__
 
 <script>
 const GEO = __GEO__;
@@ -432,11 +527,17 @@ L.control.zoom({position:'bottomright'}).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{
   subdomains:"abcd", maxZoom:18, attribution:"&copy; OpenStreetMap &copy; CARTO"}).addTo(map);
 
+/* hover 카드가 지도 가장자리에서 잘리지 않게 — 권역별로 '여는 방향'을 지정.
+   제주(맨 아래)=위로, 강원·수도권(위)=아래로, 좌우 끝 권역=안쪽으로 펼친다. */
+const TIP_DIR = {"제주":"top", "강원":"bottom", "수도권":"bottom", "충청권":"bottom",
+                 "경북권":"left", "경남권":"left", "광주·전남":"right", "전북":"right"};
+
 const gj = L.geoJSON(GEO, {
   style: ()=>({color:"#cbd5e1", weight:0.7, fillColor:"#94a3b8", fillOpacity:0.08}),
   onEachFeature: (f, lyr)=>{
     lyr._zone = SIDO2ZONE[f.properties.name];
-    lyr.bindTooltip("", {className:"rt", sticky:true});
+    lyr.bindTooltip("", {className:"rt", sticky:true, opacity:1,
+                         direction:(TIP_DIR[lyr._zone] || "top")});
     lyr.on('mouseover', ()=> lyr.setStyle({weight:2.4, color:"#0f172a"}));
     lyr.on('mouseout',  ()=> lyr.setStyle({weight:0.7, color:"#cbd5e1"}));
   }
@@ -445,14 +546,23 @@ const gj = L.geoJSON(GEO, {
 /* 대한민국 전체(제주 포함)에 화면 맞춤 — 좌측 패널만큼 패딩, 한국 밖 이동·축소 잠금.
    숨은 탭에서 크기 0으로 초기화되면 지도가 비어 보이므로, 컨테이너가 실제 크기를
    가질 때까지 맞춤을 미루고(ResizeObserver) 보이는 순간 invalidateSize 후 fit한다. */
-const KOREA = gj.getBounds().pad(0.02);
-map.setMaxBounds(KOREA.pad(0.35));
+const fullB = gj.getBounds();
+/* 기본 배율 — 위쪽(고성·북부)을 NORTH_TRIM 만큼 잘라 한국을 더 크게(제주는 아래 여백으로 유지).
+   0 = 전체(고성~마라도)  ·  값↑ = 더 확대(위가 더 잘림).  ← 기본 배율은 이 한 값으로 조절. */
+const NORTH_TRIM = 0.05;
+const fitNorth = fullB.getNorth() - (fullB.getNorth() - fullB.getSouth()) * NORTH_TRIM;
+const FIT = L.latLngBounds(fullB.getSouthWest(), L.latLng(fitNorth, fullB.getEast()));
+const KOREA = fullB.pad(0.02);
+map.setMaxBounds(fullB.pad(0.6));
 const mapEl = document.getElementById("map");
 let needFit = true;
 function fitKorea(){
   if (!needFit || !mapEl.clientWidth || !mapEl.clientHeight) return;
   map.invalidateSize();
-  map.fitBounds(KOREA, {paddingTopLeft:[300,8], paddingBottomRight:[8,8]});
+  /* 한국을 가로 가운데(좌우 흰 마스크 사이)에 맞춤 — 위는 잘리고 아래(제주)는 여백 확보.
+     컨테이너 폭 비례(sidePad)라 화면 크기에 강건. */
+  const sidePad = Math.round(mapEl.clientWidth * 0.24);
+  map.fitBounds(FIT, {paddingTopLeft:[sidePad,6], paddingBottomRight:[sidePad,22]});
   map.setMinZoom(map.getZoom());
   needFit = false;
 }
@@ -532,21 +642,18 @@ function render(){
   });
 
   document.getElementById("v-ico").textContent = META.rep.emo || "·";
-  document.getElementById("v-name").textContent =
-    `D${META.dplus>=0?"+":""}${META.dplus} · 전국 대체로 ${META.rep.t}`;
-  const u = META.util;
-  const utilLine = (u.solar===null) ? "" :
-    `전국 이용률(예측) ☀️ <b>${u.solar}%</b>·최대 ${fmt(u.solar_max,"%")} · 🌀 <b>${u.wind}%</b>·최대 ${fmt(u.wind_max,"%")}`;
+  document.getElementById("v-name").textContent = `전국 대체로 ${META.rep.t}`;
+  /* 이용률 수치(☀️/🌀)는 아래 카드가 보여주므로 verdict 에선 중복 표기하지 않는다. */
   if (nOk){
     const avg = Math.round(sumScore/nOk*100);
     document.getElementById("v-strength").style.width = Math.min(100, avg*1.4)+"%";
-    const lead = top.length>=2 ? `가장 활발: <b>${top[0][0]}</b> · <b>${top[1][0]}</b>` : "";
+    const lead = top.length>=2
+      ? `<br>가장 활발한 권역 — <b>${top[0][0]}</b> · <b>${top[1][0]}</b>` : "";
     document.getElementById("v-msg").innerHTML =
-      `전국 신재생 가동 강도 <b>${avg}%</b>. ${lead}.` + (utilLine ? `<br>${utilLine}` : "");
+      `전국 신재생 가동 강도 <b>${avg}%</b>${lead}`;
   } else {
     document.getElementById("v-strength").style.width = "0%";
-    document.getElementById("v-msg").innerHTML =
-      utilLine ? `기상 데이터 없음 — ${utilLine}` : "이 날짜의 기상·이용률 데이터가 없습니다.";
+    document.getElementById("v-msg").innerHTML = "이 날짜의 기상·이용률 데이터가 없습니다.";
   }
 }
 
@@ -563,14 +670,172 @@ render();
 </html>"""
 
 
-def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict) -> str:
-    """A안 임베드 HTML — 선택일 데이터 주입(프로토타입 디자인 그대로)."""
+def _sparkline_svg(vals: list, color: str = "#1f77b4", w: int = 264, h: int = 44,
+                   fill: bool = True, overlay: list | None = None,
+                   overlay_color: str = "#c283b9") -> str:
+    """미니 시계열 스파크라인 SVG. vals=주선(+옅은 채움), overlay=보조선(실측 등, 같은 y범위로 겹침).
+
+    x축은 인덱스(0..n-1) 고정이라 주선·보조선이 같은 시간축에 정렬된다. None은 건너뛴다.
+    """
+    n = len(vals)
+    allv = [v for s in (vals, overlay or []) for v in s if v is not None]
+    main_pts = [(i, v) for i, v in enumerate(vals) if v is not None]
+    if n < 2 or len(main_pts) < 2 or not allv:
+        return ""
+    ymin, ymax = min(allv), max(allv)
+    rx = (n - 1) or 1
+    ry = (ymax - ymin) or 1
+    pad = 4
+
+    def X(x):
+        return pad + x / rx * (w - 2 * pad)
+
+    def Y(y):
+        return h - pad - (y - ymin) / ry * (h - 2 * pad)
+
+    def poly(s):
+        return " ".join(f"{X(i):.1f},{Y(v):.1f}" for i, v in enumerate(s) if v is not None)
+
+    main = poly(vals)
+    xs = [i for i, v in enumerate(vals) if v is not None]
+    parts = [f'<svg class="spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none">']
+    if fill:
+        parts.append(f'<polygon points="{X(xs[0]):.1f},{h - pad} {main} '
+                     f'{X(xs[-1]):.1f},{h - pad}" fill="{color}" fill-opacity="0.10"/>')
+    if overlay and poly(overlay):
+        parts.append(f'<polyline points="{poly(overlay)}" fill="none" stroke="{overlay_color}" '
+                     'stroke-width="1.8" stroke-opacity="0.9" ' #stroke-dasharray="3 2"
+                     'stroke-linejoin="round" stroke-linecap="round"/>')
+    parts.append(f'<polyline points="{main}" fill="none" stroke="{color}" stroke-width="1.4" '
+                 'stroke-dasharray="3 2" stroke-linejoin="round" stroke-linecap="round"/>')
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+@st.cache_data(ttl=C.CACHE_TTL)
+def national_humidity(date: str) -> float | None:
+    """전국 평균 습도(%) — forecast_horizon 09–15시 5지점 평균(최신 base). 없으면 None."""
+    cols = ", ".join(f"reh_{s}" for s in C.STATIONS_LAND)
+    s, e = f"{date} 09:00:00", f"{date} 15:00:00"
+    df = C.query("land", f"SELECT {cols} FROM forecast_horizon fh WHERE timestamp BETWEEN ? AND ? "
+                 "AND base=(SELECT MAX(base) FROM forecast_horizon WHERE timestamp=fh.timestamp)",
+                 (s, e))
+    if df.empty:
+        return None
+    m = df.mean(numeric_only=True).mean()
+    return None if pd.isna(m) else float(m)
+
+
+def _wx_stats_html(tmax: float | None, tmin: float | None, humidity: float | None) -> str:
+    """왼쪽 패널 — 전국 최고/최저 기온·습도 통계 3칸."""
+    def cell(k, v, suf):
+        vv = "—" if v is None else f"{v:.0f}{suf}"
+        return f'<div class="wxstat"><div class="wxstat__k">{k}</div><div class="wxstat__v">{vv}</div></div>'
+
+    return ('<div class="wxstats">'
+            + cell("🌡 최고기온", tmax, "°")
+            + cell("최저기온", tmin, "°")
+            + cell("💧 습도", humidity, "%")
+            + '</div>')
+
+
+def _util_cards_html(util: dict, util_act: dict | None = None) -> str:
+    """왼쪽 패널 — 전국 태양광·풍력 이용률 카드 2개(예측값 + 최대/실측 보조)."""
+    util_act = util_act or {}
+
+    def card(emoji, label, avg, mx, act):
+        if avg is None:
+            v, sub = "—", ""
+        else:
+            v = f"{avg:.1f}"
+            sub = (f"실측 {act:.1f}%" if act is not None
+                   else f"최대 {mx:.1f}%" if mx is not None else "")
+        return (f'<div class="ucard"><div class="ucard__k">{emoji} {label}</div>'
+                f'<div class="ucard__v">{v}<small>%</small></div>'
+                f'<div class="ucard__s">{sub}</div></div>')
+
+    return ('<div class="ucards">'
+            + card("☀️", "태양광 이용률", util.get("solar"), util.get("solar_max"),
+                   util_act.get("solar"))
+            + card("🌀", "풍력 이용률", util.get("wind"), util.get("wind_max"),
+                   util_act.get("wind"))
+            + '</div>')
+
+
+def _gas_panel_html(gas: dict | None) -> str:
+    """오른쪽 패널 — 예상 가스 송출량(+발전용 시계열) · 전력수요 시계열(실측 겹침) · 순수요 범위.
+
+    날짜는 왼쪽 패널에만 두어 중복 표기하지 않는다. gas 없으면 빈 문자열.
+    """
+    if not gas:
+        return ""
+
+    def f(v):
+        return "—" if v is None else f"{v:,.0f}"
+
+    cg_row = ""
+    if gas.get("citygas_ton") is not None:
+        cg_row = ('<div class="gasrow"><span class="gk"><i style="background:#f2a93b"></i>'
+                  f'도시가스(참고)</span><span class="gv">{f(gas["citygas_ton"])}'
+                  '<small>TON</small></span></div>')
+    # 4. 발전용 가스(예상) 시계열
+    gas_chart = ""
+    if gas.get("gas_spark"):
+        gas_chart = ('<div class="sparklab">발전용 가스(예상) · TON/h</div>'
+                     + _sparkline_svg(gas["gas_spark"], color="#059669"))
+    # 7. 전력수요(예상) 시계열 + 실측 겹침(수치 없이 선만)
+    dem = ""
+    if gas.get("demand_spark") and gas.get("demand_peak") is not None:
+        dem = ('<div class="divider"></div>'
+               '<div class="dem__top"><span class="gk">전력수요(예상)</span>'
+               f'<span class="gv">{f(gas["demand_peak"])}<small>MW 최대</small></span></div>'
+               + _sparkline_svg(gas["demand_spark"], color="#1f77b4",
+                                overlay=gas.get("demand_real_spark")))
+    # 8. 순수요(net_load) 최대·최소
+    nl = ""
+    if gas.get("nl_max") is not None:
+        nl = ('<div class="divider"></div>'
+              '<div class="gasrow"><span class="gk">순수요 최대</span>'
+              f'<span class="gv">{f(gas["nl_max"])}<small>MW</small></span></div>'
+              '<div class="gasrow"><span class="gk">순수요 최소</span>'
+              f'<span class="gv">{f(gas.get("nl_min"))}<small>MW</small></span></div>')
+    return (
+        '<div class="panel panel--gas">'
+        '<div class="panel__head">'
+        '<div class="panel__eyebrow">오늘의 예상 가스 송출량</div>'
+        f'<h1 class="panel__title">{f(gas["total_ton"])} <span class="unit">TON</span></h1>'
+        '</div><div class="panel__body">'
+        '<div class="gasrow"><span class="gk"><i style="background:var(--green)"></i>'
+        f'발전용 가스</span><span class="gv">{f(gas["gen_ton"])}<small>TON</small></span></div>'
+        f'{cg_row}'
+        f'{gas_chart}'
+        '<div class="divider"></div>'
+        '<div class="gasrow"><span class="gk">시간당 최대</span>'
+        f'<span class="gv">{f(gas["max_ton"])}<small>TON/h</small></span></div>'
+        '<div class="gasrow"><span class="gk">시간당 최소</span>'
+        f'<span class="gv">{f(gas.get("min_ton"))}<small>TON/h</small></span></div>'
+        f'{dem}'
+        f'{nl}'
+        '</div></div>')
+
+
+def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict,
+               gas: dict | None = None, util_act: dict | None = None,
+               humidity: float | None = None) -> str:
+    """A안 임베드 HTML — 선택일 데이터 주입(프로토타입 디자인 그대로).
+
+    gas(예상 가스 송출량+전력수요)·util_act(이용률 실측)·humidity(전국 습도)를 주면
+    좌우 패널을 풍부하게 채운다(종합 브리핑 메인 hero).
+    """
     conf_t, conf_c = conf_of(dplus)
     skies = [z["sky"]["t"] for z in zones.values() if z["ok"]]
     rep = ({"emo": "", "t": "—"} if not skies else
            next(z["sky"] for z in zones.values()
                 if z["ok"] and z["sky"]["t"] == max(set(skies), key=skies.count)))
     weekday = "월화수목금토일"[day.weekday()]
+    temps = [z["temp"] for z in zones.values() if z["ok"] and z["temp"] is not None]
+    tmax = max(temps) if temps else None
+    tmin = min(temps) if temps else None
     meta = {"dplus": dplus, "rep": rep,
             "util": {"solar": util["solar"], "wind": util["wind"],
                      "solar_max": util.get("solar_max"), "wind_max": util.get("wind_max")}}
@@ -579,10 +844,14 @@ def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict) -> str:
                  ("__SIDO2ZONE__", json.dumps(SIDO2ZONE, ensure_ascii=False)),
                  ("__ZONES__", json.dumps(zones, ensure_ascii=False)),
                  ("__META__", json.dumps(meta, ensure_ascii=False)),
-                 ("__DATE_LABEL__", f"{day:%m-%d} ({weekday}) · D{dplus:+d}"),
+                 ("__DATE_LABEL__", f"{day:%m-%d} ({weekday})"),
+                 ("__DPLUS__", f"{dplus:+d}"),
                  ("__CONF_T__", conf_t), ("__CONF_C__", conf_c),
                  ("__GREEN__", GREEN), ("__OP_MIN__", str(OP_MIN)),
                  ("__OP_MAX__", str(OP_MAX)), ("__WIND_FULL__", str(WIND_FULL)),
-                 ("__SA_MAX__", str(SA_MAX)), ("__WA_MAX__", str(WA_MAX))]:
+                 ("__SA_MAX__", str(SA_MAX)), ("__WA_MAX__", str(WA_MAX)),
+                 ("__GAS_PANEL__", _gas_panel_html(gas)),
+                 ("__UTIL_CARDS__", _util_cards_html(util, util_act)),
+                 ("__WX_STATS__", _wx_stats_html(tmax, tmin, humidity))]:
         html = html.replace(k, v)
     return html

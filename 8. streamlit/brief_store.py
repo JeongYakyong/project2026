@@ -67,6 +67,23 @@ def load(start_date: str, days: int, kind: str, region: str = "land") -> dict | 
     return dict(row) if row else None
 
 
+def latest_for(start_date: str, region: str = "land", days: int | None = None) -> dict | None:
+    """그 시작일의 가장 최근 생성 브리핑 1건(본문 포함) — 표시 전용(메인·예측확인 탭).
+
+    days 를 주면 그 지평으로 한정(예: 1일). 종류(kind)는 가장 최근 생성된 것을 따른다.
+    """
+    where = "WHERE region=? AND start_date=?"
+    params = [region, start_date]
+    if days is not None:
+        where += " AND days=?"
+        params.append(int(days))
+    with _conn() as con:
+        row = con.execute(
+            f"SELECT * FROM briefings {where} ORDER BY created_at DESC LIMIT 1",
+            tuple(params)).fetchone()
+    return dict(row) if row else None
+
+
 def list_all(region: str | None = None, limit: int = 100) -> list[dict]:
     """저장된 브리핑 목록(최근 순) — 본문 제외 메타 위주."""
     where = "WHERE region=?" if region else ""
