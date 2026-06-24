@@ -16,6 +16,8 @@
 **서버 cron 이 DB 를 계속 갱신 → 로컬(Windows)에서 모델링·백필이 필요할 때 서버에서 내려받는다** (§6).
 Streamlit(8단계)은 같은 서버에서 이 DB 를 로컬 파일로 직접 읽는 구조(G-15)라 추가 동기화가 없다.
 
+> **방향 정리(혼동 방지)**: 평소 **일일 수집 = 서버**(API 한도상 서버에서만, 서버 DB 가 원본). 반면 **모델·가중치를 바꿔 est_* 전체를 다시 만드는 재동기화 = 로컬**(무거운 백필을 약한 서버에서 못 돌리므로, 로컬에서 완성한 DB 를 서버로 올린다 — §8). 즉 raw 수집은 서버→로컬, 모델 갱신 반영은 로컬→서버.
+
 ## 1. 서버 사전 확인
 
 ```bash
@@ -112,55 +114,84 @@ wrapper 가 `flock` 으로 중복 실행을 막고, 로그는 `deploy/logs/colle
 - Streamlit: `streamlit run "8. streamlit/app.py"` 를 systemd 유저 서비스로 상시 기동.
 - 구체 절차는 8-B 진행 시 이 문서에 추가한다.
 
-## 8. 배포 갱신 체크리스트 — 코드·모델·서빙 반영 (2026-06-22)
+## 8. 모델·코드 갱신 시 서버 재동기화 (★ 2026-06-24 최신 — 이전 "서버 백필" 방식 대체)
 
 > 초기 배포(§2~5) 이후, 로컬에서 코드·모델을 갱신했을 때 서버에 반영하는 절차.
-> **모델 가중치(수요 하이브리드·가스 v3·솔라)는 git 추적**이라 `git pull` 로 같이 온다(scp 불필요).
-> DB 는 서버가 원본(cron 이 raw data 수집) — 서버에서 서빙 체인을 돌려 est_* 를 재생성한다.
+>
+> **역할 분담 (가장 중요)** — 서버 노트북은 사양이 약하다(i7·RAM 4GB) → **무거운 전구간 백필을 서버에서 돌리지 않는다.**
+> - **수집·전구간 백필 = 전부 로컬에서** 끝내 완성된 `input_data_*.db` 를 만든다.
+> - **서버는 받기만** 한다: 코드·가중치는 `git pull`, DB 는 `scp`. 이후 서버는 **가벼운 일일 cron(증분 수집 + 당일 서빙)만** 돈다.
+>
+> **무엇이 어떻게 가는가**
+> - 코드 + **모델 가중치**(`*.pth`·LGBM `*.txt`·`*.json`) = **git 추적됨 → `git pull` 로 따라온다**(scp 불필요. 06-23 `16TH` 커밋으로 origin 에 push 완료).
+> - `input_data_jeju.db`(~52MB)·`input_data_land.db`(~108MB) = **gitignore → `scp`**(또는 잠시 gitignore 제외 후 git. 단 DB 가 history 에 박히므로 **scp 권장**).
+> - 최초 `git pull` 은 추적 가중치가 약 1.1GB 라 시간이 걸린다(이후 pull 은 증분이라 가볍다).
 
-**1) (로컬) push** — origin 이 뒤처져 있으면 먼저 push 해야 서버가 받는다.
+### 8.1 현재 미반영 배포 대기 목록 (2026-06-24 기준)
+
+로컬에만 있고 서버에 아직 안 올라간 것 전부. **이 목록만 따라가면 혼동 없다.**
+
+| 항목 | 출처 | 반영 경로 | 상태 |
+|---|---|---|---|
+| 이번 세션 문서 정리(§8 로그 분리·`docs/PROJECT_LOG2.md` 신설) | 06-24 | 커밋 + push → `git pull` | ☐ 커밋 필요 |
+| 전국 수요 파인튜닝 하이브리드 가중치 | G-24(06-21) | `git pull`(`5.../demand_lt/weights/`·`calib_lt.json`) | ☐ |
+| 전국 가스 v3(최근 원전 관성 피처) | G-25(06-21) | `git pull`(`lgbm_land_gas_v3.txt` + 서빙코드) | ☐ |
+| 전국 신재생 장지평 LGBM(`_final`) | G-27(06-22) | `git pull`(`6.../model/models/` + 서빙코드) | ☐ |
+| 전국 가스 기후값 블렌딩 OFF | G-28(06-22) | `git pull`(`gas_serving_calib.json` `blend_enabled:false` + 서빙코드) | ☐ |
+| 제주 풍력 예보풍속 QM | G-29(06-23) | `git pull`(`wind_qm.json` + 서빙코드) | ☐ |
+| 도시가스(10) 서빙 cron | G-26(06-21) | crontab 추가(`run_serve_citygas.sh`, 06:50) | ☐ 미설치 |
+| 8단계 streamlit 개편 | 06-23 | `git pull`(상시 서비스면 재시작) | ☐ |
+| 신모델 반영 `input_data_*.db` | 위 전부 | **scp**(서버 백필을 대체) | ☐ |
+
+→ **코드·가중치 항목은 한 번의 `git pull` 로 전부 끝난다**(이미 push 됨). 실제로 손이 가는 건 **① 이번 세션 커밋·push ② DB scp ③ crontab 도시가스 줄 ④ streamlit 재시작** 넷뿐이다.
+
+### 8.2 절차
+
+**0) (로컬) 이번 세션 변경 커밋 + push**
 ```bash
+git add -A
+git commit -m "문서 정리: PROJECT.md §8 옛 로그 PROJECT_LOG2.md 이관 + DEPLOY 배포 대기 목록"
 git push origin main
 ```
+
+**1) (로컬) 수집·전구간 백필 최신 확인** — DB 가 신모델(G-24/25/27/28/29)로 채워졌는지 확인(06-22~23 백필 완료 상태 — 어긋나면 재백필). **서버가 아니라 로컬에서** 돈다.
+```powershell
+cd C:\Users\bjkim\Desktop\project2026
+python "7. land_gas_forecaster\serve_chain_land_new.py" --backfill 200
+python "10. citygas_forecaster\serve_citygas_daily.py"  --backfill 200
+python "3. jeju_solarwind_forecaster\serve_chain_jeju_new.py" --backfill 200
+python "4. jeju_smp_forecaster\serve_smp_horizon_jeju.py"     --backfill 200
+```
+(원천까지 최신화하려면 사용자 승인 하에 로컬 1회 수집. 제주 `--backfill` 함정은 §5 ★ 주석 참고 — 기본 모드 + `--no-forecast --historical-days N`.)
 
 **2) (서버) 코드 + 가중치 받기**
 ```bash
 cd ~/project2026 && git pull
+.venv/bin/python -c "import torch, lightgbm, pvlib; print('ok')"   # 서빙 의존성(없으면 requirements 설치)
 ```
 
-**3) (서버) 서빙 의존성 확인** — 수집 전용 venv 엔 없다(torch 가 핵심).
+**3) (서버) 완성된 DB 받기 — 서버는 백필하지 않는다.** 로컬 DB 로 교체.
+```powershell
+# 로컬 Windows PowerShell — 홈에 올린 뒤 서버에서 mv(원격 경로 공백 회피)
+scp ".\1. data_fetcher_and_db\data\input_data_jeju.db"  kimjourvanne@<서버IP>:~
+scp ".\1. data_fetcher_and_db\data\input_data_land.db"  kimjourvanne@<서버IP>:~
+```
 ```bash
-.venv/bin/python -c "import torch, lightgbm, pvlib; print('ok')"
-# 실패하면:
-.venv/bin/pip install -r "3. jeju_solarwind_forecaster/requirements.txt"
+# 서버 — cron 과 겹치지 않게(돌고 있으면 잠깐 멈췄다가) 교체
+mv ~/input_data_*.db ~/project2026/"1. data_fetcher_and_db"/data/
 ```
 
-**4) (서버) crontab 갱신** — `deploy/crontab.example` 내용으로 교체(사용자명 확인).
-폐기된 전국 줄(`run_collect_land.sh`)은 제거하고, 도시가스(06:50)·제주 신경로를 추가한다.
-
-**5) (서버) raw data 신선도 확인 → 부족하면 손수집**
+**4) (서버) crontab 갱신** — `deploy/crontab.example` 내용으로 교체(사용자명 확인). **도시가스(06:50)·제주 신경로 포함, 폐기된 전국 줄 제거.**
 ```bash
-sqlite3 "1. data_fetcher_and_db/data/input_data_land.db" \
-  "SELECT MAX(timestamp) FROM historical; SELECT MAX(base) FROM forecast_horizon;"
-# 전국 실측·예보
-deploy/run_collect_land_new.sh --historical-days 5
-deploy/run_collect_forecast.sh --backfill 3
-# 제주 예보
-deploy/run_collect_forecast.sh --region jeju --backfill 3
-# ★ 제주 historical 은 --backfill 을 쓰지 않는다.
-#   collect_data_jeju.py 의 --backfill 은 forecast 단계에서 폐기된 run_backfill()
-#   (2026-06-20 forecast 테이블 drop 후 RuntimeError)을 호출해 historical 에 닿기 전에 죽는다.
-#   대신 기본 모드 + --no-forecast --historical-days N 으로 실측만 받는다(build() 의 미래 _da 가
-#   필요하면 --no-forecast 를 빼면 된다 — build() 는 run_backfill 이 아니라 안전).
-deploy/run_collect_jeju.sh --no-forecast --historical-days 10
+crontab -e
 ```
 
-**6) (서버) est_* 전구간 백필** — 신모델로 재생성(약 25분, 1회성). N 은 가용 base 보다 넉넉히.
+**5) (서버) 동작 확인 — 무거운 백필이 아니라 당일 증분만.**
 ```bash
-deploy/run_serve_chain_land.sh --backfill 200
-deploy/run_serve_citygas.sh    --backfill 200
-deploy/run_serve_chain_jeju.sh --backfill 200
-deploy/run_serve_smp_jeju.sh   --backfill 200
+sqlite3 ~/project2026/"1. data_fetcher_and_db"/data/input_data_land.db \
+  "SELECT MAX(base) FROM est_horizon_land; SELECT MAX(base) FROM est_horizon_citygas;"
 ```
 
-**7) (서버) streamlit 재시작**(상시 서비스면). 이후 일일 cron(전국 06:00·제주 06:30·SMP 06:40·도시가스 06:50)이 자동 갱신.
+**6) (서버) streamlit 재시작**(8단계를 상시 서비스로 띄운 경우). 이후 일일 cron(전국 06:00·제주 06:30·SMP 06:40·도시가스 06:50)이 자동 갱신한다. (streamlit 최초 배포 자체는 8-E 별도 작업.)
+
+> ⚠️ 옛 방식과의 차이: 이전 §8 은 "서버에서 `run_serve_chain_*.sh --backfill` 로 est_* 재생성"이었으나, 서버 사양(4GB) 으로는 버겁다 → **전구간 백필은 로컬에서, 서버는 완성 DB 를 scp 로 받는다.** 서버 cron 의 일일 서빙은 당일 1개 base 만 더하므로 가볍다.

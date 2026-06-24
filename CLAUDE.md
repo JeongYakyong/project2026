@@ -8,7 +8,7 @@
 
 ## 문서 체계 (SSOT)
 - **루트 `PROJECT.md`가 단일 기준 문서(SSOT)** — 목표·단계 상태·Decision Gate·진행 로그. 충돌 시 항상 PROJECT.md 우선.
-- `docs/PROJECT_v1.md`·`docs/PROJECT_v2_PRD.md` = 동결 이력(수정 금지). `docs/PROJECT_LOG.md` = §8에서 이관된 과거 진행 로그.
+- `docs/PROJECT_v1.md`·`docs/PROJECT_v2_PRD.md` = 동결 이력(수정 금지). `docs/PROJECT_LOG.md`·`docs/PROJECT_LOG2.md` = §8에서 이관된 과거 진행 로그.
 - 단계별 상세 결과는 각 폴더의 `REPORT_*.md`, 서빙 CLI·DB 컬럼 레퍼런스는 `8. streamlit/functions.md`.
 
 ## 폴더 지도
