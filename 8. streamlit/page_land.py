@@ -9,6 +9,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
 import brief_ai as B
+import gas_price_store as GP
 
 C.page_header(
     "NATIONAL · DAILY BRIEFING", "가스 송출량 예측 브리핑",
@@ -67,7 +68,7 @@ def render_forecast_check():
     c5.metric("시간당 최소 예상 송출량", f"{ton.min():,.0f} TON/h")
 
     st.markdown("##### AI 브리핑")
-    B.render_brief_display("fchk", day)  # 표시 전용(생성은 운영 실행)
+    B.render_brief_display("fchk")  # 표시 전용(생성은 운영 실행) — 오늘 기준 지평 밴드 선택
 
 
 def render_daily_sendout():
@@ -317,7 +318,7 @@ def render_hero():
 
     # 지도 아래 — AI 종합 브리핑(운영 실행에서 생성된 것을 가져와 표시만) → 권역별 상세
     st.markdown("##### AI 종합 브리핑")
-    B.render_brief_display("hero", day)
+    B.render_brief_display("hero")  # 오늘 기준 지평 밴드(D+1~장지평) 선택 표시
 
     with st.expander("권역별 상세 · 예보 대 실측 (8권역 표)"):
         _hero_weather_table(date, dplus, zones)
@@ -920,12 +921,81 @@ def render_run_ops():
     st.divider()
     st.subheader("AI 브리핑 생성")
     st.caption("메인·예측확인 탭은 여기서 생성된 브리핑을 **가져와 표시만** 합니다(읽기 전용). "
-               "선택한 날짜로 1일 브리핑을 생성·저장하며, 같은 날짜·종류는 갱신됩니다.")
-    bday = st.date_input("브리핑 날짜", value=TODAY.date(), key="ops_brief_day")
-    B.render_brief_panel("ops", pd.Timestamp(bday), fixed_n=1)
+               "매일 새벽 서버가 6밴드 종합을 자동 생성하며, 아래 버튼으로 지금 즉시 생성할 수도 있습니다.")
+    bday = st.date_input("생성 기준일(오늘)", value=TODAY.date(), key="ops_brief_day")
+
+    st.markdown("**지평 밴드 종합 — 6구간 한 번에 생성** "
+                "(D+1 · D+2 · D+3 · 단지평 D+4~5 · 중지평 D+6~10 · 장지평 D+11~15)")
+    st.caption("매일 새벽 서버 cron(`gen_briefs_land.py`)이 자동 생성하는 것과 같습니다. "
+               "DB만 읽어 만들며 수집 API는 호출하지 않습니다(Gemini만 호출).")
+    if st.button("▶ 6밴드 종합 생성", type="primary", key="ops_band_gen"):
+        with st.spinner("6밴드 종합 브리핑 생성 중… (Gemini 6회 호출)"):
+            res = B.generate_all_bands("land", pd.Timestamp(bday), use_live=False)
+        nok = sum(1 for r in res if r["ok"])
+        (st.success if nok == len(res) else st.warning)(f"{nok}/{len(res)}밴드 생성·저장")
+        for r in res:
+            mark = "✅" if r["ok"] else "⚠"
+            st.caption(f"{mark} **{r['band']}** ({r['target']}) · {r['start']}·{r['days']}일"
+                       + (f" — {r['msg']}" if r["msg"] else ""))
+        st.cache_data.clear()
+
+    with st.expander("자유 형식 브리핑 — 임의 구간·종류(송출량·기상 등)"):
+        B.render_brief_panel("ops", pd.Timestamp(bday), default_n=1)
 
     with st.expander("저장된 AI 브리핑 기록 (시작일·지평·종류)"):
         B.render_saved_briefs("land")
+
+    render_gas_price()
+
+
+def render_gas_price():
+    """발전용 가스 단가(원/GJ) 월별 수동 입력 — 가스비 환산에 쓰인다.
+
+    기본값 = 7-C 실적 CSV. 여기서 입력한 월 단가가 그 위를 덮어쓰고(gas_price_store, 전용 DB),
+    CSV 에 없는 최근·앞으로의 월도 추가할 수 있다. 저장 시 조회 캐시를 비워 즉시 반영한다.
+    """
+    st.divider()
+    st.subheader("발전용 가스 단가 (원/GJ)")
+    st.caption("가스비 = 송출량(TON) × 55 GJ/ton × **월 단가**. 기본값은 7-C 실적 CSV이며, "
+               "여기서 입력한 단가가 우선합니다(CSV에 없는 최근·앞으로의 월도 추가 가능). "
+               "JKM($/MMBtu)이 아니라 발전용 정산 단가(원/GJ)를 직접 넣습니다.")
+
+    tariff = C.gas_tariff_by_month()          # CSV + 입력값 병합
+    ov = GP.load_overrides()
+
+    # 입력 줄 — 월 선택(최근 실적 다음 달 근처) + 단가 + 저장
+    cur = pd.Timestamp.now().to_period("M")
+    months = pd.period_range(cur - 2, periods=9, freq="M").astype(str).tolist()
+    c_m, c_v, c_b = st.columns([1.4, 1.4, 1], vertical_alignment="bottom")
+    ym_sel = c_m.selectbox("월 (YYYY-MM)", months, index=2, key="gp_ym")
+    default_val = float(tariff.get(ym_sel, tariff.iloc[-1]))
+    val = c_v.number_input("단가 (원/GJ)", min_value=0.0, value=default_val,
+                           step=100.0, format="%.1f", key="gp_val",
+                           help="비우거나 0이면 저장되지 않습니다")
+    if c_b.button("저장", type="primary", width="stretch", key="gp_save"):
+        if val > 0:
+            GP.save(ym_sel, val)
+            st.cache_data.clear()             # 환산 캐시(gas_tariff_by_month) 무효화
+            st.success(f"{ym_sel} 단가 {val:,.0f} 원/GJ 저장 — 다른 메뉴 가스비에 반영됩니다.")
+            st.rerun()
+        else:
+            st.warning("0보다 큰 단가를 입력하세요.")
+
+    # 현재 적용 단가(최근 10개월) + 출처 표
+    with st.expander("현재 적용 단가 · 저장된 입력값", expanded=bool(ov)):
+        show = tariff.tail(10).rename("원/GJ").to_frame()
+        show.insert(0, "월", show.index)
+        show["출처"] = ["입력값" if m in ov else "CSV(실적)" for m in show.index]
+        st.dataframe(show, width="stretch", hide_index=True)
+        if ov:
+            st.caption("저장된 입력값 — 삭제하면 해당 월은 CSV 기본값으로 되돌아갑니다.")
+            for m in sorted(ov):
+                d1, d2 = st.columns([3, 1], vertical_alignment="center")
+                d1.write(f"**{m}** · {ov[m]:,.0f} 원/GJ")
+                if d2.button("삭제", key=f"gp_del_{m}", width="stretch"):
+                    GP.delete(m)
+                    st.cache_data.clear()
+                    st.rerun()
 
 
 if menu == "종합":

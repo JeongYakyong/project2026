@@ -71,6 +71,13 @@
 #   서빙을 한곳에 모으려고 ③ 뒤(06:50)에 둔다.
 50 6 * * * /home/kimjourvanne/project2026/deploy/run_serve_citygas.sh
 
+# ⑤ AI 브리핑(지평 밴드 6구간): 매일 1회 (07:00) — ③ 서빙 체인·④ 도시가스 뒤.  est_horizon_land
+#   (최신 base 예측)만 읽어 D+1·D+2·D+3·단지평(D+4~5)·중지평(D+6~10)·장지평(D+11~15) '종합'
+#   브리핑을 Gemini 로 생성해 ai_briefings.db 에 저장(gen_briefs_land.py).  KPX/KMA 수집 트리거
+#   없음(DB만 읽음)·별도 lock.  GEMINI_API_KEY(.env) 필요·google-genai 설치 venv.  streamlit
+#   메인·예측확인 탭이 이 저장본을 밴드 선택기로 표시한다.
+0 7 * * * /home/kimjourvanne/project2026/deploy/run_gen_briefs.sh
+
 
 # ════════════ (폐기) 기존 전국 줄 — 위 신규로 대체. 서버에서 제거할 것 ════════════
 #   아래 두 줄은 레거시 forecast 테이블(전국)을 갱신하던 것 — forecast 폐기로 더는 안 쓴다.

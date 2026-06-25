@@ -304,9 +304,8 @@ _SYS = {
 }
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def generate_brief(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
-    """Gemini 호출 — 사실표를 자연어 브리핑으로. 같은 (kind·사실) 24시간 캐시(재과금 방지)."""
+def _gen_llm(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
+    """Gemini 호출 본체(캐시 없음) — 패널은 캐시 래퍼(generate_brief), cron/API 는 이 함수를 직접 쓴다."""
     if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
         return "⚠ GEMINI_API_KEY가 없어 브리핑을 생성할 수 없습니다 (.env 확인)."
     try:
@@ -325,27 +324,84 @@ def generate_brief(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
         return f"브리핑 생성 실패: {e}"
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def generate_brief(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
+    """Gemini 호출(패널용) — 사실표를 자연어로. 같은 (kind·사실) 24시간 캐시(재과금 방지). 본체=_gen_llm."""
+    return _gen_llm(kind, fact_text, model)
+
+
+# ============================================================ 지평 밴드(매일 자동 생성)
+# D+1~15 전 지평을 다 만들 수 없으므로 6구간으로 나눠 매일 자동 생성한다(disjoint·겹치지 않음).
+# 저장소 키 = (start_date, days) 에 그대로 인코딩 → 스키마 변경 없음. 자동은 '종합(overview)' 1종.
+#   (밴드키, 대상 라벨, 시작 오프셋 D+, 구간 길이 days)
+BANDS = [
+    ("D+1", "내일",     1, 1),
+    ("D+2", "모레",     2, 1),
+    ("D+3", "글피",     3, 1),
+    ("단지평", "D+4~5",  4, 2),
+    ("중지평", "D+6~10", 6, 5),
+    ("장지평", "D+11~15", 11, 5),
+]
+_BAND_BY_KEY = {b[0]: b for b in BANDS}
+
+
+def band_window(anchor: pd.Timestamp, band) -> tuple[pd.Timestamp, str, int]:
+    """밴드 → (시작일 Timestamp, 저장소 start_date 문자열, days). anchor=생성 기준일(오늘)."""
+    _, _, off, days = band
+    start = anchor.normalize() + pd.Timedelta(days=off)
+    return start, start.strftime("%Y-%m-%d"), days
+
+
+def generate_band(region: str, anchor: pd.Timestamp, band,
+                  use_live: bool = False, model: str = GEMINI_MODEL) -> dict:
+    """한 밴드의 '종합' 브리핑을 생성·저장 → 결과 dict. DB만 읽음(use_live=False, 수집 트리거 없음)."""
+    key, tgt, _off, _days = band
+    start, sd, days = band_window(anchor, band)
+    try:
+        _end, _df, fact_text = assemble_facts(start, days, "overview", use_live=use_live)
+        text = _gen_llm("overview", fact_text, model)
+        ok = not (text.startswith("브리핑 생성 실패") or text.startswith("⚠"))
+        ca = store.save(sd, days, "overview", text, fact_text=fact_text,
+                        model=model, region=region) if ok else ""
+        return {"band": key, "target": tgt, "start": sd, "days": days,
+                "ok": ok, "created_at": ca, "msg": "" if ok else text[:80]}
+    except Exception as e:  # noqa: BLE001
+        return {"band": key, "target": tgt, "start": sd, "days": days,
+                "ok": False, "created_at": "", "msg": str(e)[:80]}
+
+
+def generate_all_bands(region: str, anchor: pd.Timestamp, use_live: bool = False) -> list[dict]:
+    """6밴드 '종합' 브리핑을 모두 생성·저장(cron·운영 실행 공용). anchor=생성 기준일(오늘)."""
+    return [generate_band(region, anchor, b, use_live=use_live) for b in BANDS]
+
+
 # ============================================================ UI 패널
 _KINDS = {"종합 요약": "overview", "송출량 요약": "sendout", "기상 요약": "weather"}
 _KIND_REV = {v: k for k, v in _KINDS.items()}
 
 
-def render_brief_display(prefix: str, start_day: pd.Timestamp, days: int = 1):
-    """생성된 브리핑을 가져와 표시만 한다(생성 버튼 없음) — 메인·예측확인 탭 공용.
+def render_brief_display(prefix: str, anchor_day: pd.Timestamp | None = None):
+    """생성된 '종합' 브리핑을 지평 밴드별로 가져와 표시만 한다(생성 버튼 없음) — 메인·예측확인 공용.
 
-    생성은 '운영 실행' 메뉴에서 한다. 같은 브리핑을 두 탭에서 동시에 렌더하므로,
-    보이지 않는 prefix 마커(display:none)로 Streamlit 요소 ID 충돌을 막는다.
+    매일 새벽 서버가 6밴드(D+1·D+2·D+3·단지평·중지평·장지평)를 자동 생성한다. 여기선 골라 읽기만 한다.
+    같은 화면(탭)들이 동시에 렌더되므로 보이지 않는 prefix 마커로 요소 ID 충돌을 막는다.
     """
-    sd = start_day.strftime("%Y-%m-%d")
-    saved = store.latest_for(sd, days=days)
+    anchor = (anchor_day or pd.Timestamp.now()).normalize()
     mark = f"<span style='display:none'>·{prefix}</span>"
+    labels = [b[0] for b in BANDS]
+    sel = st.segmented_control("지평 밴드", labels, default="D+1", key=f"{prefix}_band",
+                               help="생성 기준일(오늘)부터의 지평 구간 — 자동 생성된 종합 브리핑") or "D+1"
+    band = _BAND_BY_KEY[sel]
+    start, sd, days = band_window(anchor, band)
+    end = start + pd.Timedelta(days=days - 1)
+    tgt = f"{band[1]} ({sd}{'' if days == 1 else f' ~ {end:%Y-%m-%d}'})"
+    saved = store.load(sd, days, "overview")
     if saved and saved.get("brief_text"):
         st.markdown(saved["brief_text"] + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {sd} · {_KIND_REV.get(saved['kind'], saved['kind'])} · "
-                   f"{saved.get('created_at', '')} — ‘운영 실행’ 메뉴에서 생성·갱신합니다.{mark}",
+        st.caption(f"💾 {tgt} · 종합 · {saved.get('created_at', '')} — 매일 자동 생성(운영 실행에서 갱신).{mark}",
                    unsafe_allow_html=True)
     else:
-        st.caption(f"아직 생성된 브리핑이 없습니다 — **운영 실행** 메뉴에서 생성하세요.{mark}",
+        st.caption(f"‘{sel}’({tgt}) 밴드 브리핑이 아직 없습니다 — **운영 실행**에서 6밴드 생성.{mark}",
                    unsafe_allow_html=True)
 
 

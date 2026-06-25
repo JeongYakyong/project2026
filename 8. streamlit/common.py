@@ -697,9 +697,20 @@ def land_horizon_accuracy(start: str | None = None, end: str | None = None,
 # ---------------------------------------------------------------- 단가 환산
 @st.cache_data(ttl=CACHE_TTL)
 def gas_tariff_by_month() -> pd.Series:
-    """발전용 가스 단가(원/GJ), 월별(7-C 산출물). 범위 밖 월은 마지막 값."""
-    px = pd.read_csv(PRICE_CSV)
-    return px.set_index("ym")["tariff_gen_won_per_GJ"].dropna()
+    """발전용 가스 단가(원/GJ), 월별. 기본값 = 7-C CSV, 운영 입력값이 그 위를 덮어쓴다.
+
+    CSV(`7c_monthly_price_cost.csv`)는 과거 실적 단가의 폴백이고, 운영 실행 화면에서 입력한
+    월 단가(gas_price_store)가 override 로 우선한다. CSV 에 없는 최근·앞으로의 월도 입력해 추가할 수
+    있다(끝내 없는 월은 gas_cost_won 이 마지막 값으로 폴백). 저장 후 st.cache_data.clear() 로 반영.
+    """
+    import gas_price_store as gps
+    s = pd.read_csv(PRICE_CSV).set_index("ym")["tariff_gen_won_per_GJ"].dropna()
+    ov = gps.load_overrides()                      # 운영 입력값 = override(DB 우선)
+    if ov:
+        s = s.copy()
+        for ym, v in ov.items():
+            s.loc[ym] = float(v)
+    return s.sort_index()
 
 
 def gas_cost_won(ts: pd.Series, ton: pd.Series) -> pd.Series:
