@@ -106,12 +106,30 @@ wrapper 가 `flock` 으로 중복 실행을 막고, 로그는 `deploy/logs/colle
 - 대량 백필(`--backfill N`)은 cron 과 겹치지 않게 손으로, `flock` 락 충돌 시 cron 쪽이 자동 skip 된다.
 - API 한도 보호: 수집은 crontab 으로만. Streamlit 등 사용자 트리거 수집 금지 (PROJECT.md §6.3).
 
-## 7. 추후 확장 (8단계 Streamlit + 서빙 사전적재)
+## 7. 8단계 Streamlit 기동 (✅ 2026-06-24 검증)
 
 같은 `~/project2026` clone 을 그대로 쓴다 (G-15: 자체 서버, 로컬 DB 실시간 읽기).
 
-- 서빙 사전적재: `serve_*.py` 들을 수집 cron 뒤(예: 매일 06:50)에 실행하는 줄 추가 — 모델 의존성(lightgbm, torch 등) requirements 분리 후.
-- Streamlit: `streamlit run "8. streamlit/app.py"` 를 systemd 유저 서비스로 상시 기동.
+**① 의존성** (서빙 venv 에 추가 — pandas/numpy/torch 등은 이미 있음):
+```bash
+cd ~/project2026
+.venv/bin/pip install streamlit plotly google-genai
+```
+
+**② 실행** — ★기존 사이트가 8501(streamlit 기본)을 점유 중이라 **다른 포트**를 쓴다:
+```bash
+.venv/bin/streamlit run "8. streamlit/app.py" --server.address 0.0.0.0 --server.port 8502 --server.headless true
+```
+- 접속 = `http://100.76.127.38:8502` (Tailscale). 방화벽 켜져 있으면 `sudo ufw allow 8502`.
+- 끊어도 유지하려면 `nohup .venv/bin/streamlit run ... > ~/streamlit.log 2>&1 &` (종료 `pkill -f streamlit`), 정식 상시화는 systemd 유저 서비스.
+
+**③ 필요 파일·주의**:
+- 앱 데이터는 대부분 `input_data_*.db`(scp 됨). 단 **가스 단가 CSV `7. land_gas_forecaster/model/tab/7c_monthly_price_cost.csv` 는 gitignore(`*.csv`)라 `git pull` 로 안 온다 → scp 필요** (또는 운영 화면 단가 입력 기능으로 대체 예정). 지도 geojson 은 추적되는 `9. design/old design/skorea_provinces_simplified.json` 폴백을 쓰므로 OK.
+- AI 브리핑(brief_ai)은 `.env` 의 `GEMINI_API_KEY` 필요. 없으면 경고만 뜨고 **앱은 정상 동작**.
+- **4GB RAM**: 단순 조회·차트는 가볍지만 '운영 실행'(주문형 서빙)은 torch 를 로드해 무겁다 → 시연 땐 피한다(데이터는 cron 이 채운다).
+- 남은 경고 `st.components.v1.html → st.iframe`(deprecation)은 동작 무관, 다음 세션 정리 예정.
+
+서빙 사전적재는 일일 cron(전국 06:00·제주 06:30·SMP 06:40·도시가스 06:50)이 자동 갱신한다(§5·§8).
 - 구체 절차는 8-B 진행 시 이 문서에 추가한다.
 
 ## 8. 모델·코드 갱신 시 서버 재동기화 (★ 2026-06-24 최신 — 이전 "서버 백필" 방식 대체)
@@ -127,21 +145,23 @@ wrapper 가 `flock` 으로 중복 실행을 막고, 로그는 `deploy/logs/colle
 > - `input_data_jeju.db`(~52MB)·`input_data_land.db`(~108MB) = **gitignore → `scp`**(또는 잠시 gitignore 제외 후 git. 단 DB 가 history 에 박히므로 **scp 권장**).
 > - 최초 `git pull` 은 추적 가중치가 약 1.1GB 라 시간이 걸린다(이후 pull 은 증분이라 가볍다).
 
-### 8.1 현재 미반영 배포 대기 목록 (2026-06-24 기준)
+### 8.1 배포 이력 — ✅ 2026-06-24 일괄 배포 완료
 
-로컬에만 있고 서버에 아직 안 올라간 것 전부. **이 목록만 따라가면 혼동 없다.**
+> **2026-06-24 동기화 완료**: 로컬 push → 서버 `git pull`(코드·가중치) + `input_data_*.db` scp(서버 백필 대체) + 검증(est_horizon_land/jeju/smp 최신 base = 2026-06-23 확인, 서빙 의존성 ok). 사전에 로컬에서 수집·전구간 backfill 완료(제주 06-17·18 결측 복구 포함, 양 DB base 누락 0).
 
 | 항목 | 출처 | 반영 경로 | 상태 |
 |---|---|---|---|
-| 이번 세션 문서 정리(§8 로그 분리·`docs/PROJECT_LOG2.md` 신설) | 06-24 | 커밋 + push → `git pull` | ☐ 커밋 필요 |
-| 전국 수요 파인튜닝 하이브리드 가중치 | G-24(06-21) | `git pull`(`5.../demand_lt/weights/`·`calib_lt.json`) | ☐ |
-| 전국 가스 v3(최근 원전 관성 피처) | G-25(06-21) | `git pull`(`lgbm_land_gas_v3.txt` + 서빙코드) | ☐ |
-| 전국 신재생 장지평 LGBM(`_final`) | G-27(06-22) | `git pull`(`6.../model/models/` + 서빙코드) | ☐ |
-| 전국 가스 기후값 블렌딩 OFF | G-28(06-22) | `git pull`(`gas_serving_calib.json` `blend_enabled:false` + 서빙코드) | ☐ |
-| 제주 풍력 예보풍속 QM | G-29(06-23) | `git pull`(`wind_qm.json` + 서빙코드) | ☐ |
-| 도시가스(10) 서빙 cron | G-26(06-21) | crontab 추가(`run_serve_citygas.sh`, 06:50) | ☐ 미설치 |
-| 8단계 streamlit 개편 | 06-23 | `git pull`(상시 서비스면 재시작) | ☐ |
-| 신모델 반영 `input_data_*.db` | 위 전부 | **scp**(서버 백필을 대체) | ☐ |
+| 문서 정리(§8 로그 분리·`docs/PROJECT_LOG2.md` 신설) | 06-24 | 커밋 + push → `git pull` | ✅ |
+| 전국 수요 파인튜닝 하이브리드 가중치 | G-24(06-21) | `git pull`(`5.../demand_lt/weights/`·`calib_lt.json`) | ✅ |
+| 전국 가스 v3(최근 원전 관성 피처) | G-25(06-21) | `git pull`(`lgbm_land_gas_v3.txt` + 서빙코드) | ✅ |
+| 전국 신재생 장지평 LGBM(`_final`) | G-27(06-22) | `git pull`(`6.../model/models/` + 서빙코드) | ✅ |
+| 전국 가스 기후값 블렌딩 OFF | G-28(06-22) | `git pull`(`gas_serving_calib.json` `blend_enabled:false` + 서빙코드) | ✅ |
+| 제주 풍력 예보풍속 QM | G-29(06-23) | `git pull`(`wind_qm.json` + 서빙코드) | ✅ |
+| 도시가스(10) 서빙 cron | G-26(06-21) | crontab(`run_serve_citygas.sh`, 06:50) | ✅ |
+| 신모델 반영 `input_data_*.db` | 위 전부 | **scp**(서버 백필을 대체) | ✅ |
+| 8단계 streamlit 서비스 기동 | 06-23 | 서버에서 `streamlit run`(§7 참조) | 🔶 진행 중(8-E) |
+
+> 다음 갱신 시: 이 표를 비우고 새 "미반영 대기 목록"으로 다시 채운다(§0.4 로그 패턴처럼 한 시점의 대기 상태만 유지).
 
 → **코드·가중치 항목은 한 번의 `git pull` 로 전부 끝난다**(이미 push 됨). 실제로 손이 가는 건 **① 이번 세션 커밋·push ② DB scp ③ crontab 도시가스 줄 ④ streamlit 재시작** 넷뿐이다.
 

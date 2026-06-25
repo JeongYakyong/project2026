@@ -398,6 +398,12 @@
 
 > 2026-06-21 이전 로그는 이관(무수정 보존): `docs/PROJECT_LOG.md`(~2026-06-07) · `docs/PROJECT_LOG2.md`(2026-06-08 ~ 06-21).
 
+**2026-06-24 (이어서) — 서버 동기화 배포 + 8단계 streamlit 서버 기동 (8-E 착수)**
+- **배포 완료**: 로컬에서 수집(forecast 06-21→06-23)·전구간 backfill(4체인, 제주 06-17/18 결측 복구 — 양 DB base 누락 0) → 서버 `git pull`(코드·가중치) + `input_data_*.db` scp → 검증(est_horizon_land/jeju/smp 최신 base 2026-06-23, 서빙 의존성 ok, 폐기 `forecast` 테이블 미부활). **무거운 전구간 backfill은 로컬에서(서버 i7·4GB), 서버는 받기만** = `DEPLOY.md §8` 방식. `§8.1` 대기 목록 전부 ✅.
+- **streamlit 서버 기동**: 서버에 `streamlit·plotly·google-genai` 설치 후 `streamlit run "8. streamlit/app.py" --server.port 8502`(기존 사이트 8501과 포트 분리). 접속·작동 확인, 남은 건 `st.components.v1.html` deprecation 경고뿐(무해). **누락 파일=가스 단가 CSV `7c_monthly_price_cost.csv`(gitignore라 git pull 제외) 하나뿐 → scp로 해결.** 절차 정식화 = `DEPLOY.md §7`(검증판).
+- **결정(발전용 가스 단가)**: 가격예측은 비목표(§1.3·외생). 단가는 매월 KOGAS 고시로 갱신되므로 **운영 화면에서 월별 수동 입력(원/GJ 직접)**으로 가고 CSV 최신화는 안 한다. **JKM 미사용**(JKM=$/MMBtu 상류 동인, 발전용 단가=원/GJ 별개·약 1000배 차이·3~5개월 시차). → 단가 CSV 의존 사라져 배포도 깔끔해짐.
+- **다음 세션 TODO(8단계 마무리)**: ① **AI 브리핑 생성주기·생성방법 확정**(= 전국 메뉴 완성 조건, 06-23 미결) ② **발전용 가스 단가 입력 기능 추가**(운영 실행, 원/GJ·CSV 폴백) ③ **`st.components.v1.html`→`st.iframe`** deprecation 정리. 상세 메모리 [[streamlit-step8-progress]].
+
 **2026-06-24 — 문서 정리: PROJECT.md §8 옛 로그를 docs/PROJECT_LOG2.md로 이관**
 - PROJECT.md가 714줄까지 커져 §8 진행 로그의 오래된 항목(2026-06-08 ~ 06-21, 22건·216줄)을 신설 `docs/PROJECT_LOG2.md`로 **무수정 이관**(§0.4 규칙, `docs/PROJECT_LOG.md` 패턴 계승). §8엔 06-22·06-23만 유지 → **PROJECT.md 714→496줄**.
 - 사용자 결정: **로그만 분리**(단계 상세 §4·게이트 §7은 PROJECT.md 유지)·파일 위치 `docs/`·cutoff 06-22 이후 유지. 상호 참조 갱신(§0.1·§0.4·§8 머리말·`CLAUDE.md` 문서 체계).
