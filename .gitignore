@@ -16,6 +16,14 @@
 *.xls
 *.zip
 
+# ===== 런타임 서빙 필수 정적 참조표 (위 *.csv 무시의 예외) =====
+# 서버 cron/streamlit 서빙체인이 읽는 작은 참조 CSV. 빠지면 FileNotFoundError 로
+# 매 지평이 조용히 버려져 "산출 없음"(0행)이 된다. 학습용 대용량 CSV 는 계속 무시.
+!1. data_fetcher_and_db/second_dataset/kr_elec_capa.csv
+!1. data_fetcher_and_db/second_dataset/ppa_scale.csv
+!1. data_fetcher_and_db/second_dataset/한국가스공사_도시가스 민수용 일별 유효일수_20210901.csv
+!1. data_fetcher_and_db/second_dataset/한국가스공사_도시가스 산업용 일별 유효일수_20210901.csv
+
 # ===== Submission / binary docs =====
 *.hwpx
 *.hwp

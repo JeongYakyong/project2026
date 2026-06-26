@@ -289,7 +289,6 @@ def _hero_gas(day, dplus):
             "nl_min": float(nl.min()) if nl.notna().any() else None,
             "nl_max": float(nl.max()) if nl.notna().any() else None}
 
-
 def render_hero():
     """종합 메인 hero — 전국 기상 지도 + 간결 날씨 패널 + 예상 가스 송출량 패널.
 
@@ -316,11 +315,10 @@ def render_hero():
     if all(not z["ok"] for z in zones.values()) and util["solar"] is None:
         st.warning(f"{date} 예보가 없습니다 (KIMG 예보 보유 범위 밖).")
         return
-
     util_act = W.national_util_actual(date) if dplus <= 0 else None
-    components.html(
+    st.iframe(
         W.build_html(day, dplus, zones, util, gas=_hero_gas(day, dplus),
-                     util_act=util_act, humidity=W.national_humidity(date)),
+                    util_act=util_act, humidity=W.national_humidity(date)),
         height=620)
 
     # 지도 아래 — AI 종합 브리핑(운영 실행에서 생성된 것을 가져와 표시만) → 권역별 상세
@@ -329,7 +327,6 @@ def render_hero():
 
     with st.expander("권역별 상세 · 예보 대 실측 (8권역 표)"):
         _hero_weather_table(date, dplus, zones)
-
 
 def _hero_weather_table(date, dplus, zones):
     """hero 아래 expander — 8권역 기상상태 표(예보 → 실측 병기). 이용률 카드는 왼쪽 패널로 이동."""
