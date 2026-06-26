@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공통 · 여러 출처를 하나로 결합</title>
+<!-- drawing_rule 기준: 흰 배경 · 문서용 720px · 맑은 고딕 시스템 폰트 · 주황 강조 1곳 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --accentTint:rgba(235,108,54,0.08); --rule:rgba(45,49,66,0.12);
+         --store:rgba(45,49,66,0.05); }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem;
+        -webkit-font-smoothing:antialiased; }
+  .wrap{ width:100%; max-width:720px; }
+  .eyebrow{ font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+            color:var(--accent); margin:0 0 0.4rem; }
+  h1{ font-weight:700; font-size:1.45rem; margin:0 0 0.35rem; line-height:1.15; }
+  .sub{ font-size:12.5px; color:#1a1a1a; margin:0 0 1.2rem; line-height:1.55; }
+
+  .flow{ display:grid; grid-template-columns:214px 30px 1fr 30px 198px; align-items:center; }
+  .colhead{ font-size:8.5px; font-weight:700; letter-spacing:0.12em; color:var(--soft);
+            text-transform:uppercase; margin-bottom:7px; }
+
+  /* 1열: 출처 카드 */
+  .sources{ display:flex; flex-direction:column; gap:8px; }
+  .src{ border:1px solid var(--rule); border-left:3px solid var(--muted); border-radius:6px;
+        padding:8px 11px; background:var(--store); }
+  .src .name{ font-size:12px; font-weight:700; color:#2b2b2b; }
+  .src .unit{ font-size:10px; color:var(--soft); margin-top:1px; }
+
+  /* 화살표 */
+  .arrow{ text-align:center; color:var(--muted); font-size:15px; }
+
+  /* 3열: 결합 노드 */
+  .merge{ border:1px solid var(--ink); border-radius:8px; background:#fff;
+          padding:11px 12px 12px; text-align:center; }
+  .merge .label{ font-size:12px; font-weight:700; color:var(--ink); }
+  .merge .desc{ font-size:10px; color:var(--muted); margin:5px 0 9px; line-height:1.45; }
+  .keys{ display:flex; flex-direction:column; gap:5px; }
+  .key{ font-size:10px; color:var(--muted); background:var(--store);
+        border:1px solid var(--rule); border-radius:11px; padding:3px 0; }
+
+  /* 5열: 결과(강조·focal) */
+  .output{ border:1px solid var(--accent); border-radius:8px; background:var(--accentTint);
+           padding:12px 13px; }
+  .output .label{ font-size:12.5px; font-weight:700; color:var(--accent); text-align:center; }
+  .output .en{ font-size:9.5px; color:#c47a51; text-align:center; margin-top:1px; }
+  .audit{ margin-top:11px; display:flex; flex-direction:column; gap:6px; }
+  .audit .a{ display:flex; justify-content:space-between; font-size:10.5px;
+             border-bottom:1px dashed rgba(235,108,54,0.25); padding-bottom:5px; }
+  .audit .a:last-child{ border-bottom:none; padding-bottom:0; }
+  .audit .k{ color:var(--muted); }
+  .audit .v{ color:var(--accent); font-weight:700; }
+
+  .note{ font-size:11px; color:var(--muted); margin:1.2rem 0 0; line-height:1.5; }
+  footer{ margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+          font-size:8px; letter-spacing:0.10em; color:#1a1a1a; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+
+  <div class="flow">
+    <div><div class="colhead" id="h1"></div><div class="sources" id="sources"></div></div>
+    <div class="arrow">▸</div>
+    <div><div class="colhead" id="h2"></div><div class="merge" id="merge"></div></div>
+    <div class="arrow">▸</div>
+    <div><div class="colhead" id="h3"></div><div class="output" id="output"></div></div>
+  </div>
+
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기 데이터만 고치면 그림이 바뀝니다  ▼▼▼                          -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow: "공통 · 데이터 준비",
+    title:   "여러 출처를 하나의 분석용 데이터로 결합",
+    subtitle:"시간 단위가 제각각인 데이터를 공통 시간 기준에 맞춰 정렬·결합합니다. "
+           + "빈 곳을 채우기 전에, 먼저 얼마나 비었는지 세어 점검합니다.",
+    note:    "점검 원칙 — 결측·중복·시간 구멍은 곧바로 메우지 않고, 먼저 얼마나 있는지 세어 점검합니다. "
+           + "어디가 비었는지 모른 채 채우면 오류가 데이터에 숨기 때문입니다.",
+    footer:  "데이터 준비 · 공통 키로 정렬·결합 후 점검 · 2026-06",
+  };
+
+  const HEADS = { sources:"수집 출처", merge:"정렬·결합", output:"결과" };
+
+  const SOURCES = [
+    { name:"전력 · 거래소",   unit:"시간별" },
+    { name:"기상 · 기상청",   unit:"시간별 · 지점별" },
+    { name:"가스 · 가스공사", unit:"월별" },
+    { name:"국제 유가",       unit:"일별 · 월별" },
+  ];
+
+  const MERGE = {
+    label: "공통 시간 키로 정렬·결합",
+    desc:  "단위가 다른 데이터를 같은 시간 기준에 맞춰 하나로 묶습니다",
+    keys:  ["시간별", "일별", "월별"],
+  };
+
+  const OUTPUT = {
+    label: "정제 데이터 (분석용 통합본)",
+    en:    "모델 학습 준비 완료",
+    audit: [
+      { k:"총 행 수",  v:"56,256행" },
+      { k:"중복",      v:"0" },
+      { k:"시간 구멍", v:"0" },
+    ],
+  };
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+  const esc = (s)=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+
+  document.getElementById("h1").textContent = HEADS.sources;
+  document.getElementById("h2").textContent = HEADS.merge;
+  document.getElementById("h3").textContent = HEADS.output;
+
+  document.getElementById("sources").innerHTML = SOURCES.map(d=>
+    `<div class="src"><div class="name">${esc(d.name)}</div><div class="unit">${esc(d.unit)}</div></div>`
+  ).join("");
+
+  document.getElementById("merge").innerHTML =
+    `<div class="label">${esc(MERGE.label)}</div><div class="desc">${esc(MERGE.desc)}</div>`+
+    `<div class="keys">${MERGE.keys.map(k=>`<div class="key">${esc(k)}</div>`).join("")}</div>`;
+
+  document.getElementById("output").innerHTML =
+    `<div class="label">${esc(OUTPUT.label)}</div><div class="en">${esc(OUTPUT.en)}</div>`+
+    `<div class="audit">${OUTPUT.audit.map(a=>
+      `<div class="a"><span class="k">${esc(a.k)}</span><span class="v">${esc(a.v)}</span></div>`).join("")}</div>`;
+
+  document.getElementById("eyebrow").textContent  = META.eyebrow;
+  document.getElementById("title").textContent    = META.title;
+  document.getElementById("subtitle").textContent = META.subtitle;
+  document.getElementById("note").textContent     = META.note;
+  document.getElementById("footer").textContent   = META.footer;
+</script>
+</body>
+</html>

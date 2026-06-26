@@ -13,8 +13,11 @@
   - 지평/구간 : 선택일부터 N일(슬라이더). 코드가 그 구간만 DB에서 읽어 요약.
   - 요약 종류 : 종합 요약 / 송출량 요약 / 기상 요약. 종류마다 담는 사실·시스템 지침이 다름.
 """
+from html import escape
 from pathlib import Path
+import json
 import os
+import re
 
 import pandas as pd
 import streamlit as st
@@ -137,27 +140,38 @@ def weather_national(start: str, end: str, mode: str = "latest", value=None) -> 
 
 
 # ============================================================ 사실표 구성 (kind별)
+# 태양광 한낮 피크 이용률(0~1) → 크기 3단계 임계. 맑은 날 피크 ~0.8 가 거의 최대(사용자 기준).
+# 조정 가능: 활발 ≥ HI / 낮다 [LO,HI) / 매우 낮다 < LO.
+SOLAR_HI, SOLAR_LO = 0.55, 0.25
+SOLAR_STATIONS = ["seosan", "pohang", "yeonggwang"]   # 태양광 3지점(서산·포항·영광)
+RAIN_VAR_HOURS = 3                                    # 3지점 강수 시간 ≥ 이 값이면 '변동성 크다'
+
+
 def _sendout_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
-                   prev_ton: float | None) -> list[str]:
-    """송출량 관련 사실 — 규모·피크/저점·덕커브·전일비·조달 변동폭."""
+                   prev_ton: float | None, citygas_total: float | None = None) -> list[str]:
+    """가스 송출 사실 — 총량(발전용+도시가스)·시간당 피크/저점·덕커브·전일비·조달 변동폭."""
     ts = df["timestamp"]
     ton = df["est_gas_sendout_ton_land"]
-    gen = df["est_gas_gen_land"]
     if ton.dropna().empty:
         return ["송출량 예측 없음(구간 미적재)"]
 
     n_days = (end.normalize() - start.normalize()).days + 1
-    total = float(ton.sum())
+    gen_total = float(ton.sum())
     cost = float(C.gas_cost_won(ts, ton).sum())
     pk = _argext(ts, ton, "max")
     tr = _argext(ts, ton, "min")
     duck = _window_min(ts, ton, *SOLAR_PEAK)   # 한낮 저점
     eve = _window_max(ts, ton, *EVE_PEAK)      # 저녁 고점
 
-    out = [
-        f"구간: {start:%m-%d}~{end:%m-%d} ({n_days}일)",
-        f"송출량 합계: {total:,.0f} TON / 가스비 환산 {cost / 1e8:,.0f} 억원",
-        f"가스발전 합계: {gen.sum() / 1000:,.1f} GWh",
+    out = [f"구간: {start:%m-%d}~{end:%m-%d} ({n_days}일)"]
+    if citygas_total and citygas_total > 0:
+        out.append(f"총 천연가스 송출(예측): {gen_total + citygas_total:,.0f} TON "
+                   f"= 발전용 {gen_total:,.0f} + 도시가스 {citygas_total:,.0f} "
+                   "(도시가스=난방 기반 보조·참고, 발전용과 별개 동인)")
+    else:
+        out.append(f"발전용 가스 송출(예측): {gen_total:,.0f} TON")
+    out.append(f"발전용 가스비 환산: {cost / 1e8:,.0f} 억원")
+    out += [
         f"시간당 최대 송출: {pk[0]:,.0f} TON/h ({_hhmm(pk[1])})" if pk else "최대 송출 데이터 없음",
         f"시간당 최소 송출: {tr[0]:,.0f} TON/h ({_hhmm(tr[1])})" if tr else "최소 송출 데이터 없음",
     ]
@@ -188,45 +202,94 @@ def _sendout_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
     return out
 
 
-def _weather_facts(start: pd.Timestamp, end: pd.Timestamp,
-                   df: pd.DataFrame, wx: pd.DataFrame) -> list[str]:
-    """기상 → 신재생 → net_load → 송출 영향 사실."""
+def _demand_fact(df: pd.DataFrame) -> list[str]:
+    """전력수요는 가볍게 — 시간대 평균 패턴에서 '대체로 몇 시 최고/최저'만."""
+    if "est_demand_land" not in df.columns:
+        return []
+    sub = df.dropna(subset=["est_demand_land"])
+    if sub.empty:
+        return []
+    byhour = sub.groupby(sub["timestamp"].dt.hour)["est_demand_land"].mean()
+    if byhour.empty:
+        return []
+    return [f"전력수요 예측: 대체로 {int(byhour.idxmax())}시 최고 · {int(byhour.idxmin())}시 최저 "
+            f"(최고 약 {byhour.max():,.0f} MW)"]
+
+
+def _solar_stations_rain(start: str, end: str) -> int:
+    """태양광 3지점(서산·포항·영광) 강수(≥0.3mm/h) 시간 수 — 비구름=태양광 변동성 신호."""
+    cols = [f"rainfall_{s}" for s in SOLAR_STATIONS]
+    raw = _fc_horizon(cols, start, end)
+    present = [c for c in cols if c in raw.columns]
+    if raw.empty or not present:
+        return 0
+    return int((raw[present] >= 0.3).any(axis=1).sum())
+
+
+def _solar_peak_label(df: pd.DataFrame, rain_hours: int):
+    """태양광 한낮(10~15시) 피크 이용률 → (대표 피크 0~1, 라벨) 또는 None.
+
+    크기 3단계(활발/낮다/매우 낮다) + 서산·포항·영광 강수면 '변동성이 크다'로 덮어씀.
+    """
+    if "est_solar_util_land" not in df.columns:
+        return None
+    ts = df["timestamp"]
+    mid = df[(ts.dt.hour >= SOLAR_PEAK[0]) & (ts.dt.hour <= SOLAR_PEAK[1])]
+    daily_peak = mid.groupby(mid["timestamp"].dt.date)["est_solar_util_land"].max().dropna()
+    if daily_peak.empty:
+        return None
+    rep = float(daily_peak.mean())              # 일별 한낮 피크의 구간 평균
+    if rain_hours >= RAIN_VAR_HOURS:
+        lab = "변동성이 크다 (서산·포항·영광 비구름 예보로 태양광이 출렁임)"
+    elif rep >= SOLAR_HI:
+        lab = "활발하다"
+    elif rep >= SOLAR_LO:
+        lab = "낮다"
+    else:
+        lab = "매우 낮다"
+    return rep, lab
+
+
+def _solar_util_fact(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
+                     rain_hours: int) -> list[str]:
+    """태양광 한낮 피크 이용률 사실(% + 라벨) — 상세/표준 티어용."""
+    r = _solar_peak_label(df, rain_hours)
+    if r is None:
+        return []
+    rep, lab = r
+    return [f"태양광 한낮 피크 이용률 예측: 약 {rep * 100:.0f}% — {lab}"]
+
+
+def _weather_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
+                   wx: pd.DataFrame, rain_hours: int) -> list[str]:
+    """기상 요약(weather kind 전용) — 전운량·일사·강수 + 태양광 이용률 + net_load 저점. 풍력은 다루지 않음."""
     out = []
     if not wx.empty:
         ts = wx["timestamp"]
         out.append(f"전운량 흐름(0~1): {_flow(ts, wx['total_cloud'], '{:.2f}')}")
         out.append(f"일사 흐름(MJ/m²·h): {_flow(ts, wx['radiation'], '{:.2f}')}")
-        out.append(f"풍속 흐름(10m, m/s): {_flow(ts, wx['wind_spd_10m'], '{:.1f}')}")
-        rain = wx["rainfall"]
-        rain_hrs = int((rain >= 0.3).sum())
-        if rain_hrs > 0:
-            rw = _window_max(ts, rain, 0, 23)
-            out.append(f"강수: {rain_hrs}시간 (피크 {rw[0]:.1f}mm/h @{_hhmm(rw[1])}) "
-                       "— 일사·태양광 예측 신뢰도 저하 구간")
-        else:
-            out.append("강수: 없음(건조)")
-
-    # 신재생 예측 — net_load를 어디서 눌렀나 (체인 프레임에서)
-    rts = df["timestamp"]
-    renew = df["est_market_renew_land"]
-    if renew.dropna().any():
-        rpk = _argext(rts, renew, "max")
-        out.append(f"시장 신재생 예측 최대: {rpk[0]:,.0f} MW ({_hhmm(rpk[1])}) "
-                   "— 이 시각 net_load·가스 송출이 가장 낮아짐")
+        rh = int((wx["rainfall"] >= 0.3).sum())
+        out.append(f"강수: {rh}시간 (태양광 변동성 ↑)" if rh else "강수: 없음(건조)")
+    out += _solar_util_fact(start, end, df, rain_hours)
     nl = df["est_net_load_land"]
     if nl.dropna().any():
-        out.append(f"net_load 흐름(MW): {_flow(rts, nl, '{:.0f}')}")
+        nlpk = _argext(df["timestamp"], nl, "min")
+        out.append(f"net_load 저점(가스가 메울 잔여부하 최저): {nlpk[0]:,.0f} MW ({_hhmm(nlpk[1])})")
     return out
 
 
 def _confidence_facts(df: pd.DataFrame) -> list[str]:
-    """예측 신뢰도 — 구간 지평(D+k)과 그 지평의 최근 가스 MAPE."""
+    """예측 신뢰도 — 구간 지평(D+k)·지평별 어조 지침·그 지평의 최근 가스 MAPE."""
     out = []
     hz = df["horizon_d"].dropna()
     if hz.empty:
         return ["지평 정보 없음"]
     lo, hi = int(hz.min()), int(hz.max())
     out.append(f"이 구간 예측 지평: D+{lo} ~ D+{hi} (멀수록 불확실)")
+    tone = ("근지평 — 운영에 바로 쓸 수 있게 수치까지 구체적으로 서술" if lo <= 3
+            else "중지평 — 대체적 흐름 위주" if lo <= 10
+            else "장지평 — 대략적 전망만, 수치는 최소로(수요가 많다/적다 수준)로 두루뭉술하게")
+    out.append(f"서술 어조 지침: {tone}")
     today = pd.Timestamp.now().normalize()
     cutoff = (today - pd.Timedelta(days=92)).strftime("%Y-%m-%d")
     acc = C.land_horizon_accuracy(start=cutoff)   # 최근 3개월 발행본
@@ -239,17 +302,45 @@ def _confidence_facts(df: pd.DataFrame) -> list[str]:
     return out
 
 
+def _coarse_facts(start: pd.Timestamp, df: pd.DataFrame,
+                  citygas_total: float | None, rain_hours: int) -> list[str]:
+    """장지평(먼 지평) 거친 사실 — 정확한 시각·σ 빼고 규모·수준만(두루뭉술 유도)."""
+    out = [f"대상일: {start:%m-%d} (먼 지평 — 대략적 전망)"]
+    ton = df["est_gas_sendout_ton_land"]
+    if ton.dropna().any():
+        tot = float(ton.sum()) + (citygas_total or 0)
+        out.append(f"총 천연가스 송출(예측): 약 {round(tot, -3):,.0f} TON 규모(발전용+도시가스)")
+    out += _demand_fact(df)                       # 수요는 시각만
+    r = _solar_peak_label(df, rain_hours)
+    if r is not None:
+        out.append(f"태양광 한낮 수준: {r[1]}")    # 라벨만(% 생략)
+    return out
+
+
 def build_fact_sheet(kind: str, start: pd.Timestamp, end: pd.Timestamp,
-                     df: pd.DataFrame, wx: pd.DataFrame, prev_ton: float | None) -> str:
-    """kind별 사실표(텍스트) — 그대로 LLM 프롬프트에 들어가고, 화면에도 근거로 노출된다."""
+                     df: pd.DataFrame, wx: pd.DataFrame, prev_ton: float | None,
+                     citygas_total: float | None = None, rain_hours: int = 0,
+                     tier: str = "standard") -> str:
+    """kind별 사실표(텍스트) — 그대로 LLM 프롬프트에 들어가고, 화면에도 근거로 노출된다.
+
+    tier='coarse'(장지평)면 overview 를 거친 사실(규모·수준·시각)만으로 줄여 두루뭉술을 유도한다.
+    """
+    if tier == "coarse" and kind == "overview":
+        blocks = ["[대략 전망]\n" + "\n".join(f"- {x}" for x in
+                  _coarse_facts(start, df, citygas_total, rain_hours))]
+        blocks.append("[예측 신뢰도]\n" + "\n".join(f"- {x}" for x in _confidence_facts(df)))
+        return "\n\n".join(blocks)
     blocks = []
     if kind in ("sendout", "overview"):
-        blocks.append("[송출량]\n" + "\n".join(f"- {x}" for x in
-                       _sendout_facts(start, end, df, prev_ton)))
-    if kind in ("weather", "overview"):
-        blocks.append("[기상·신재생]\n" + "\n".join(f"- {x}" for x in
-                       _weather_facts(start, end, df, wx)))
-    # 신뢰도는 모든 종류 말미에 한 줄 근거로 붙인다.
+        blocks.append("[가스 송출]\n" + "\n".join(f"- {x}" for x in
+                       _sendout_facts(start, end, df, prev_ton, citygas_total)))
+    if kind == "overview":
+        facts = _demand_fact(df) + _solar_util_fact(start, end, df, rain_hours)
+        blocks.append("[전력수요·태양광]\n" + "\n".join(f"- {x}" for x in facts))
+    if kind == "weather":
+        blocks.append("[기상·태양광]\n" + "\n".join(f"- {x}" for x in
+                       _weather_facts(start, end, df, wx, rain_hours)))
+    # 신뢰도·어조는 모든 종류 말미에 근거로 붙인다.
     blocks.append("[예측 신뢰도]\n" + "\n".join(f"- {x}" for x in _confidence_facts(df)))
     return "\n\n".join(blocks)
 
@@ -260,10 +351,12 @@ CHAIN_COLS = {"est_demand_land": "demand_mw", "est_market_renew_land": "renew_mw
               "est_gas_gen_land": "gas_gen_mw", "est_gas_sendout_ton_land": "sendout_ton"}
 
 
-def assemble_facts(start_day: pd.Timestamp, n: int, kind: str, use_live: bool = True):
+def assemble_facts(start_day: pd.Timestamp, n: int, kind: str, use_live: bool = True,
+                   tier: str = "standard"):
     """선택일부터 N일 구간의 (end, 체인 프레임 df, 사실표 텍스트)를 만든다.
 
     패널은 use_live=True(최근 실측 보강), API는 use_live=False(DB만, 수집 트리거 금지).
+    tier='coarse'(장지평)면 거친 사실표로 줄인다(두루뭉술).
     """
     end = start_day + pd.Timedelta(days=n - 1)
     df = C.land_range_compare(start_day, end, use_live=use_live)
@@ -272,7 +365,19 @@ def assemble_facts(start_day: pd.Timestamp, n: int, kind: str, use_live: bool = 
     wx = weather_national(s, e)
     prev = C.land_day_compare(start_day - pd.Timedelta(days=1), use_live=use_live)
     prev_ton = float(prev["est_gas_sendout_ton_land"].sum())
-    return end, df, build_fact_sheet(kind, start_day, end, df, wx, prev_ton)
+    # 도시가스 일합(보조·참고) — 발전용과 합쳐 '총 천연가스 송출'로 제시
+    citygas_total = None
+    try:
+        daily = C.land_daily_sendout(start_day, end)
+        if not daily.empty and "citygas_ton" in daily.columns:
+            cg = float(daily["citygas_ton"].sum())
+            citygas_total = cg if cg > 0 else None
+    except Exception:  # noqa: BLE001 — 도시가스 미적재 시 발전용만
+        citygas_total = None
+    rain_hours = _solar_stations_rain(s, e)   # 태양광 3지점 강수 → 변동성 판정
+    fact = build_fact_sheet(kind, start_day, end, df, wx, prev_ton,
+                            citygas_total=citygas_total, rain_hours=rain_hours, tier=tier)
+    return end, df, fact
 
 
 def forecast_series(start_day: pd.Timestamp, n: int, use_live: bool = False) -> pd.DataFrame:
@@ -286,22 +391,54 @@ def forecast_series(start_day: pd.Timestamp, n: int, use_live: bool = False) -> 
 
 # ============================================================ LLM 호출
 _PERSONA = ("당신은 전국 천연가스 수급·조달 담당자를 돕는 분석 보조입니다. "
+            "[사실]의 모든 수치는 '앞으로의 예측값'입니다(이미 일어난 일이 아님) — 반드시 "
+            "'예상됩니다·전망입니다·예측됩니다' 같은 미래·예측 표현으로 서술하고, "
+            "'송출되었습니다·기록하였습니다·도달하였습니다' 같은 과거 단정은 절대 쓰지 마십시오. "
             "발전기 기동·정지 같은 급전 지시나 SMP·경제성 단정은 하지 않습니다. "
             "오직 [사실]에 제시된 수치만 사용하고, 거기 없는 값을 추론하거나 지어내지 마십시오.")
 
 _RULES = ("\n[작성 규칙]\n"
-          "1. 각 항목 '•' 기호 + 빈 줄(개조식), 최대 5줄, '~입니다/습니다' 경어체.\n"
-          "2. [사실]에 있는 수치만 인용하고, 없는 리스크를 평균·추세로 창작하지 마십시오.\n"
-          "3. 마지막 한 줄은 [예측 신뢰도]에 근거한 주의(지평이 멀거나 강수가 있으면 불확실)로 마무리.")
+          "1. 각 항목 '•' 기호 + 빈 줄(개조식), 최대 4줄, 경어체. 모든 서술은 예측(미래형).\n"
+          "2. [사실]의 수치만 인용하고, 없는 리스크를 창작하지 마십시오. 대괄호 구획명([가스 송출]·"
+          "[전력수요·태양광]·[예측 신뢰도])을 제목처럼 그대로 옮기지 말고 자연스러운 문장에 녹이십시오.\n"
+          "3. 취소선(~~)·구분선(---, ***, ___)·표를 절대 쓰지 마십시오 — 오직 '•' 글머리만 씁니다.\n"
+          "4. [예측 신뢰도]의 '서술 어조 지침'을 따르십시오 — 근지평이면 수치까지 구체적으로, "
+          "장지평이면 수치를 최소로 줄여 '수요가 많다/적다' 수준의 대략적 전망으로 두루뭉술하게 씁니다.\n"
+          "5. 마지막 한 줄은 예측 신뢰도(지평이 멀수록·강수 시 불확실)로 마무리.")
 
 _SYS = {
-    "sendout": _PERSONA + " 송출량 규모·피크/저점·덕커브 저점·전일 대비·조달 변동폭(σ)을 "
-               "수급 담당 관점에서 요약합니다." + _RULES,
-    "weather": _PERSONA + " 기상 흐름이 신재생을 통해 net_load와 가스 송출을 어디서 끌어올리고 "
-               "한낮에 어디서 눌렀는지 인과로 설명합니다. 강수가 있으면 예측 신뢰도 저하를 짚습니다." + _RULES,
-    "overview": _PERSONA + " 송출량 규모와 그 동인(기상·신재생·net_load)을 묶어 종합 브리핑합니다. "
-                "첫 줄 송출 규모, 둘째 줄 동인, 셋째 줄 조달 시사, 마지막 줄 신뢰도 순." + _RULES,
+    "sendout": _PERSONA + " 가스 송출 규모(발전용+도시가스)·피크/저점·덕커브 저점·전일 대비·조달 변동폭(σ)을 "
+               "수급 담당 관점에서 예측·전망합니다." + _RULES,
+    "weather": _PERSONA + " 기상(전운량·일사·강수)이 태양광 이용률을 통해 한낮 가스 송출을 어디서 누르는지 "
+               "예측·설명합니다. 풍력은 다루지 않습니다. 강수가 있으면 태양광 변동성·신뢰도 저하를 짚습니다." + _RULES,
+    "overview": _PERSONA + " 가스 송출 규모(발전용+도시가스)와 그 동인(태양광 이용률·전력수요)을 묶어 종합 전망합니다. "
+                "첫 줄 총 송출 규모(발전용·도시가스 구분), 둘째 줄 태양광·수요 동인, 셋째 줄 조달 시사, "
+                "마지막 줄 신뢰도 순." + _RULES,
 }
+
+# 배치(여러 날 한 콜) 시스템 지침 — 티어별 어조. 출력은 JSON(_gen_llm_json 에서 강제).
+_BATCH_COMMON = (_PERSONA +
+                 " 여러 날짜의 [사실]이 주어집니다. 각 날짜마다 독립된 종합 브리핑을 작성하되, 날마다 "
+                 "내용이 다르게 쓰고 같은 문장·수치를 반복하지 마십시오. 각 브리핑은 '•' 글머리 개조식이며 "
+                 "취소선·구분선·표는 절대 쓰지 않고, 모든 서술은 미래·예측형입니다.")
+_SYS_BATCH = {
+    "detail": _BATCH_COMMON + " [근지평] 운영에 바로 쓰도록 총 송출(발전용+도시가스)·시간당 피크/저점·"
+              "덕커브·전일 대비·태양광 이용률·수요 시각까지 구체적으로(각 날 3~4줄).",
+    "standard": _BATCH_COMMON + " [중지평] 총 송출 규모와 태양광·수요 동인 중심으로 대체적 흐름을(각 날 3줄 내외).",
+    "coarse": _BATCH_COMMON + " [장지평] 대략적 전망만. 수치는 최소로 줄이고 '수요가 많다/적다', "
+              "'태양광 활발/낮음' 수준으로 두루뭉술하게(각 날 2~3줄).",
+}
+
+
+_HR_LINE = re.compile(r"\s*([-*_])\1{2,}\s*")   # ---, ***, ___ 등 구분선만 있는 줄
+
+
+def _sanitize(text: str) -> str:
+    """LLM 출력 정리 — 구분선만 있는 줄·취소선 마커 제거(화면에 줄/취소선이 안 뜨게)."""
+    if not text:
+        return text
+    kept = [ln for ln in text.splitlines() if not _HR_LINE.fullmatch(ln)]
+    return "\n".join(kept).replace("~~", "").strip()
 
 
 def _gen_llm(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
@@ -319,7 +456,7 @@ def _gen_llm(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
                 system_instruction=_SYS.get(kind, _SYS["overview"]),
                 temperature=0.2),
         )
-        return resp.text or "(빈 응답)"
+        return _sanitize(resp.text) or "(빈 응답)"
     except Exception as e:  # noqa: BLE001
         return f"브리핑 생성 실패: {e}"
 
@@ -330,78 +467,138 @@ def generate_brief(kind: str, fact_text: str, model: str = GEMINI_MODEL) -> str:
     return _gen_llm(kind, fact_text, model)
 
 
-# ============================================================ 지평 밴드(매일 자동 생성)
-# D+1~15 전 지평을 다 만들 수 없으므로 6구간으로 나눠 매일 자동 생성한다(disjoint·겹치지 않음).
-# 저장소 키 = (start_date, days) 에 그대로 인코딩 → 스키마 변경 없음. 자동은 '종합(overview)' 1종.
-#   (밴드키, 대상 라벨, 시작 오프셋 D+, 구간 길이 days)
-BANDS = [
-    ("D+1", "내일",     1, 1),
-    ("D+2", "모레",     2, 1),
-    ("D+3", "글피",     3, 1),
-    ("단지평", "D+4~5",  4, 2),
-    ("중지평", "D+6~10", 6, 5),
-    ("장지평", "D+11~15", 11, 5),
-]
-_BAND_BY_KEY = {b[0]: b for b in BANDS}
-
-
-def band_window(anchor: pd.Timestamp, band) -> tuple[pd.Timestamp, str, int]:
-    """밴드 → (시작일 Timestamp, 저장소 start_date 문자열, days). anchor=생성 기준일(오늘)."""
-    _, _, off, days = band
-    start = anchor.normalize() + pd.Timedelta(days=off)
-    return start, start.strftime("%Y-%m-%d"), days
-
-
-def generate_band(region: str, anchor: pd.Timestamp, band,
-                  use_live: bool = False, model: str = GEMINI_MODEL) -> dict:
-    """한 밴드의 '종합' 브리핑을 생성·저장 → 결과 dict. DB만 읽음(use_live=False, 수집 트리거 없음)."""
-    key, tgt, _off, _days = band
-    start, sd, days = band_window(anchor, band)
+def _gen_llm_json(prompt: str, sys: str, model: str = GEMINI_MODEL) -> dict:
+    """여러 날을 한 콜로 — JSON 배열 [{horizon_d, brief}] 을 받아 {k: brief} 로. 실패 시 {}(상위에서 단건 폴백)."""
+    if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+        return {}
     try:
-        _end, _df, fact_text = assemble_facts(start, days, "overview", use_live=use_live)
-        text = _gen_llm("overview", fact_text, model)
-        ok = not (text.startswith("브리핑 생성 실패") or text.startswith("⚠"))
-        ca = store.save(sd, days, "overview", text, fact_text=fact_text,
+        from google import genai
+        from google.genai import types
+        client = genai.Client()
+        resp = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=sys, temperature=0.2,
+                response_mime_type="application/json"),   # JSON 강제(스키마는 프롬프트로)
+        )
+        data = json.loads(resp.text or "[]")
+        out = {}
+        for d in (data if isinstance(data, list) else []):
+            try:
+                out[int(d["horizon_d"])] = _sanitize(str(d["brief"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return out
+    except Exception:  # noqa: BLE001 — 상위에서 그 날만 단건 폴백
+        return {}
+
+
+# ============================================================ 지평 티어(매일 자동 생성)
+# 모든 브리핑은 '하루치(단일일)'. D+1~15 를 3티어로 묶어 티어별 1콜(JSON)로 받아 날짜별로 저장한다.
+# 저장 키 = (그 날짜, days=1, 'overview'). 표시는 날짜 선택기 → 그 날짜 키를 그대로 읽는다(밴드 없음).
+#   (티어명, 시작 D+, 끝 D+, 사실/어조 모드)
+TIERS = [
+    ("근지평", 1, 3, "detail"),
+    ("중지평", 4, 10, "standard"),
+    ("장지평", 11, 15, "coarse"),
+]
+
+
+def _tier_prompt(blocks: list) -> str:
+    """여러 날 사실 블록 → 한 콜 프롬프트. blocks=[(k, day, fact), ...]."""
+    parts = [f"### D+{k} ({day:%Y-%m-%d}) 사실\n{fact}" for k, day, fact in blocks]
+    head = ("아래 여러 날짜의 [사실]을 바탕으로 각 날짜의 종합 브리핑을 작성하라. 반드시 다음 JSON 배열 "
+            "형식으로만 답하라(다른 텍스트·코드펜스 없이): "
+            '[{"horizon_d": 1, "brief": "..."}, {"horizon_d": 2, "brief": "..."}]. '
+            "brief 는 '•' 글머리 개조식 문자열이며, 날짜마다 내용을 다르게 작성한다.\n\n")
+    return head + "\n\n".join(parts)
+
+
+def generate_tier(region: str, anchor: pd.Timestamp, tier,
+                  use_live: bool = False, model: str = GEMINI_MODEL) -> list[dict]:
+    """한 티어(예: D+4~10)의 날짜별 '종합' 브리핑을 1콜(JSON)로 생성·저장. 누락은 그 날만 단건 폴백."""
+    _name, lo, hi, mode = tier
+    blocks = []   # (k, day, fact|None)
+    for k in range(lo, hi + 1):
+        day = anchor.normalize() + pd.Timedelta(days=k)
+        try:
+            _e, _df, fact = assemble_facts(day, 1, "overview", use_live=use_live, tier=mode)
+        except Exception:  # noqa: BLE001 — 그 날 사실표 실패
+            fact = None
+        blocks.append((k, day, fact))
+
+    usable = [(k, d, f) for k, d, f in blocks if f]
+    parsed = _gen_llm_json(_tier_prompt(usable),
+                           _SYS_BATCH.get(mode, _SYS_BATCH["standard"]), model) if usable else {}
+
+    out = []
+    for k, day, fact in blocks:
+        sd = day.strftime("%Y-%m-%d")
+        if fact is None:
+            out.append({"horizon": k, "start": sd, "ok": False, "msg": "사실표 구성 실패"})
+            continue
+        text = parsed.get(k)
+        if not text:                            # 배치 누락 → 그 날만 단건 폴백
+            text = _gen_llm("overview", fact, model)
+        ok = bool(text) and not (text.startswith("브리핑 생성 실패") or text.startswith("⚠"))
+        ca = store.save(sd, 1, "overview", text, fact_text=fact,
                         model=model, region=region) if ok else ""
-        return {"band": key, "target": tgt, "start": sd, "days": days,
-                "ok": ok, "created_at": ca, "msg": "" if ok else text[:80]}
-    except Exception as e:  # noqa: BLE001
-        return {"band": key, "target": tgt, "start": sd, "days": days,
-                "ok": False, "created_at": "", "msg": str(e)[:80]}
+        out.append({"horizon": k, "start": sd, "ok": ok, "created_at": ca,
+                    "msg": "" if ok else str(text)[:80]})
+    return out
 
 
-def generate_all_bands(region: str, anchor: pd.Timestamp, use_live: bool = False) -> list[dict]:
-    """6밴드 '종합' 브리핑을 모두 생성·저장(cron·운영 실행 공용). anchor=생성 기준일(오늘)."""
-    return [generate_band(region, anchor, b, use_live=use_live) for b in BANDS]
+def generate_all_days(region: str, anchor: pd.Timestamp, use_live: bool = False) -> list[dict]:
+    """D+1~15 날짜별 '종합' 브리핑을 3티어(=3콜, 폴백 시 +α)로 생성·저장. anchor=생성 기준일(오늘)."""
+    res = []
+    for tier in TIERS:
+        res += generate_tier(region, anchor, tier, use_live=use_live, model=GEMINI_MODEL)
+    return res
 
 
 # ============================================================ UI 패널
 _KINDS = {"종합 요약": "overview", "송출량 요약": "sendout", "기상 요약": "weather"}
-_KIND_REV = {v: k for k, v in _KINDS.items()}
 
 
-def render_brief_display(prefix: str, anchor_day: pd.Timestamp | None = None):
-    """생성된 '종합' 브리핑을 지평 밴드별로 가져와 표시만 한다(생성 버튼 없음) — 메인·예측확인 공용.
+def _brief_html(text: str) -> str:
+    """브리핑 본문 → 글머리(•)별 줄바꿈 카드 HTML(연한 톤). st.markdown(unsafe_allow_html=True)로 렌더.
 
-    매일 새벽 서버가 6밴드(D+1·D+2·D+3·단지평·중지평·장지평)를 자동 생성한다. 여기선 골라 읽기만 한다.
-    같은 화면(탭)들이 동시에 렌더되므로 보이지 않는 prefix 마커로 요소 ID 충돌을 막는다.
+    LLM 출력은 '• A\\n• B' 식이라 st.markdown 이 single newline 을 공백으로 합쳐 한 줄로 붙는다.
+    • 로 쪼개 항목별 <div> 로 만들어 줄바꿈 + 카드 배경으로 구분한다.
     """
-    anchor = (anchor_day or pd.Timestamp.now()).normalize()
+    items = [p.strip() for p in (text or "").replace("\n", " ").split("•") if p.strip()]
+    if not items:
+        return ""
+    lis = "".join(f"<div class='bi'>{escape(it)}</div>" for it in items)
+    return f"<div class='brief-card'>{lis}</div>"
+
+
+def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
+    """상단 날짜 선택기가 고른 '그 날짜'의 하루치 종합 브리핑을 자동 표시(생성 버튼 없음).
+
+    매일 새벽 서버가 D+1~D+15 날짜별 종합을 자동 생성한다. 선택일이 D+1~D+15면 그 날짜 브리핑을
+    보여주고, 오늘·과거나 D+15 너머면 안내만 한다. 두 탭이 동시 렌더되므로 숨은 prefix 마커로 ID 충돌 방지.
+    """
+    anchor = pd.Timestamp.now().normalize()
+    target = (target_day or anchor).normalize()
+    lead = (target - anchor).days
     mark = f"<span style='display:none'>·{prefix}</span>"
-    labels = [b[0] for b in BANDS]
-    sel = st.segmented_control("지평 밴드", labels, default="D+1", key=f"{prefix}_band",
-                               help="생성 기준일(오늘)부터의 지평 구간 — 자동 생성된 종합 브리핑") or "D+1"
-    band = _BAND_BY_KEY[sel]
-    start, sd, days = band_window(anchor, band)
-    end = start + pd.Timedelta(days=days - 1)
-    tgt = f"{band[1]} ({sd}{'' if days == 1 else f' ~ {end:%Y-%m-%d}'})"
-    saved = store.load(sd, days, "overview")
-    if saved and saved.get("brief_text"):
-        st.markdown(saved["brief_text"] + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {tgt} · 종합 · {saved.get('created_at', '')} — 매일 자동 생성(운영 실행에서 갱신).{mark}",
+
+    if not 1 <= lead <= 15:
+        st.caption(f"예측 브리핑은 **내일(D+1)부터 D+15까지**만 제공합니다 "
+                   f"(선택일 {target:%Y-%m-%d}). 날짜를 그 범위로 옮겨 주세요.{mark}",
                    unsafe_allow_html=True)
+        return
+
+    sd = target.strftime("%Y-%m-%d")
+    saved = store.load(sd, 1, "overview")
+    if saved and saved.get("brief_text"):
+        st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
+        st.caption(f"💾 {sd} (D+{lead}) 종합 · {saved.get('created_at', '')} "
+                   f"— 매일 자동 생성(운영 실행에서 갱신).{mark}", unsafe_allow_html=True)
     else:
-        st.caption(f"‘{sel}’({tgt}) 밴드 브리핑이 아직 없습니다 — **운영 실행**에서 6밴드 생성.{mark}",
+        st.caption(f"{sd} (D+{lead}) 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
                    unsafe_allow_html=True)
 
 
@@ -449,7 +646,7 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1,
     # 표시 우선순위: 이번 세션 생성분 → 저장소의 기존 브리핑
     show = st.session_state.get(res_key) or (saved or {}).get("brief_text")
     if show:
-        st.markdown(show)
+        st.markdown(_brief_html(show), unsafe_allow_html=True)
     else:
         st.caption(f"‘{klabel}’ · 선택일부터 {n}일 구간. 버튼을 누르면 아래 근거 위에서 해설하고 저장합니다.")
 

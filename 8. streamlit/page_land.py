@@ -48,7 +48,8 @@ def render_forecast_check():
         return
 
     render_series_compare(df, prefix="fchk", gear_col=cap)
-    st.caption(f"표시 기준: {day:%Y-%m-%d} · {label}")
+    origin = C.land_forecast_origin(day)
+    st.caption(f"표시 기준: {day:%Y-%m-%d} · {label}" + (f" · {origin}" if origin else ""))
 
     # 하단 — 선택일 송출량 지표 5개 (전국 천연가스 = 발전용 + 도시가스 보조)
     ton = df["est_gas_sendout_ton_land"]
@@ -68,7 +69,7 @@ def render_forecast_check():
     c5.metric("시간당 최소 예상 송출량", f"{ton.min():,.0f} TON/h")
 
     st.markdown("##### AI 브리핑")
-    B.render_brief_display("fchk")  # 표시 전용(생성은 운영 실행) — 오늘 기준 지평 밴드 선택
+    B.render_brief_display("fchk", day)  # 선택일이 속한 지평 밴드 종합을 자동 표시(생성은 운영 실행)
 
 
 def render_daily_sendout():
@@ -272,12 +273,16 @@ def _hero_gas(day, dplus):
     def spark(s):
         return [None if pd.isna(v) else round(float(v)) for v in s]
 
+    # 발전용 가스 스파크라인 = 발전량(MW) 예측 + 실측(gen_gas_kr) 오버레이 — 전력수요와 동일 방식
+    ggen = gdf["est_gas_gen_land"]
+    ggen_real = gdf["gen_gas_kr"] if "gen_gas_kr" in gdf.columns else pd.Series(dtype=float)
     dem, dem_real = gdf["est_demand_land"], gdf["real_demand_land"]
     nl = gdf["est_net_load_land"]
     return {"dplus": int(dplus), "gen_ton": gen,
             "max_ton": float(gton.max()), "min_ton": float(gton.min()),
             "citygas_ton": cg_ton, "total_ton": gen + (cg_ton or 0.0),
-            "gas_spark": spark(gton),
+            "gas_spark": spark(ggen),
+            "gas_real_spark": spark(ggen_real) if ggen_real.notna().any() else None,
             "demand_peak": float(dem.max()) if dem.notna().any() else None,
             "demand_spark": spark(dem),
             "demand_real_spark": spark(dem_real) if dem_real.notna().any() else None,
@@ -301,7 +306,9 @@ def render_hero():
 
     day, _, cap = C.day_navigator("hero", refresh=False)
     dplus = (day - TODAY).days
-    cap.caption(f"{day:%Y-%m-%d} · 09–15시 평균 기준 · 날씨 → 신재생 → 가스 한눈 브리핑")
+    origin = C.land_forecast_origin(day)
+    cap.caption(f"{day:%Y-%m-%d}" + (f" · {origin}" if origin else "")
+                + " · 09–15시 평균 기준 · 날씨 → 신재생 → 가스 한눈 브리핑")
 
     date = day.strftime("%Y-%m-%d")
     zones = W.zone_day(date)
@@ -318,7 +325,7 @@ def render_hero():
 
     # 지도 아래 — AI 종합 브리핑(운영 실행에서 생성된 것을 가져와 표시만) → 권역별 상세
     st.markdown("##### AI 종합 브리핑")
-    B.render_brief_display("hero")  # 오늘 기준 지평 밴드(D+1~장지평) 선택 표시
+    B.render_brief_display("hero", day)  # 선택일이 속한 지평 밴드(D+1~장지평) 종합을 자동 표시
 
     with st.expander("권역별 상세 · 예보 대 실측 (8권역 표)"):
         _hero_weather_table(date, dplus, zones)
@@ -921,22 +928,22 @@ def render_run_ops():
     st.divider()
     st.subheader("AI 브리핑 생성")
     st.caption("메인·예측확인 탭은 여기서 생성된 브리핑을 **가져와 표시만** 합니다(읽기 전용). "
-               "매일 새벽 서버가 6밴드 종합을 자동 생성하며, 아래 버튼으로 지금 즉시 생성할 수도 있습니다.")
+               "매일 새벽 서버가 D+1~D+15 날짜별 종합을 자동 생성하며, 아래 버튼으로 지금 즉시 생성할 수도 있습니다.")
     bday = st.date_input("생성 기준일(오늘)", value=TODAY.date(), key="ops_brief_day")
 
-    st.markdown("**지평 밴드 종합 — 6구간 한 번에 생성** "
-                "(D+1 · D+2 · D+3 · 단지평 D+4~5 · 중지평 D+6~10 · 장지평 D+11~15)")
+    st.markdown("**날짜별 종합 — D+1~D+15 한 번에 생성 (3콜)** "
+                "(근지평 D+1~3 · 중지평 D+4~10 · 장지평 D+11~15)")
     st.caption("매일 새벽 서버 cron(`gen_briefs_land.py`)이 자동 생성하는 것과 같습니다. "
-               "DB만 읽어 만들며 수집 API는 호출하지 않습니다(Gemini만 호출).")
-    if st.button("▶ 6밴드 종합 생성", type="primary", key="ops_band_gen"):
-        with st.spinner("6밴드 종합 브리핑 생성 중… (Gemini 6회 호출)"):
-            res = B.generate_all_bands("land", pd.Timestamp(bday), use_live=False)
+               "티어별 1콜(JSON)로 날짜별 브리핑을 받아 저장하며, DB만 읽고 수집 API는 호출하지 않습니다(Gemini만).")
+    if st.button("▶ 15일 종합 생성 (3콜)", type="primary", key="ops_band_gen"):
+        with st.spinner("날짜별 종합 브리핑 생성 중… (Gemini 3회 호출)"):
+            res = B.generate_all_days("land", pd.Timestamp(bday), use_live=False)
         nok = sum(1 for r in res if r["ok"])
-        (st.success if nok == len(res) else st.warning)(f"{nok}/{len(res)}밴드 생성·저장")
+        (st.success if nok == len(res) else st.warning)(f"{nok}/{len(res)}일 생성·저장")
         for r in res:
             mark = "✅" if r["ok"] else "⚠"
-            st.caption(f"{mark} **{r['band']}** ({r['target']}) · {r['start']}·{r['days']}일"
-                       + (f" — {r['msg']}" if r["msg"] else ""))
+            st.caption(f"{mark} **D+{r['horizon']}** ({r['start']})"
+                       + (f" — {r['msg']}" if r.get("msg") else ""))
         st.cache_data.clear()
 
     with st.expander("자유 형식 브리핑 — 임의 구간·종류(송출량·기상 등)"):

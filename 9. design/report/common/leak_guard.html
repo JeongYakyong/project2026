@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공통 · 누수 차단 (정답·피처·금지)</title>
+<!-- drawing_rule 기준: 흰 배경 · 문서용 720px · 맑은 고딕 시스템 폰트 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem;
+        -webkit-font-smoothing:antialiased; }
+  .wrap{ width:100%; max-width:720px; }
+  .eyebrow{ font-size:8px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase;
+            color:var(--accent); margin:0 0 0.4rem; }
+  h1{ font-weight:700; font-size:1.45rem; margin:0 0 0.35rem; line-height:1.15; }
+  .sub{ font-size:12.5px; color:#1a1a1a; margin:0 0 1.15rem; line-height:1.55; }
+
+  .cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:stretch; }
+  .card{ border:1px solid; border-radius:8px; overflow:hidden; background:#fff;
+         display:flex; flex-direction:column; }
+  .card-head{ padding:8px 11px 7px; border-bottom:1px solid; }
+  .card-head .lab{ font-size:13px; font-weight:700; }
+  .card-head .tag{ font-size:9.5px; margin-top:2px; line-height:1.35; }
+  .card-body{ padding:9px 10px 10px; display:flex; flex-direction:column; gap:7px; flex:1; }
+  .item{ border-bottom:1px dashed var(--rule); padding-bottom:6px; }
+  .item:last-child{ border-bottom:none; padding-bottom:0; }
+  .item .n{ font-size:11.5px; font-weight:700; color:#2b2b2b; }
+  .item .s{ font-size:9.5px; color:#8a8a8a; margin-top:1px; line-height:1.32; }
+  .item.weak .n{ font-weight:600; opacity:0.78; }
+  .item.strike .n{ text-decoration:line-through; text-decoration-thickness:1px; color:#9aa0a8; }
+  .item .x{ font-weight:700; font-size:10px; margin-right:3px; }
+  .foot{ font-size:9.5px; color:var(--soft); margin-top:auto; padding-top:9px;
+         border-top:1px solid var(--rule); line-height:1.4; }
+
+  .note{ font-size:11px; color:var(--muted); margin:1.05rem 0 0; line-height:1.5; }
+  footer{ margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+          font-size:8px; letter-spacing:0.10em; color:#1a1a1a; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <div class="cards" id="cards"></div>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기 데이터만 고치면 그림이 바뀝니다  ▼▼▼                          -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow: "공통 원칙 · 누수 차단",
+    title:   "정답의 단서가 입력에 새지 않게 막는다",
+    subtitle:"모든 컬럼을 세 종류로 나눕니다 — 맞혀야 할 ‘정답’, 모델에 넣어도 되는 ‘피처’, "
+           + "넣으면 정답이 새어 평가가 부풀려지는 ‘금지’. 금지 변수를 처음부터 걸러내야 "
+           + "현장과 같은 ‘정직한 검증’이 됩니다.",
+    note:    "* ‘누수’란 정답을 이미 알아야만 알 수 있는 값을 입력에 넣는 것입니다. "
+           + "같은 시각의 다른 연료 발전량이나 타깃의 과거값을 넣는 건, 시험지에 답을 미리 적어두는 것과 같습니다.",
+    footer:  "누수 차단 · 수집한 63개 컬럼을 정답·피처·금지로 분류 · 수요·신재생·SMP·가스 전 단계 공통 · 2026-06",
+  };
+
+  // 카드 3장 (왼→오) · color: red | blue | gray
+  const CARDS = [
+    { color:"red",  label:"정답",       tag:"맞혀야 할 값 · 입력 절대 금지",
+      items:[
+        { n:"전국 가스 발전량", s:"발전용 · 핵심 검증 목표" },
+        { n:"도시가스 송출량",   s:"보조 · 참고", weak:true },
+      ],
+      foot:"→ 이 값들의 단서가 입력에 새지 않게 막습니다." },
+
+    { color:"blue", label:"피처 (입력)", tag:"모델이 실제로 보는 값",
+      items:[
+        { n:"잔여부하",            s:"계통수요 − 신재생", star:true },
+        { n:"수요 · 신재생",       s:"잔여부하 구성요소" },
+        { n:"기온",                s:"여러 관측지점" },
+        { n:"달력",                s:"시 · 요일 · 월 · 연중일" },
+        { n:"평일 / 주말 / 공휴일", s:"" },
+      ] },
+
+    { color:"gray", label:"금지",        tag:"넣으면 정답이 샌다 (누수)", strike:true,
+      items:[
+        { n:"제주 HVDC",        s:"타깃 계산식에 들어감" },
+        { n:"다른 연료원 발전",  s:"유류·석탄·원전·풍력 · 같은 시각 동시 결정" },
+        { n:"타깃 원천값",       s:"가스 발전 실측 그 자체" },
+        { n:"타깃 과거값",       s:"자기 정답 컨닝 (lag)" },
+        { n:"실시간 SMP",        s:"발행 지연" },
+      ] },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+  const C = {
+    red:  { line:"#c1554b", text:"#9e3b33", head:"rgba(179,67,58,0.10)" },
+    blue: { line:"#5d86bf", text:"#2f547f", head:"rgba(63,111,176,0.10)" },
+    gray: { line:"#b6bbc2", text:"#8a8a8a", head:"rgba(45,49,66,0.06)" },
+  };
+  const esc = (s)=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+
+  const root = document.getElementById("cards");
+  CARDS.forEach(card=>{
+    const c = C[card.color];
+    const items = card.items.map(it=>{
+      const cls = "item" + (it.weak?" weak":"") + (card.strike?" strike":"");
+      const mark = card.strike ? `<span class="x" style="color:${c.line}">✕</span>` : "";
+      const star = it.star ? `<span style="color:var(--accent)">★ </span>` : "";
+      const sub  = it.s ? `<div class="s">${esc(it.s)}</div>` : "";
+      return `<div class="${cls}"><div class="n">${mark}${star}${esc(it.n)}</div>${sub}</div>`;
+    }).join("");
+    const foot = card.foot ? `<div class="foot">${esc(card.foot)}</div>` : "";
+    const el = document.createElement("div");
+    el.className = "card";
+    el.style.borderColor = c.line;
+    el.innerHTML =
+      `<div class="card-head" style="background:${c.head};border-bottom-color:${c.line}">`+
+        `<div class="lab" style="color:${c.text}">${esc(card.label)}</div>`+
+        `<div class="tag" style="color:${c.text};opacity:0.9">${esc(card.tag)}</div>`+
+      `</div>`+
+      `<div class="card-body">${items}${foot}</div>`;
+    root.appendChild(el);
+  });
+
+  document.getElementById("eyebrow").textContent  = META.eyebrow;
+  document.getElementById("title").textContent    = META.title;
+  document.getElementById("subtitle").textContent = META.subtitle;
+  document.getElementById("note").textContent     = META.note;
+  document.getElementById("footer").textContent   = META.footer;
+</script>
+</body>
+</html>

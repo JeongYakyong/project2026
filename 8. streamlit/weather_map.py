@@ -778,11 +778,12 @@ def _gas_panel_html(gas: dict | None) -> str:
         cg_row = ('<div class="gasrow"><span class="gk"><i style="background:#f2a93b"></i>'
                   f'도시가스(참고)</span><span class="gv">{f(gas["citygas_ton"])}'
                   '<small>TON</small></span></div>')
-    # 4. 발전용 가스(예상) 시계열
+    # 4. 발전용 가스(예상) 시계열 — 발전량 MW 예측(녹색 점선) + 실측 MW 겹침(회색), 전력수요와 동일 방식
     gas_chart = ""
     if gas.get("gas_spark"):
-        gas_chart = ('<div class="sparklab">발전용 가스(예상) · TON/h</div>'
-                     + _sparkline_svg(gas["gas_spark"], color="#059669"))
+        gas_chart = ('<div class="sparklab">발전용 가스(예상)</div>'
+                     + _sparkline_svg(gas["gas_spark"], color="#059669",
+                                      overlay=gas.get("gas_real_spark"), overlay_color="#94a3b8"))
     # 7. 전력수요(예상) 시계열 + 실측 겹침(수치 없이 선만)
     dem = ""
     if gas.get("demand_spark") and gas.get("demand_peak") is not None:

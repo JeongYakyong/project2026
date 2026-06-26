@@ -91,7 +91,7 @@ def run_script(script: Path, args: list[str], timeout: int = 3600,
 # 읽는다. 구 forecast 테이블(timestamp 단일키 "최신 스냅샷")은 지평이 뭉개져 예측 소스로 안 쓴다.
 HZ_TABLE = "est_horizon_land"
 HZ_EST_COLS = ["est_demand_land", "est_market_renew_land", "est_net_load_land",
-               "est_gas_gen_land", "est_gas_sendout_ton_land"]
+               "est_gas_gen_land", "est_gas_sendout_ton_land", "est_solar_util_land"]
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -848,6 +848,23 @@ def add_forecast(fig: go.Figure, ts, y, name: str, color: str, **kw):
                                        smoothing=LINE_SMOOTHING), **kw))
 
 
+def land_forecast_origin(day: pd.Timestamp) -> str | None:
+    """선택일 24h 예측의 발행 시각(base)·지평 라벨 — mode='latest'. '발행 MM-DD HH시 (D+k)' 또는 None.
+
+    하루는 보통 한 발행본이라 대표(최빈) base 를 쓴다. est_horizon_land 직접 조회(KPX live 무관).
+    """
+    start = day.strftime("%Y-%m-%d 00:00:00")
+    end = day.strftime("%Y-%m-%d 23:00:00")
+    df = land_est_horizon("latest", None, start, end)
+    base_s = df["base"].dropna() if "base" in df.columns else pd.Series(dtype=object)
+    if base_s.empty:
+        return None
+    top = base_s.mode().iloc[0]
+    hzs = df.loc[df["base"] == top, "horizon_d"].dropna()
+    htxt = f" (D+{int(hzs.iloc[0])})" if not hzs.empty else ""
+    return f"발행 {pd.Timestamp(top):%m-%d %H시}{htxt}"
+
+
 def hz_hover(df: pd.DataFrame):
     """예측 트레이스용 (customdata, hovertemplate) — 커서에 발행일(base)·지평(D+) 표시.
 
@@ -889,6 +906,20 @@ _CSS = """
 [data-testid="stIFrame"], iframe[title="st.iframe"]{
   border:1px solid #cbd5e1; border-radius:14px;
   box-shadow:0 1px 2px rgba(15,23,42,.05); }
+
+/* ---- AI 브리핑 카드 — 연한 톤 + 좌측 강조선, 글머리별 줄바꿈 ---- */
+.brief-card{
+  background:#f4faf7; border:1px solid #d7e6dd; border-left:3px solid #059669;
+  border-radius:12px; padding:.75rem .95rem; margin:.15rem 0 .5rem;
+  box-shadow:0 1px 2px rgba(15,23,42,.04); }
+.brief-card .bi{
+  position:relative; padding-left:1.05rem; margin:.34rem 0; line-height:1.62;
+  color:#1f2937; font-size:.93rem; }
+.brief-card .bi:before{
+  content:"•"; position:absolute; left:.1rem; top:-.02rem;
+  color:#059669; font-weight:700; }
+.brief-card .bi:first-child{ margin-top:.05rem; }
+.brief-card .bi:last-child{ margin-bottom:.05rem; }
 
 /* ---- 탭 — 알약 버튼(선택 가능해 보이게, 지도 패널 mchip 과 동일 문법) ---- */
 [data-testid="stTabs"] [role="tablist"]{ gap:6px; border-bottom:none; }
