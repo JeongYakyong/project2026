@@ -2,6 +2,7 @@
 """8단계 공용 레이어 — DB 조회(읽기 전용)·KPX 실시간 수급·단가 환산·적재 현황·운영 실행."""
 from pathlib import Path
 import importlib
+import os
 import subprocess
 import sys
 import sqlite3
@@ -63,7 +64,7 @@ DATA_DIR = ROOT / "1. data_fetcher_and_db"
 SERVE_CHAIN_LAND = ROOT / "7. land_gas_forecaster" / "serve_chain_land_new.py"
 COLLECT_FORECAST = DATA_DIR / "core" / "collect_forecast_new.py"   # ① 기상 → forecast_horizon
 COLLECT_LAND_HIST = DATA_DIR / "core" / "collect_data_land_new.py"  # ② 실측 → historical
-OPS_PASSWORD = "8888"   # ★임시(개발단계). 운영 공개 전 제거/교체할 것.
+OPS_PASSWORD = os.getenv("OPS_PASSWORD", "8888")   # ★ .env/systemd 의 OPS_PASSWORD 로 강한 값 지정(미설정 시 fallback).
 
 
 def run_script(script: Path, args: list[str], timeout: int = 3600,
@@ -84,6 +85,33 @@ def run_script(script: Path, args: list[str], timeout: int = 3600,
         return 124, f"[timeout {timeout}s] {e}"
     except Exception as e:  # noqa: BLE001
         return 1, f"[실행 실패] {e}"
+
+
+def ops_gate() -> bool:
+    """운영 실행 메뉴 전체 잠금.  해제 상태면 True(본문 렌더 허용), 잠김이면 잠금화면만 그리고 False.
+
+    호출부 맨 위에서:  ``if not C.ops_gate(): return``  — 해제 전에는 어떤 버튼도 그려지지 않는다.
+    세션 단위(브라우저별)로 해제되며, 비밀번호는 OPS_PASSWORD(환경변수 권장).
+    """
+    if st.session_state.get("ops_unlocked"):
+        c1, c2 = st.columns([5, 1])
+        c1.success("🔓 운영 실행 — 잠금 해제됨")
+        if c2.button("🔒 잠그기", key="ops_lock"):
+            st.session_state["ops_unlocked"] = False
+            st.rerun()
+        return True
+    st.markdown("### 🔒 운영 실행 — 잠김")
+    st.caption("이 메뉴는 서빙 체인·데이터 수집을 **직접 실행**합니다. 비밀번호 입력 후 사용하세요.")
+    with st.form("ops_gate_form"):
+        pw = st.text_input("비밀번호", type="password")
+        ok = st.form_submit_button("잠금 해제")
+    if ok:
+        if pw == OPS_PASSWORD:
+            st.session_state["ops_unlocked"] = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 틀립니다.")
+    return False
 
 
 # ---------------------------------------------------------------- 지평 아카이브 (basetime × horizon)

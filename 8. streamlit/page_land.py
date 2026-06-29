@@ -848,7 +848,10 @@ def render_run_ops():
     """운영 실행 — 서빙 체인 러너(serve_chain_land_new.py)를 수동 트리거.
 
     서버 cron(매일 06:00)과 동일 작업.  서빙은 로컬 추론(API 무관)이라 대시보드에서 직접 실행 안전.
+    메뉴 전체가 비밀번호 잠금(C.ops_gate) — 해제 전에는 어떤 버튼도 렌더되지 않는다.
     """
+    if not C.ops_gate():
+        return
     st.subheader("서빙 체인 실행 — 5→6→7 → est_horizon_land")
     st.caption("forecast_horizon(기상 예보) → 수요·신재생·가스(보정·블렌딩) 예측을 est_horizon_land 에 "
                "적재. 로컬 추론(API 무관). 서버 cron(매일 06:00)과 같은 작업을 수동으로 돌린다.")
@@ -886,15 +889,8 @@ def render_run_ops():
 
     st.divider()
     st.subheader("데이터 수집 (KMA/KPX API)")
-    st.caption("⚠ API 한도 보호 — 평소엔 서버 cron 전용. **개발단계 임시 수동 버튼**(비밀번호 게이트). "
+    st.caption("⚠ API 한도 보호 — 평소엔 서버 cron 전용. 수동 실행은 한도에 주의하세요. "
                "기상은 완결성 auto-resume 라 재실행해도 완전한 base 는 콜 없이 skip.")
-    pw = st.text_input("실행 비밀번호", type="password", key="ops_pw",
-                       help="개발단계 임시 가드 — 운영 공개 전 제거/교체")
-    unlocked = pw == C.OPS_PASSWORD
-    if pw and not unlocked:
-        st.error("비밀번호가 틀립니다.")
-    elif not pw:
-        st.info("수집 버튼은 비밀번호 입력 후 활성화됩니다.")
 
     col_f, col_h = st.columns(2)
     with col_f:
@@ -904,7 +900,7 @@ def render_run_ops():
         if fmode == "최근 N개(backfill)":
             fn = st.number_input("N (최근 base)", 1, 7, 3, key="cf_n")
             fargs += ["--backfill", str(int(fn))]
-        if st.button("▶ 기상 수집 실행", disabled=not unlocked, key="cf_run"):
+        if st.button("▶ 기상 수집 실행", key="cf_run"):
             with st.spinner("기상 수집 중… (KMA API, base 당 수 분)"):
                 rc, out = C.run_script(C.COLLECT_FORECAST, fargs, cwd=C.DATA_DIR)
             if rc == 0:
@@ -916,7 +912,7 @@ def render_run_ops():
     with col_h:
         st.markdown("**② 실측 → historical**")
         hd = st.number_input("최근 일수 (--historical-days)", 1, 30, 2, key="ch_days")
-        if st.button("▶ 실측 수집 실행", disabled=not unlocked, key="ch_run"):
+        if st.button("▶ 실측 수집 실행", key="ch_run"):
             with st.spinner("실측 수집 중… (KPX/ASOS API)"):
                 rc, out = C.run_script(C.COLLECT_LAND_HIST,
                                        ["--historical-days", str(int(hd))], cwd=C.DATA_DIR)
