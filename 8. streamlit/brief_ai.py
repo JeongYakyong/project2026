@@ -577,16 +577,18 @@ def _brief_html(text: str) -> str:
 def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     """상단 날짜 선택기가 고른 '그 날짜'의 하루치 종합 브리핑을 자동 표시(생성 버튼 없음).
 
-    매일 새벽 서버가 D+1~D+15 날짜별 종합을 자동 생성한다. 선택일이 D+1~D+15면 그 날짜 브리핑을
-    보여주고, 오늘·과거나 D+15 너머면 안내만 한다. 두 탭이 동시 렌더되므로 숨은 prefix 마커로 ID 충돌 방지.
+    지평(D+n)은 종합 화면 예측(hero 지도)과 똑같이 `선택일 − 오늘`로 매겨, '화면이 보여주는 예측의
+    지평 == 브리핑의 지평'이 항상 성립한다. 저장된 브리핑이 있으면 오늘(D+0)도 그대로 보여주고,
+    범위(D+0~D+15) 안인데 없으면 '아직 없음', 너머면 안내만 한다. 두 탭이 동시 렌더되므로 숨은
+    prefix 마커로 ID 충돌 방지.
     """
-    anchor = pd.Timestamp.now().normalize()
-    target = (target_day or anchor).normalize()
-    lead = (target - anchor).days
+    today = pd.Timestamp.now().normalize()
+    target = (target_day or today).normalize()
+    lead = (target - today).days        # 종합 화면 예측(hero 지도)의 dplus 와 같은 지평 기준 → 지평 일치
     mark = f"<span style='display:none'>·{prefix}</span>"
 
-    if not 1 <= lead <= 15:
-        st.caption(f"예측 브리핑은 **내일(D+1)부터 D+15까지**만 제공합니다 "
+    if not 0 <= lead <= 15:        # 과거(실측 구간)·D+15 너머 — 보여줄 '예측' 브리핑 없음
+        st.caption(f"예측 브리핑은 **오늘(D+0)부터 D+15까지** 제공합니다 "
                    f"(선택일 {target:%Y-%m-%d}). 날짜를 그 범위로 옮겨 주세요.{mark}",
                    unsafe_allow_html=True)
         return
@@ -595,10 +597,10 @@ def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     saved = store.load(sd, 1, "overview")
     if saved and saved.get("brief_text"):
         st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {sd} (D+{lead}) 종합 · {saved.get('created_at', '')} "
+        st.caption(f"💾 {sd} (D{lead:+d}) 종합 · {saved.get('created_at', '')} "
                    f"— 매일 자동 생성(운영 실행에서 갱신).{mark}", unsafe_allow_html=True)
     else:
-        st.caption(f"{sd} (D+{lead}) 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
+        st.caption(f"{sd} (D{lead:+d}) 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
                    unsafe_allow_html=True)
 
 
