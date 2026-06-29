@@ -577,30 +577,35 @@ def _brief_html(text: str) -> str:
 def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     """상단 날짜 선택기가 고른 '그 날짜'의 하루치 종합 브리핑을 자동 표시(생성 버튼 없음).
 
-    지평(D+n)은 종합 화면 예측(hero 지도)과 똑같이 `선택일 − 오늘`로 매겨, '화면이 보여주는 예측의
-    지평 == 브리핑의 지평'이 항상 성립한다. 저장된 브리핑이 있으면 오늘(D+0)도 그대로 보여주고,
-    범위(D+0~D+15) 안인데 없으면 '아직 없음', 너머면 안내만 한다. 두 탭이 동시 렌더되므로 숨은
-    prefix 마커로 ID 충돌 방지.
+    fresh 룰 — 날짜별 가장 최신 발행본을 과거·오늘·미래 가리지 않고 그대로 보여준다. 저장 키가
+    (날짜, days=1, kind)뿐이라 upsert 로 항상 '마지막에 생성된(=가장 최신 지평) 발행본' 하나만
+    남으므로, 날짜로 읽으면 그게 곧 최신본이다. 캡션에 '며칠 앞서 내다본 발행본인지'(발행 지평
+    = 그 날짜 − 생성일)를 함께 표기한다. 예: 6/28 카드 = 6/27 생성 'D+1 발행본'.
+    저장이 없으면 안내만. 두 탭이 동시 렌더되므로 숨은 prefix 마커로 ID 충돌 방지.
     """
     today = pd.Timestamp.now().normalize()
     target = (target_day or today).normalize()
-    lead = (target - today).days        # 종합 화면 예측(hero 지도)의 dplus 와 같은 지평 기준 → 지평 일치
+    lead = (target - today).days
     mark = f"<span style='display:none'>·{prefix}</span>"
 
-    if not 0 <= lead <= 15:        # 과거(실측 구간)·D+15 너머 — 보여줄 '예측' 브리핑 없음
-        st.caption(f"예측 브리핑은 **오늘(D+0)부터 D+15까지** 제공합니다 "
-                   f"(선택일 {target:%Y-%m-%d}). 날짜를 그 범위로 옮겨 주세요.{mark}",
-                   unsafe_allow_html=True)
-        return
-
     sd = target.strftime("%Y-%m-%d")
-    saved = store.load(sd, 1, "overview")
+    saved = store.load(sd, 1, "overview")   # 날짜 키 = 최신 발행본(upsert 라 마지막 생성분만 남음)
     if saved and saved.get("brief_text"):
+        ca = saved.get("created_at", "") or ""
+        # 발행 지평 = 대상일 − 생성일(며칠 앞서 내다본 예측인지). 가장 최신 발행본의 지평.
+        try:
+            pub_lead = (target - pd.Timestamp(ca[:10]).normalize()).days
+            hz = f"D+{pub_lead} 발행본" if pub_lead >= 1 else "당일 발행본"
+        except Exception:  # noqa: BLE001 — created_at 비정상 시 지평 표기 생략
+            hz = "최신 발행본"
         st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {sd} (D{lead:+d}) 종합 · {saved.get('created_at', '')} "
-                   f"— 매일 자동 생성(운영 실행에서 갱신).{mark}", unsafe_allow_html=True)
+        st.caption(f"💾 {sd} 종합 · 최신 {hz} · {ca} 생성 — 매일 자동 갱신(운영 실행).{mark}",
+                   unsafe_allow_html=True)
+    elif lead > 15:
+        st.caption(f"예측 브리핑은 **D+15까지** 제공합니다 (선택일 {sd}). "
+                   f"날짜를 그 안으로 옮겨 주세요.{mark}", unsafe_allow_html=True)
     else:
-        st.caption(f"{sd} (D{lead:+d}) 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
+        st.caption(f"{sd} 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
                    unsafe_allow_html=True)
 
 
