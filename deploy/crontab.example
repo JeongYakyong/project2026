@@ -78,6 +78,14 @@
 #   메인·예측확인 탭이 이 저장본을 밴드 선택기로 표시한다.
 0 7 * * * /home/kimjourvanne/project2026/deploy/run_gen_briefs.sh
 
+# ⑥ 외부 전송 API(serve_api) 상시 기동 가드: 5분마다 점검(멱등) — 떠 있으면 포트 응답 확인 후 즉시
+#   종료(아무 일도 안 함), 꺼져 있으면 백그라운드로 되살린다.  예측 시계열(/forecast)+AI 브리핑
+#   (/brief)+둘 묶음(/bundle)+Swagger(/docs)를 HTTP 로 외부에 노출(루브릭 'AI 활용 확산성').
+#   est_horizon_land·ai_briefings.db 만 읽음 — 수집 트리거 없음·별도 lock.  fastapi·uvicorn 설치 venv.
+#   ★ 최초 1회는 손으로 띄운다: deploy/run_serve_api.sh  (이 cron 줄은 재부팅·크래시 자동 복구용).
+#   ★ 외부에서 닿으려면 포트를 연다: sudo ufw allow 8800  (기본 8800, streamlit 8502 와 분리).
+*/5 * * * * /home/kimjourvanne/project2026/deploy/run_serve_api.sh
+
 
 # ════════════ (폐기) 기존 전국 줄 — 위 신규로 대체. 서버에서 제거할 것 ════════════
 #   아래 두 줄은 레거시 forecast 테이블(전국)을 갱신하던 것 — forecast 폐기로 더는 안 쓴다.

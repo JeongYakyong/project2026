@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""전국 페이지 — 종합(현황/기상개황/장지평 예측) · 수요 예측 · 데이터 현황."""
+"""전국 페이지 — 종합(현황/기상개황/장지평 예측) · 수요 예측 · 데이터 현황 · 외부 연동(API)."""
+import os
 import sys
 from pathlib import Path
 
@@ -9,14 +10,18 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
 import brief_ai as B
+import brief_store as BS
 import gas_price_store as GP
+
+# 외부 전송 API(serve_api.py)의 공개 주소 — 시연 환경에 맞게 환경변수로 덮어쓴다.
+API_BASE_DEFAULT = os.environ.get("SERVE_API_PUBLIC_URL", "http://localhost:8800")
 
 C.page_header(
     "NATIONAL · DAILY BRIEFING", "가스 송출량 예측 브리핑",
     "신재생이 만든 잔여부하를 가스 발전이 메운다 — 5→6→7 서빙 체인의 사전 적재 예측",
     [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
      ("net_load", C.COLOR["net_load"]), ("가스", C.COLOR["gas"])])
-menu = st.sidebar.radio("메뉴", ["종합", "검증", "데이터 현황", "운영 실행"])
+menu = st.sidebar.radio("메뉴", ["종합", "검증", "데이터 현황", "운영 실행", "외부 연동"])
 
 TODAY = pd.Timestamp.now().normalize()
 ORIGIN = TODAY - pd.Timedelta(days=1)  # 어제 23:00 발행 가정(사전 적재)
@@ -1002,6 +1007,131 @@ def render_gas_price():
                     st.rerun()
 
 
+# ================================================================ 외부 연동 (API)
+_API_ENDPOINTS = [
+    ("GET /forecast", "예측 시계열", "수요·신재생·가스 발전(MW)·송출량(TON) 시간별"),
+    ("GET /brief", "AI 브리핑", "그날의 자연어 요약(저장본)"),
+    ("GET /bundle", "예측 + 브리핑 묶음", "★ 위 둘을 한 번에 — 연동에 가장 편함"),
+    ("GET /briefings", "브리핑 목록", "저장된 브리핑들의 메타 목록"),
+    ("GET /docs", "API 문서(Swagger)", "브라우저에서 바로 눌러보는 대화형 문서"),
+]
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def _api_health(base: str) -> tuple[bool, str]:
+    """API 서버 헬스 핑 — (응답여부, 메모). 짧은 캐시로 매 rerun 호출을 막는다."""
+    try:
+        import requests
+        r = requests.get(base.rstrip("/") + "/", timeout=1.5)
+        return (r.status_code == 200), (r.json().get("service", "") if r.ok else f"HTTP {r.status_code}")
+    except Exception as e:                      # 미기동·주소오류 등 — 폴백으로 처리
+        return False, type(e).__name__
+
+
+def _local_bundle(sd: pd.Timestamp, days: int, kind: str) -> dict:
+    """API 미응답 시 폴백 — serve_api 와 같은 함수로 동일 형식의 /bundle 응답을 직접 만든다."""
+    ser = B.forecast_series(sd, days, use_live=False)
+    ser = ser.assign(timestamp=ser["timestamp"].astype(str))
+    ser = ser.where(pd.notna(ser), None)
+    recs = ser.to_dict("records")
+    rec = BS.load(sd.strftime("%Y-%m-%d"), days, kind)
+    return {"region": "land", "start": sd.strftime("%Y-%m-%d"), "days": days, "kind": kind,
+            "forecast": {"fields": ["timestamp", "horizon_d", "demand_mw", "renew_mw",
+                                    "gas_gen_mw", "sendout_ton"],
+                         "n_rows": len(recs), "series": recs},
+            "brief": rec}
+
+
+def render_api():
+    """외부 연동(API) — 예측·AI 브리핑을 다른 시스템이 가져다 쓰는 공개 창구를 데모에서 보여준다.
+
+    루브릭 'AI 활용 확산성': 우리 결과를 HTTP 로 열어 두었음을 화면에서 직접 시연.
+    실제 API(8800)가 떠 있으면 진짜 호출, 꺼져 있어도 같은 데이터로 예시를 보여 항상 동작한다.
+    """
+    st.subheader("외부 연동 — 예측·AI 브리핑 공개 API")
+    st.markdown(
+        "이 대시보드가 만든 **예측 결과와 AI 브리핑을 다른 시스템이 그대로 가져다 쓸 수 있도록** "
+        "인터넷 주소(HTTP)로 열어 둔 창구입니다. 발전사업자·연구실·다른 앱이 이 화면을 거치지 않고도 "
+        "같은 데이터를 자동으로 받아갈 수 있습니다.")
+    st.caption("읽기 전용 — 우리 DB에 쌓인 예측·브리핑만 내보내며, 외부 수집(KMA/KPX)은 호출하지 않습니다.")
+
+    base = st.text_input("API 주소", value=API_BASE_DEFAULT, key="api_base",
+                         help="시연 환경의 공개 주소. 같은 서버에서 대시보드와 API가 함께 돕니다.").rstrip("/")
+    ok, detail = _api_health(base)
+    if ok:
+        st.success(f"🟢 API 서버 응답 정상 — {base}/docs 에서 문서를 볼 수 있습니다.")
+    else:
+        st.info(f"⚪ 지금은 API 서버가 응답하지 않습니다 ({detail}). 아래 미리보기는 같은 데이터로 만든 "
+                "예시이며, 서버에서 API를 띄우면 실제 응답으로 바뀝니다.")
+
+    st.markdown("**제공하는 주소(엔드포인트)**")
+    st.dataframe(pd.DataFrame(_API_ENDPOINTS, columns=["주소", "무엇을", "내용"]),
+                 width="stretch", hide_index=True)
+
+    lo, hi = C.land_date_range()
+    tab_try, tab_ex, tab_doc = st.tabs(["응답 미리보기", "호출 예시 (복사용)", "API 문서"])
+
+    with tab_try:
+        c1, c2, c3 = st.columns([1.4, 1, 1.2], vertical_alignment="bottom")
+        sday = c1.date_input("시작일", value=pd.Timestamp(hi).date(), key="api_day",
+                             help=f"예측 적재 범위: {lo} ~ {hi}")
+        ndays = c2.slider("일수", 1, 7, 1, key="api_days")
+        kind = c3.selectbox("브리핑 종류", ["overview", "sendout", "weather"], key="api_kind")
+        sd = pd.Timestamp(sday)
+
+        st.caption(f"미리볼 호출:  `GET {base}/bundle?start={sd:%Y-%m-%d}&days={ndays}&kind={kind}`")
+        live = st.button("▶ 실제 API 서버로 호출", type="primary", key="api_call",
+                         help="8800 포트의 실제 API에 HTTP 요청을 보냅니다(서버가 떠 있을 때).")
+
+        payload, source = None, ""
+        if live:
+            try:
+                import requests
+                r = requests.get(f"{base}/bundle",
+                                 params={"start": sd.strftime("%Y-%m-%d"),
+                                         "days": int(ndays), "kind": kind}, timeout=8)
+                st.write(f"응답 상태: **HTTP {r.status_code}**  ·  `{base}/bundle`")
+                payload, source = r.json(), "실제 API 응답"
+            except Exception as e:
+                st.warning(f"실제 호출 실패 ({type(e).__name__}) — 아래는 같은 데이터로 만든 예시입니다.")
+        if payload is None:
+            try:
+                payload = _local_bundle(sd, int(ndays), kind)
+                source = source or "예시 — 대시보드가 직접 계산(실제 API 응답과 같은 형식)"
+            except Exception:
+                st.error(f"이 날짜의 예측이 적재 범위에 없습니다(적재 {lo} ~ {hi}). 다른 날짜를 골라 주세요.")
+                return
+        st.caption(f"표시 중: **{source}**")
+
+        brief = payload.get("brief") if isinstance(payload, dict) else None
+        if isinstance(brief, dict) and brief.get("brief_text"):
+            st.markdown("**브리핑 텍스트 (`brief.brief_text`)**")
+            st.info(brief["brief_text"])
+        with st.expander("전체 JSON 응답 보기", expanded=True):
+            st.json(payload)
+
+    with tab_ex:
+        ex_start = pd.Timestamp(st.session_state.get("api_day", pd.Timestamp(hi).date())).strftime("%Y-%m-%d")
+        ex_days = int(st.session_state.get("api_days", 1))
+        ex_kind = st.session_state.get("api_kind", "overview")
+        qurl = f"{base}/bundle?start={ex_start}&days={ex_days}&kind={ex_kind}"
+        st.markdown("위 '응답 미리보기'에서 고른 조건으로, 외부에서 호출하는 세 가지 방법입니다.")
+        st.markdown("**1) 브라우저 주소창에 그대로**")
+        st.code(qurl, language="text")
+        st.markdown("**2) 명령줄 (curl)**")
+        st.code(f"curl '{qurl}'", language="bash")
+        st.markdown("**3) 파이썬**")
+        st.code("import requests\n"
+                f"r = requests.get('{base}/bundle', params={{\n"
+                f"    'start': '{ex_start}', 'days': {ex_days}, 'kind': '{ex_kind}'}})\n"
+                "print(r.json())", language="python")
+
+    with tab_doc:
+        st.markdown("브라우저에서 각 주소를 직접 눌러 시험 호출해 볼 수 있는 **대화형 문서(Swagger)**입니다.")
+        st.link_button("API 문서 열기  ↗  /docs", f"{base}/docs", type="primary")
+        st.caption(f"{base}/docs — 화면에서 바로 호출해 응답을 확인할 수 있습니다(확산성 증거).")
+
+
 if menu == "종합":
     # 메인 hero(기상 지도 + 가스 송출량)를 첫 탭으로. 기상개황 탭은 hero 로 흡수.
     tab_hero, tab_now, tab_mix, tab_lh = st.tabs(
@@ -1018,5 +1148,7 @@ elif menu == "검증":
     render_forecast_menu()
 elif menu == "데이터 현황":
     render_data_status()
-else:
+elif menu == "운영 실행":
     render_run_ops()
+else:
+    render_api()

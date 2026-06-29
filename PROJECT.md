@@ -247,8 +247,9 @@
 - **8-0 ✅**: 컨셉 문서(`CONCEPT_8-0.md`) + G-15 확정(배포=자체 서버·brief_ai=Gemini·갱신=사전 적재+시연 버튼·표시 기간=보유 범위·SMP=제주 메뉴 포함).
 - **8-A 전국 ✅**: 멀티 페이지(전국/제주, st.navigation) + 사이드바 메뉴. 전국 = 종합(예측 확인·일일 송출량·발전데이터·기상개황·장지평)·검증·데이터 현황·운영 실행, 전 메뉴 동작. 디자인 토큰·카드 양식 적용. `app.py`·`common.py`·`page_land.py`.
 - **8-B 제주 ✅(2026-06-22, 경량)**: 종합(수요·신재생·net_load D+1~7 + SMP D+2 검증) + 데이터 현황(장지평 수집 가능 여부 색 구분 히트맵) 2메뉴. 상세 §6.5. `page_jeju.py`. 부수로 SMP D+2 최신 발행본 서빙 버그 수정(§8, 잠긴 코드 최소수정).
-- **8-D brief_ai ✅**: 전국 종합>예측 확인 Gemini 브리핑(`brief_ai.py`) + 저장소(`brief_store.py`) + 전송 API(`serve_api.py`). 상세 §6.2·§8(06-18).
-- **남은 작업**: 8-C 검증·KOGAS 탭 보강(선택) · **8-E 배포(공개 URL)·시연 영상**.
+- **8-D brief_ai ✅**: 전국 종합>예측 확인 Gemini 브리핑(`brief_ai.py`) + 저장소(`brief_store.py`). 상세 §6.2·§8(06-18).
+- **8-D2 외부 전송 API 🔶**: `serve_api.py`(FastAPI, 예측 시계열+AI 브리핑을 외부에 노출 = 루브릭 'AI 활용 확산성') — **코드 완료·로컬 동작 확인(2026-06-27)**, 단 **서버 상시 기동은 미완(8-E)**. 배포 준비물 = `deploy/run_serve_api.sh`(멱등 가드)·crontab ⑥·`DEPLOY.md §9`. 전국만·`/bundle`이 묶음 전송·`use_live=False`(수집 무관). **streamlit 전국 '외부 연동' 메뉴 신설(2026-06-27)** — 데모에서 API 존재·사용법을 직접 보여줌(쉬운 설명+실시간 응답 미리보기[실제 호출, 미응답 시 같은 데이터 예시 폴백]+호출 예시 3종+Swagger /docs 링크). API가 보이지 않는 뒷단이라 확산성 점수가 안 되던 문제 해소.
+- **남은 작업**: 8-C 검증·KOGAS 탭 보강(선택) · **8-E 배포(streamlit 8502 ✅ 기동 / 외부 API 8800 상시 기동 ⬜) · 공개 URL·시연 영상**.
 
 ---
 
@@ -397,6 +398,14 @@
 ## 8. 진행 로그 (최신이 위로)
 
 > 2026-06-21 이전 로그는 이관(무수정 보존): `docs/PROJECT_LOG.md`(~2026-06-07) · `docs/PROJECT_LOG2.md`(2026-06-08 ~ 06-21).
+
+**2026-06-27 — 외부 전송 API(serve_api) 배포 준비물 작성 (8-D2, 'AI 활용 확산성')**
+- 배경: streamlit 서버가 안정적으로 돌고 cron 도 정상인 것을 확인한 뒤, "우리 결과(브리핑+예측데이터)를 외부에서 가져다 쓰게 하는 API"를 추가하려던 계획을 점검. **확인 결과 이미 만들어져 있었다** — 8-D 때 만든 `8. streamlit/serve_api.py`(FastAPI). 새로 만들 필요 없음.
+- **동작 확인(로컬)**: `fastapi 0.137.2 / uvicorn 0.49.0` 설치돼 있음. TestClient 로 `/forecast?start=2026-06-20&days=1` → 200·24행 정상, `/bundle`(예측 시계열 + 브리핑 한 번에) 정상. `use_live=False` 라 KPX/KMA 수집은 안 건드림. 엔드포인트 = `/forecast`·`/brief`·**`/bundle`**·`/briefings`·`/docs`. 전국(land)만.
+- **진짜 빠진 것 = 배포(서버 상시 기동)뿐**: deploy 에 래퍼 없음·DEPLOY.md/crontab 에 언급 없음·서버에서 안 돎. streamlit 처럼 상시 데몬이라 한 번 돌고 끝나는 기존 cron 과 띄우는 방식이 다름.
+- **만든 준비물(사용자 확정: 배포 준비물 작성 / 전국만 유지)**: ① `deploy/run_serve_api.sh` — 멱등 가드 wrapper(포트 응답하면 no-op, 꺼져 있으면 `setsid` 백그라운드로 `uvicorn serve_api:app` 기동, `.venv/bin/python`·flock·`deploy/logs`, +x 설정). ② `crontab.example` ⑥ 줄(`*/5` 헬스가드 = 재부팅·크래시 자동 복구). ③ `DEPLOY.md §9`(의존성 `fastapi uvicorn`·기동·`ufw allow 8800`·포트 8800[streamlit 8502 와 분리]·종료 `pkill -f 'uvicorn serve_api:app'`). ④ 본 §·8-D2·250줄 표기 정정(전송 API 는 코드 완료지 배포 완료가 아니었음).
+- **streamlit 노출(같은 날, 사용자 지적 "데모에 API 정보가 하나도 없다"→해소)**: API 가 8800 의 별개 프로세스라 streamlit(8502)에 아무 안내가 없어 확산성 점수로 이어지지 않던 문제. 전국 페이지에 **'외부 연동' 메뉴 신설**(`page_land.py` `render_api`·`_local_bundle`·`_api_health`, 사이드바 5번째). 구성 = 쉬운 설명(비전문가용)+API 주소·헬스 배지+엔드포인트 표+탭 3개[응답 미리보기(실제 8800 호출, 미응답 시 같은 함수로 동일 형식 예시 폴백 → 항상 동작)·호출 예시 3종(브라우저 URL·curl·파이썬)·Swagger /docs 링크]. 폴백은 serve_api 와 같은 `brief_ai.forecast_series`+`brief_store.load` 재사용(fastapi 의존 없이). 공개 주소는 `SERVE_API_PUBLIC_URL` 환경변수(기본 localhost:8800). 검증 = py_compile·AppTest(외부 연동 렌더+호출버튼 폴백+종합 회귀 예외0).
+- **남음(사용자 수동)**: 서버에서 `.venv/bin/pip install fastapi uvicorn` → `deploy/run_serve_api.sh` 1회 실행 → `ufw allow 8800` → crontab ⑥ 줄 추가(+시연 시 `SERVE_API_PUBLIC_URL` 을 공개 주소로). 코드/래퍼는 `git pull` 로 따라옴.
 
 **2026-06-24 (이어서) — 서버 동기화 배포 + 8단계 streamlit 서버 기동 (8-E 착수)**
 - **배포 완료**: 로컬에서 수집(forecast 06-21→06-23)·전구간 backfill(4체인, 제주 06-17/18 결측 복구 — 양 DB base 누락 0) → 서버 `git pull`(코드·가중치) + `input_data_*.db` scp → 검증(est_horizon_land/jeju/smp 최신 base 2026-06-23, 서빙 의존성 ok, 폐기 `forecast` 테이블 미부활). **무거운 전구간 backfill은 로컬에서(서버 i7·4GB), 서버는 받기만** = `DEPLOY.md §8` 방식. `§8.1` 대기 목록 전부 ✅.

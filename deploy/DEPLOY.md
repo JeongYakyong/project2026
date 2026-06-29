@@ -215,3 +215,41 @@ sqlite3 ~/project2026/"1. data_fetcher_and_db"/data/input_data_land.db \
 **6) (서버) streamlit 재시작**(8단계를 상시 서비스로 띄운 경우). 이후 일일 cron(전국 06:00·제주 06:30·SMP 06:40·도시가스 06:50)이 자동 갱신한다. (streamlit 최초 배포 자체는 8-E 별도 작업.)
 
 > ⚠️ 옛 방식과의 차이: 이전 §8 은 "서버에서 `run_serve_chain_*.sh --backfill` 로 est_* 재생성"이었으나, 서버 사양(4GB) 으로는 버겁다 → **전구간 백필은 로컬에서, 서버는 완성 DB 를 scp 로 받는다.** 서버 cron 의 일일 서빙은 당일 1개 base 만 더하므로 가볍다.
+
+## 9. 8단계 외부 전송 API(serve_api) 기동 — 'AI 활용 확산성'
+
+우리 예측 결과(시계열)와 AI 브리핑을 다른 시스템이 가져다 쓰도록 HTTP 로 노출하는 작은 API.
+코드(`8. streamlit/serve_api.py`)는 완성·동작 확인됨(FastAPI). **streamlit 과 별개의 상시 데몬**이라
+한 번 돌고 끝나는 다른 cron 작업과 띄우는 방식이 다르다. 전국(land)만 대상. DB만 읽고 수집은
+절대 트리거하지 않는다(`use_live=False`).
+
+**엔드포인트**: `GET /forecast`(예측 시계열) · `GET /brief`(AI 브리핑) · **`GET /bundle`(둘을 한 번에)** ·
+`GET /briefings`(목록) · `GET /docs`(Swagger UI — 확산성 증거).
+
+**① 의존성** (서빙 venv 에 추가 — streamlit/torch 등은 §7 에서 이미 설치됨):
+```bash
+cd ~/project2026
+.venv/bin/pip install fastapi uvicorn
+```
+
+**② 기동** — 멱등 가드 wrapper 를 손으로 한 번 실행하면 백그라운드로 뜬다(끊어도 유지):
+```bash
+~/project2026/deploy/run_serve_api.sh
+tail -20 ~/project2026/deploy/logs/serve_api_$(date +%Y%m).log   # "serve_api 기동(pid …)" 확인
+```
+- 포트 = **8800**(streamlit 8502 와 분리). 외부 접속하려면 방화벽을 연다: `sudo ufw allow 8800`.
+- 접속(예, Tailscale): `http://100.76.127.38:8800/docs` · 묶음 호출 `…:8800/bundle?start=2026-06-26&days=1`.
+- 포트를 바꾸려면 `SERVE_API_PORT=9000 ~/project2026/deploy/run_serve_api.sh`.
+
+**③ 상시화(자동 복구)** — `crontab.example` ⑥ 줄(`*/5`)이 5분마다 가드를 호출한다: 떠 있으면 아무것도
+안 하고, 재부팅·크래시로 꺼져 있으면 자동으로 되살린다. crontab 에 ⑥ 줄을 넣으면 ②는 부팅 후
+자동으로도 뜬다(단, 최초 확인차 한 번은 손으로 ② 실행 권장).
+
+**④ 종료/주의**:
+- 종료 = `pkill -f 'uvicorn serve_api:app'`. (crontab ⑥ 줄이 켜져 있으면 5분 내 다시 뜨므로, 영구
+  중지하려면 ⑥ 줄을 먼저 주석 처리한다.)
+- `/brief`·`/bundle` 의 `generate=true` 는 Gemini 를 호출하므로 `.env` 의 `GEMINI_API_KEY` 가 필요
+  (없으면 저장본만 반환). 기본 `generate=false` 는 DB 저장본만 읽어 키 없이도 동작.
+- 인증 없음 + CORS 전체 허용(누구나 호출 가능) = 공개 전송이 목적이라 의도된 설정. 비공개가 필요하면
+  방화벽(ufw)으로 접근 IP 를 제한한다.
+- 4GB RAM: 이 API 는 DB 조회·직렬화뿐이라 가볍다(torch 로드 없음).
