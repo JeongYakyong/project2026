@@ -18,6 +18,17 @@ Streamlit(8단계)은 같은 서버에서 이 DB 를 로컬 파일로 직접 읽
 
 > **방향 정리(혼동 방지)**: 평소 **일일 수집 = 서버**(API 한도상 서버에서만, 서버 DB 가 원본). 반면 **모델·가중치를 바꿔 est_* 전체를 다시 만드는 재동기화 = 로컬**(무거운 백필을 약한 서버에서 못 돌리므로, 로컬에서 완성한 DB 를 서버로 올린다 — §8). 즉 raw 수집은 서버→로컬, 모델 갱신 반영은 로컬→서버.
 
+### 0.1 서버 구조 요약 (실측 2026-06-27)
+
+> 외부 IP 등 민감값은 여기 안 적는다 — 로컬 메모리 `server-setup` 참조.
+
+- 서버 = Linux Mint 22.3 노트북(사용자 `kimjourvanne`), 관리 접속은 Tailscale + LAN(SSH 공개 안 함).
+- **공개 접속은 Caddy(리버스 프록시)가 80/443 에서만 받는다.** 실제 앱은 전부 `127.0.0.1` 에만 묶이고 Caddy 가 도메인 경로로 연결한다. `/etc/caddy/Caddyfile`:
+  - `<도메인>/jeju*` → `localhost:8501` (옛 앱)
+  - `<도메인>/` (나머지 전부) → `localhost:8502` (project2026 streamlit)
+- **ufw active** — 80/443 만 외부 개방, 8501 은 직접 차단(Caddy 로만), SSH 는 LAN+Tailscale 만.
+- ★ **새 서비스를 외부에 노출할 땐 `ufw allow <포트>` 가 아니라 Caddyfile 에 라우트 한 줄을 추가한다**(앱은 localhost 에 띄움). 공유기도 80/443 만 포워딩하는 것으로 보여 raw 포트는 열어도 밖에서 닿지 않는다. → 외부 API(8800)도 `/api` 라우트로(§9).
+
 ## 1. 서버 사전 확인
 
 ```bash
@@ -232,24 +243,38 @@ cd ~/project2026
 .venv/bin/pip install fastapi uvicorn
 ```
 
-**② 기동** — 멱등 가드 wrapper 를 손으로 한 번 실행하면 백그라운드로 뜬다(끊어도 유지):
+**② 기동 — 이 서버는 `ufw allow` 가 아니라 Caddy 로 노출한다(★[[server-setup]] 실측).**
+공개 접속은 **Caddy(리버스 프록시)가 80/443 에서만** 받고, 앱은 전부 `127.0.0.1` 에만 묶인다(8501 옛
+앱·8502 우리 streamlit 모두). ufw 는 8501 을 직접 막아 두었고, 공유기도 80/443 만 포워딩하는 것으로
+보여 **raw 포트(8800)를 ufw 로 열어도 밖에서 닿지 않는다.** 그래서 API 도 localhost 에 띄우고 Caddy 로 잇는다.
+
+(가) API 를 localhost 에 띄운다(가드 wrapper, 끊어도 유지·이미 떠 있으면 그냥 넘어감):
 ```bash
-~/project2026/deploy/run_serve_api.sh
+SERVE_API_HOST=127.0.0.1 ~/project2026/deploy/run_serve_api.sh
 tail -20 ~/project2026/deploy/logs/serve_api_$(date +%Y%m).log   # "serve_api 기동(pid …)" 확인
 ```
-- 포트 = **8800**(streamlit 8502 와 분리). 외부 접속하려면 방화벽을 연다: `sudo ufw allow 8800`.
-- 접속(예, Tailscale): `http://100.76.127.38:8800/docs` · 묶음 호출 `…:8800/bundle?start=2026-06-26&days=1`.
-- 포트를 바꾸려면 `SERVE_API_PORT=9000 ~/project2026/deploy/run_serve_api.sh`.
+(나) `/etc/caddy/Caddyfile` 의 루트 `handle {}`(8502) **앞에** 한 줄 추가하고 reload:
+```
+    handle_path /api/* { reverse_proxy localhost:8800 }
+```
+```bash
+sudo systemctl reload caddy
+```
+→ 공개 URL = **`https://<도메인>/api/...`**(자동 HTTPS·ufw/공유기 변경 0). 묶음 호출 예:
+`https://<도메인>/api/bundle?start=2026-06-26&days=1`.
+- 포트(기본 8800)를 바꾸려면 `SERVE_API_PORT=9000 SERVE_API_HOST=127.0.0.1 …/run_serve_api.sh`.
+- ★ Swagger `/docs` 가 `/api` 아래서 깨지지 않으려면 serve_api 에 `root_path="/api"` 설정이 필요하다
+  (경로 접두사 처리). 단순 `/forecast`·`/bundle` 호출은 `handle_path` 가 접두사를 떼 주므로 그대로 동작.
 
-**③ 상시화(자동 복구)** — `crontab.example` ⑥ 줄(`*/5`)이 5분마다 가드를 호출한다: 떠 있으면 아무것도
-안 하고, 재부팅·크래시로 꺼져 있으면 자동으로 되살린다. crontab 에 ⑥ 줄을 넣으면 ②는 부팅 후
-자동으로도 뜬다(단, 최초 확인차 한 번은 손으로 ② 실행 권장).
+**③ 상시화(자동 복구)** — `crontab.example` ⑥ 줄(`*/5`)이 5분마다 점검한다: 떠 있으면 아무것도 안 하고,
+재부팅·크래시로 꺼져 있으면 자동으로 다시 띄운다. crontab 에 ⑥ 줄을 넣으면 부팅 뒤에도 자동으로 뜬다
+(단, 최초 확인차 한 번은 손으로 (가) 실행 권장). ⑥ 줄도 `SERVE_API_HOST=127.0.0.1` 로 띄운다.
 
 **④ 종료/주의**:
 - 종료 = `pkill -f 'uvicorn serve_api:app'`. (crontab ⑥ 줄이 켜져 있으면 5분 내 다시 뜨므로, 영구
   중지하려면 ⑥ 줄을 먼저 주석 처리한다.)
 - `/brief`·`/bundle` 의 `generate=true` 는 Gemini 를 호출하므로 `.env` 의 `GEMINI_API_KEY` 가 필요
   (없으면 저장본만 반환). 기본 `generate=false` 는 DB 저장본만 읽어 키 없이도 동작.
-- 인증 없음 + CORS 전체 허용(누구나 호출 가능) = 공개 전송이 목적이라 의도된 설정. 비공개가 필요하면
-  방화벽(ufw)으로 접근 IP 를 제한한다.
+- 인증 없음 + CORS 전체 허용 = 공개 전송이 목적이라 의도된 설정. 비공개가 필요하면 Caddy 라우트에
+  인증(`basic_auth`)을 걸거나 `/api` 라우트를 빼면 된다(ufw 가 아니라 Caddy 에서 막는다).
 - 4GB RAM: 이 API 는 DB 조회·직렬화뿐이라 가볍다(torch 로드 없음).
