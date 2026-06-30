@@ -23,6 +23,11 @@
 !1. data_fetcher_and_db/second_dataset/ppa_scale.csv
 !1. data_fetcher_and_db/second_dataset/한국가스공사_도시가스 민수용 일별 유효일수_20210901.csv
 !1. data_fetcher_and_db/second_dataset/한국가스공사_도시가스 산업용 일별 유효일수_20210901.csv
+# 제주 2·3단계 체인 서빙 런타임 참조 (serve_chain_jeju_new → est_horizon_jeju).
+# solarwind_raw_jeju.csv 는 training/ 에 있고 9.9MB 지만 serve 시 과거 피처 패널로 읽힌다 —
+# 빠지면 3단계(serve_solarwind_lgbm.load_assets)가 FileNotFoundError 로 죽어 체인이 안 올라간다.
+!2. jeju_demand_forecaster/data/jeju_ppa_btm_capacity_mw.csv
+!3. jeju_solarwind_forecaster/training/solarwind_raw_jeju.csv
 
 # ===== Submission / binary docs =====
 *.hwpx

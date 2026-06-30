@@ -23,12 +23,12 @@ INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
 BASEC, RULE = '#9aa0ac', '#d9dce3'              # 단순 기준 = 회색
 C_FILL = ACCENT                                  # 줄인 오차 영역 색
 
-TITLE    = '2주 앞을 내다봐도 오차가 완만하게만 늘어난다'
-SUBTITLE = '예측 거리별 오차율 — 우리 가스 모델 vs 단순 기준(1주 전 같은 시각 반복)'
-XLABEL   = '예측 거리 (며칠 뒤)'
-YLABEL   = '예측 오차율 MAPE (%)  ·  낮을수록 정확'
-LAB_MODEL = '우리 가스 모델'
-LAB_BASE  = '1주 전 같은 시각 (단순 기준)'
+TITLE    = '지평별 발전용 가스 예측모델 오차율'
+SUBTITLE = ''
+XLABEL   = '예측 거리 (지평)'
+YLABEL   = '예측 오차율 MAPE (%)'
+LAB_MODEL = '발전용 가스 예측모델'
+LAB_BASE  = '1주 전 같은 시각 (lag168h)'
 YMAX = 22
 # ======================================================================
 #  ▲▲▲  보통은 여기까지만 수정 ▲▲▲
@@ -95,11 +95,11 @@ ax.plot(H, tab.model, color=ACCENT, lw=3.0, marker='o', ms=5, label=LAB_MODEL,
 ax.annotate(f'하루 뒤 {tab.model[0]:.1f}%', xy=(1, tab.model[0]), xytext=(1.5, tab.model[0] - 3.6),
             fontsize=9.3, color=ACCENT, fontweight='bold', ha='left', va='center',
             arrowprops=dict(arrowstyle='->', color=ACCENT, lw=1.2))
-ax.annotate(f'2주 뒤에도 {tab.model.iloc[-1]:.1f}%', xy=(15, tab.model.iloc[-1]),
-            xytext=(11.4, tab.model.iloc[-1] + 3.2),
+ax.annotate(f'2주 뒤 {tab.model.iloc[-1]:.1f}%', xy=(15, tab.model.iloc[-1]),
+            xytext=(13.4, tab.model.iloc[-1] + 3.2),
             fontsize=9.3, color=ACCENT, fontweight='bold', ha='center', va='center',
             arrowprops=dict(arrowstyle='->', color=ACCENT, lw=1.2))
-ax.text(8, (tab.model[7] + tab.baseline[7]) / 2 + 0.3, '우리 모델이\n줄인 오차', fontsize=8.8,
+ax.text(8, (tab.model[7] + tab.baseline[7]) / 2 + 0.3, '모델이\n줄인 오차', fontsize=8.8,
         color=MUTED, ha='center', va='center')
 
 ax.set_xlim(0.5, 15.5); ax.set_ylim(0, YMAX)
@@ -107,14 +107,14 @@ ax.set_xticks(H); ax.set_xticklabels([f'D+{h}' for h in H], fontsize=8.8)
 ax.set_yticks(np.arange(0, YMAX + 1, 5))
 ax.set_xlabel(XLABEL, fontsize=10)
 ax.set_ylabel(YLABEL, fontsize=10)
-ax.set_title(TITLE, fontsize=14, fontweight='bold', color=INK, loc='left', pad=30)
-ax.text(0, 1.03, SUBTITLE, transform=ax.transAxes, fontsize=9.5, color=SOFT, ha='left')
+ax.set_title(TITLE, fontsize=14, fontweight='bold', color=INK, loc='center', pad=30)
+#ax.text(0, 1.03, SUBTITLE, transform=ax.transAxes, fontsize=9.5, color=SOFT, ha='left')
 ax.legend(loc='lower right', frameon=False, fontsize=9.3, handlelength=1.8)
 clean(ax)
-fig.text(0.012, 0.005,
-         f"정직 평가(학습에 안 쓴 {p0}~{p1} 기간으로 검증) · 전체 오차 {OV_m:.1f}% (단순 기준 {OV_b:.1f}%, 약 {imp:.0f}% 감소). "
-         f"가스는 수요·신재생을 뺀 '나머지'라 변동이 커, 수요(약 4%)보다 본질적으로 어렵습니다.",
-         fontsize=8.0, color=MUTED)
+#fig.text(0.012, 0.005,
+#         f"정직 평가(학습에 안 쓴 {p0}~{p1} 기간으로 검증) · 전체 오차 {OV_m:.1f}% (단순 기준 {OV_b:.1f}%, 약 {imp:.0f}% 감소). "
+#         f"가스는 수요·신재생을 뺀 '나머지'라 변동이 커, 수요(약 4%)보다 본질적으로 어렵습니다.",
+#         fontsize=8.0, color=MUTED)
 fig.subplots_adjust(top=0.82, bottom=0.18, left=0.09, right=0.97)
 _save(fig, os.path.join(HERE, 'step7_perf.png'))
 print('saved step7_perf.png')
