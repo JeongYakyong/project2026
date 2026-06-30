@@ -14,7 +14,10 @@ import brief_store as BS
 import gas_price_store as GP
 
 # 외부 전송 API(serve_api.py)의 공개 주소 — 시연 환경에 맞게 환경변수로 덮어쓴다.
-API_BASE_DEFAULT = os.environ.get("SERVE_API_PUBLIC_URL", "http://localhost:8800")
+# 외부에 보여줄 공개 주소(Caddy 가 이 도메인을 받아 내부 API 로 연결). 도메인 바뀌면 여기 또는 환경변수만 고친다.
+API_PUBLIC_DEFAULT = os.environ.get("SERVE_API_PUBLIC_URL", "https://gascast.gonetis.com/api")
+# 서버가 자기 자신을 점검·미리보기할 때 쓰는 내부 주소(공개 주소는 가정용 공유기 특성상 서버 자신이 못 부를 수 있음).
+API_LOCAL_URL = os.environ.get("SERVE_API_LOCAL_URL", "http://127.0.0.1:8800")
 
 C.page_header(
     "NATIONAL · DAILY BRIEFING", "가스 송출량 예측 브리핑",
@@ -1051,14 +1054,16 @@ def render_api():
         "같은 데이터를 자동으로 받아갈 수 있습니다.")
     st.caption("읽기 전용 — 우리 DB에 쌓인 예측·브리핑만 내보내며, 외부 수집(KMA/KPX)은 호출하지 않습니다.")
 
-    base = st.text_input("API 주소", value=API_BASE_DEFAULT, key="api_base",
-                         help="시연 환경의 공개 주소. 같은 서버에서 대시보드와 API가 함께 돕니다.").rstrip("/")
-    ok, detail = _api_health(base)
+    pub = st.text_input("API 공개 주소", value=API_PUBLIC_DEFAULT, key="api_base",
+                        help="외부에서 호출하는 주소입니다. Caddy 가 이 도메인을 받아 내부 API 로 연결합니다.").rstrip("/")
+    # 헬스 체크·미리보기는 서버 내부 주소(127.0.0.1)로 한다 — 공개 주소는 가정용 공유기 특성상
+    # 서버가 자기 자신을 못 불러 '꺼짐'으로 잘못 뜰 수 있다.
+    ok, _detail = _api_health(API_LOCAL_URL)
     if ok:
-        st.success(f"🟢 API 서버 응답 정상 — {base}/docs 에서 문서를 볼 수 있습니다.")
+        st.success(f"🟢 API 서버 응답 정상 — 문서: {pub}/docs")
     else:
-        st.info(f"⚪ 지금은 API 서버가 응답하지 않습니다 ({detail}). 아래 미리보기는 같은 데이터로 만든 "
-                "예시이며, 서버에서 API를 띄우면 실제 응답으로 바뀝니다.")
+        st.info("⚪ 지금은 API 서버가 응답하지 않습니다. 아래 미리보기는 같은 데이터로 만든 예시이며, "
+                "서버에서 API를 띄우면 실제 응답으로 바뀝니다.")
 
     st.markdown("**제공하는 주소(엔드포인트)**")
     st.dataframe(pd.DataFrame(_API_ENDPOINTS, columns=["주소", "무엇을", "내용"]),
@@ -1075,18 +1080,18 @@ def render_api():
         kind = c3.selectbox("브리핑 종류", ["overview", "sendout", "weather"], key="api_kind")
         sd = pd.Timestamp(sday)
 
-        st.caption(f"미리볼 호출:  `GET {base}/bundle?start={sd:%Y-%m-%d}&days={ndays}&kind={kind}`")
-        live = st.button("▶ 실제 API 서버로 호출", type="primary", key="api_call",
-                         help="8800 포트의 실제 API에 HTTP 요청을 보냅니다(서버가 떠 있을 때).")
+        st.caption(f"미리볼 호출:  `GET {pub}/bundle?start={sd:%Y-%m-%d}&days={ndays}&kind={kind}`")
+        live = st.button("▶ 실제 API 호출", type="primary", key="api_call",
+                         help="실제 API 서버에 HTTP 요청을 보냅니다(서버가 떠 있을 때).")
 
         payload, source = None, ""
         if live:
             try:
                 import requests
-                r = requests.get(f"{base}/bundle",
+                r = requests.get(f"{API_LOCAL_URL}/bundle",
                                  params={"start": sd.strftime("%Y-%m-%d"),
                                          "days": int(ndays), "kind": kind}, timeout=8)
-                st.write(f"응답 상태: **HTTP {r.status_code}**  ·  `{base}/bundle`")
+                st.write(f"응답 상태: **HTTP {r.status_code}**  ·  `{pub}/bundle`")
                 payload, source = r.json(), "실제 API 응답"
             except Exception as e:
                 st.warning(f"실제 호출 실패 ({type(e).__name__}) — 아래는 같은 데이터로 만든 예시입니다.")
@@ -1110,7 +1115,7 @@ def render_api():
         ex_start = pd.Timestamp(st.session_state.get("api_day", pd.Timestamp(hi).date())).strftime("%Y-%m-%d")
         ex_days = int(st.session_state.get("api_days", 1))
         ex_kind = st.session_state.get("api_kind", "overview")
-        qurl = f"{base}/bundle?start={ex_start}&days={ex_days}&kind={ex_kind}"
+        qurl = f"{pub}/bundle?start={ex_start}&days={ex_days}&kind={ex_kind}"
         st.markdown("위 '응답 미리보기'에서 고른 조건으로, 외부에서 호출하는 세 가지 방법입니다.")
         st.markdown("**1) 브라우저 주소창에 그대로**")
         st.code(qurl, language="text")
@@ -1118,14 +1123,14 @@ def render_api():
         st.code(f"curl '{qurl}'", language="bash")
         st.markdown("**3) 파이썬**")
         st.code("import requests\n"
-                f"r = requests.get('{base}/bundle', params={{\n"
+                f"r = requests.get('{pub}/bundle', params={{\n"
                 f"    'start': '{ex_start}', 'days': {ex_days}, 'kind': '{ex_kind}'}})\n"
                 "print(r.json())", language="python")
 
     with tab_doc:
         st.markdown("브라우저에서 각 주소를 직접 눌러 시험 호출해 볼 수 있는 **대화형 문서(Swagger)**입니다.")
-        st.link_button("API 문서 열기  ↗  /docs", f"{base}/docs", type="primary")
-        st.caption(f"{base}/docs — 화면에서 바로 호출해 응답을 확인할 수 있습니다(확산성 증거).")
+        st.link_button("API 문서 열기  ↗  /docs", f"{pub}/docs", type="primary")
+        st.caption(f"{pub}/docs — 화면에서 바로 호출해 응답을 확인할 수 있습니다(확산성 증거).")
 
 
 if menu == "종합":

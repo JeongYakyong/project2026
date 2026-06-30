@@ -399,6 +399,12 @@
 
 > 2026-06-21 이전 로그는 이관(무수정 보존): `docs/PROJECT_LOG.md`(~2026-06-07) · `docs/PROJECT_LOG2.md`(2026-06-08 ~ 06-21).
 
+**2026-06-30 — 외부 API 실제 배포 성공 + Swagger·streamlit 메뉴 정정 (8-D2)**
+- **공개 배포 성공**: `https://gascast.gonetis.com/api/bundle` 외부에서 JSON(예측 24h + AI 브리핑) 정상 응답 확인. Caddy `handle_path /api/* { reverse_proxy localhost:8800 }` + API 는 `127.0.0.1:8800`. 도메인 06-29 jejucr→gascast(DDNS) 변경 반영.
+- **Swagger(/api/docs) 정정**: 경로 접두사(/api) 아래서 openapi.json 을 못 찾아 "valid version field 없음" 오류 → `serve_api.py` 에 **`root_path=os.environ['SERVE_API_ROOT_PATH']`**(기본 빈값, 배포 시 `/api`) 추가. crontab ⑥·DEPLOY §9 에 `SERVE_API_ROOT_PATH=/api` 반영. ★데몬은 가드가 재기동 안 하므로 **`pkill -f 'uvicorn serve_api:app'` 후 환경변수 주고 재기동**해야 적용.
+- **streamlit '외부 연동' 메뉴 정정(사용자 지적: localhost 잘못 표시)**: 공개 주소(`API_PUBLIC_DEFAULT`=gascast/api, 화면 표시·예시·문서 링크)와 내부 점검 주소(`API_LOCAL_URL`=127.0.0.1:8800, 헬스·미리보기 호출)를 분리. 화면엔 localhost 안 보이고 gascast 만 노출. 헬스는 내부로 점검(공유기 hairpin 회피). 검증 AppTest(gascast 노출·localhost 미노출·예외0).
+- **남음**: 사용자 commit·push → 서버 pull → API 재기동(root_path)·streamlit 재기동.
+
 **2026-06-27 — 외부 전송 API(serve_api) 배포 준비물 작성 (8-D2, 'AI 활용 확산성')**
 - 배경: streamlit 서버가 안정적으로 돌고 cron 도 정상인 것을 확인한 뒤, "우리 결과(브리핑+예측데이터)를 외부에서 가져다 쓰게 하는 API"를 추가하려던 계획을 점검. **확인 결과 이미 만들어져 있었다** — 8-D 때 만든 `8. streamlit/serve_api.py`(FastAPI). 새로 만들 필요 없음.
 - **동작 확인(로컬)**: `fastapi 0.137.2 / uvicorn 0.49.0` 설치돼 있음. TestClient 로 `/forecast?start=2026-06-20&days=1` → 200·24행 정상, `/bundle`(예측 시계열 + 브리핑 한 번에) 정상. `use_live=False` 라 KPX/KMA 수집은 안 건드림. 엔드포인트 = `/forecast`·`/brief`·**`/bundle`**·`/briefings`·`/docs`. 전국(land)만.
@@ -409,7 +415,7 @@
 
 **2026-06-27 (이어서) — 배포 서버 네트워크·구조 실측 정리 + ufw 조언 정정**
 - 발단: 사용자가 "`ufw allow 8800` 이 맞냐, 너 내 서버 설정 아냐?"라고 물음. **몰랐다 — `DEPLOY.md §7`(streamlit 8502)의 조건부 ufw 문장을 포트만 바꿔 단정하듯 옮긴 것**. 솔직히 인정하고, 서버 실측을 받아 정리(`ss`·`ufw status`·`caddy`·Caddyfile·Tailscale, 사용자가 직접 조회).
-- **실측 결과(★메모리 [[server-setup]] 신설, 민감한 외부 IP 는 git 아닌 메모리에만)**: OS=Linux Mint 22.3 · 공개는 **Caddy v2.11.4 가 80/443 에서만** 받고 앱은 전부 `127.0.0.1` 에 묶임 · 도메인 **jejucr.gonetis.com**(루트→8502 project2026·`/jeju`→8501 옛 앱) · ufw active 인데 **8501 은 DENY**(Caddy 로만 접근)·공유기도 80/443 만 포워딩 추정. → **새 서비스는 `ufw allow` 가 아니라 Caddyfile 라우트 한 줄로 노출하는 게 정답**(raw 포트는 ufw 열어도 공유기에서 막혀 안 닿음). DDNS 는 ddclient 아님(방식 미확인). SSH 는 LAN+Tailscale 노드만.
+- **실측 결과(★메모리 [[server-setup]] 신설, 민감한 외부 IP 는 git 아닌 메모리에만)**: OS=Linux Mint 22.3 · 공개는 **Caddy v2.11.4 가 80/443 에서만** 받고 앱은 전부 `127.0.0.1` 에 묶임 · 도메인 **gascast.gonetis.com**(06-30 jejucr→gascast 변경, 루트→8502 project2026·`/jeju`→8501 별개 앱) · ufw active 인데 **8501 은 DENY**(Caddy 로만 접근)·공유기도 80/443 만 포워딩 추정. → **새 서비스는 `ufw allow` 가 아니라 Caddyfile 라우트 한 줄로 노출하는 게 정답**(raw 포트는 ufw 열어도 공유기에서 막혀 안 닿음). DDNS 는 ddclient 아님(방식 미확인). SSH 는 LAN+Tailscale 노드만.
 - **정정 반영**: `DEPLOY.md §9` ②(ufw→Caddy `handle_path /api/*`·API 는 `SERVE_API_HOST=127.0.0.1`)·`crontab.example` ⑥(ufw 줄 삭제·`SERVE_API_HOST=127.0.0.1` 추가)·위 8-D2·남음 줄. "멱등" 도 쉬운 말로 교체(사용자 강한 선호).
 - **★확인 필요(실측 이상)**: `ss` 에 **8502 에 떠 있는 프로세스가 없고** streamlit 은 `127.0.0.1:8501` 에만 있음. Caddy 는 루트(project2026)를 8502 로 보내는데 비어 있음 → project2026 streamlit 이 내려가 있거나 실제로 8501 에서 도는 것일 수 있음. 사용자 확인 대기.
 - **남은 정리(선택)**: serve_api 에 `root_path="/api"` 옵션(Swagger 가 `/api` 아래서 정상 동작하도록).
