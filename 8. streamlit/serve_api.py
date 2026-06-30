@@ -15,6 +15,7 @@ HTTP로 노출한다. 계산은 전부 기존 모듈(common·brief_ai·brief_sto
 
 주의: API는 use_live=False — DB만 읽고 KPX/KMA 수집은 절대 트리거하지 않는다(한도 보호).
 """
+import os
 import sys
 from pathlib import Path
 
@@ -28,7 +29,11 @@ import brief_store as store
 
 KINDS = ("overview", "sendout", "weather")
 
+# Caddy 등 리버스 프록시가 /api 경로 아래 둘 때 Swagger·openapi 가 깨지지 않게 root_path 설정.
+# 프록시 없이 직접 띄울 땐 빈 값 → 동작 변화 없음.  배포 시 = SERVE_API_ROOT_PATH=/api
+ROOT_PATH = os.environ.get("SERVE_API_ROOT_PATH", "")
 app = FastAPI(title="전국 가스 송출량 예측·AI 브리핑 API", version="0.1",
+              root_path=ROOT_PATH,
               description="서빙체인(수요→신재생→가스 송출) 예측과 AI 브리핑을 외부로 전송.")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])   # 다양한 환경에서 호출 가능하게

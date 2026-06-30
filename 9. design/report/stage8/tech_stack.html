@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8단계 · 기술 구성</title>
+<!-- 시스템 폰트(맑은 고딕) · 흰 배경 — 흰 문서 삽입용 -->
+<style>
+  :root{ --paper:#ffffff; --ink:#2d3142; --muted:#4f5d75; --soft:#7a8399;
+         --accent:#eb6c36; --rule:rgba(45,49,66,0.12); }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:#1a1a1a;
+        font-family:'Malgun Gothic','맑은 고딕',sans-serif;
+        display:flex; justify-content:center; padding:2rem 1rem; }
+  .wrap{width:100%; max-width:720px}
+  .eyebrow{font-size:8px; font-weight:600; letter-spacing:0.18em; text-transform:uppercase;
+           color:var(--accent); margin:0 0 0.4rem;}
+  h1{font-weight:700; font-size:1.6rem; margin:0 0 0.3rem; line-height:1.1;}
+  .sub{font-size:12.5px; color:#1a1a1a; margin:0 0 1rem; line-height:1.5;}
+  svg{width:100%; height:auto; display:block}
+  .note{font-size:11px; color:var(--muted); margin:0.6rem 0 0; line-height:1.4;}
+  footer{margin-top:1rem; padding-top:0.6rem; border-top:1px solid var(--rule);
+         font-size:8px; letter-spacing:0.12em; color:#1a1a1a; text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow" id="eyebrow"></p>
+  <h1 id="title"></h1>
+  <p class="sub" id="subtitle"></p>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="서비스 대시보드 기술 구성도"></svg>
+  <p class="note" id="note"></p>
+  <footer id="footer"></footer>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ▼▼▼  여기만 고치면 됩니다 — 좌표·화살표는 자동 계산됩니다  ▼▼▼          -->
+<!-- ====================================================================== -->
+<script>
+  const META = {
+    eyebrow:  "8단계 · 기술 구성",
+    title:    "서비스 대시보드 기술 구성",
+    subtitle: "미리 만들어 둔 예측 결과를 읽어, 대화형 그래프·기상 지도·AI 브리핑으로 보여주고, 공개 API로 다른 시스템에도 제공합니다.",
+    note:     "* 화면 기능(그래프·지도·AI 브리핑)은 Streamlit 대시보드 안에서 동작하고, 공개 API는 같은 예측 결과를 외부로 내보내는 별도 통로입니다.",
+    footer:   "8단계 서비스 대시보드 · 기술 구성 · 2026-06",
+  };
+
+  // 열(왼→오) · 각 열의 박스(위→아래). type: external | focal | data | model
+  const COLS = [
+    { head:"예측 데이터", boxes:[
+        { id:"db", n:"예측 결과 저장소", sub:["서버가 정해진 시각마다 채움", "가벼운 DB · SQLite · 읽기 전용"], type:"data" },
+    ]},
+    { head:"서비스 기술 (Streamlit 대시보드)", boxes:[
+        { id:"chart", n:"대화형 그래프", sub:["Plotly", "실측·예측 비교"], type:"model" },
+        { id:"map",   n:"기상 지도",     sub:["단계구분도 · Leaflet", "지역 경계 GeoJSON"], type:"model" },
+        { id:"brief", n:"AI 브리핑",     sub:["생성형 AI · Gemini", "숫자를 글로 요약"], type:"focal" },
+        { id:"api",   n:"공개 API",      sub:["FastAPI · JSON 응답", "자동 문서(Swagger)"], type:"model" },
+    ]},
+    { head:"전달받는 곳", boxes:[
+        { id:"user", n:"발전 사업자", sub:["웹 브라우저로 접속"], type:"model" },
+        { id:"ext",  n:"외부 시스템", sub:["API로 연동·활용"], type:"model" },
+    ]},
+  ];
+
+  // 화살표: [출발 id, 도착 id, 라벨(생략 가능)]
+  const EDGES = [
+    ["db","chart"], ["db","map"], ["db","brief"], ["db","api"],
+    ["chart","user"], ["map","user"], ["brief","user"], ["api","ext"],
+  ];
+
+  const LEGEND = [
+    { type:"focal", label:"핵심 — AI 브리핑" },
+    { type:"data",  label:"예측 데이터" },
+    { type:"model", label:"화면·연동 기술" },
+  ];
+  // ====================================================================== //
+  // ▲▲▲  보통은 여기까지만 수정하면 됩니다  ▲▲▲                              //
+  // ====================================================================== //
+
+
+  // ── 렌더링 엔진 (손댈 일 거의 없음) ───────────────────────
+  const T = { paper:'#ffffff', ink:'#2d3142', muted:'#4f5d75', soft:'#7a8399',
+              accent:'#eb6c36', accentTint:'rgba(235,108,54,0.08)',
+              rule:'rgba(45,49,66,0.12)', store:'rgba(45,49,66,0.05)',
+              ext:'rgba(45,49,66,0.03)', extStroke:'rgba(45,49,66,0.32)' };
+  const FONT = "'Malgun Gothic','맑은 고딕',sans-serif";
+  const TEXT = '#1a1a1a';
+  const STYLE = {
+    focal:    { fill:T.accentTint, stroke:T.accent },
+    data:     { fill:T.store,      stroke:T.muted  },
+    external: { fill:T.ext,        stroke:T.extStroke },
+    store:    { fill:T.store,      stroke:T.muted  },
+    model:    { fill:'#ffffff',    stroke:T.ink    },
+  };
+  const CFG = { nodeW:184, colGapX:64, padX:24, padTop:78, vGap:22, footPad:44 };
+
+  const esc = (s)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const t = (x,y,s,{size=12,col=TEXT,w=600,anc='middle',ls=0}={}) =>
+    `<text x="${x}" y="${y}" fill="${col}" font-size="${size}" font-weight="${w}" `+
+    `font-family="${FONT}" text-anchor="${anc}" letter-spacing="${ls}em">${esc(s)}</text>`;
+
+  function boxH(b){ const lines=(b.sub||[]).length; return 40 + lines*14; }
+
+  function build(){
+    const { nodeW, colGapX, padX, padTop, vGap, footPad } = CFG;
+    // 열별 높이
+    const colH = COLS.map(c => c.boxes.reduce((s,b)=>s+boxH(b),0) + (c.boxes.length-1)*vGap);
+    const maxColH = Math.max(...colH);
+    const vbW = padX*2 + COLS.length*nodeW + (COLS.length-1)*colGapX;
+    const legendY = padTop + maxColH + 30;
+    const vbH = legendY + footPad;
+
+    // 좌표 계산
+    const pos = {};   // id -> {x,y,w,h,cx,cy,left,right}
+    COLS.forEach((c,ci)=>{
+      const x = padX + ci*(nodeW+colGapX);
+      let y = padTop + (maxColH - colH[ci])/2;
+      c._headY = y - 14;  c._headX = x + nodeW/2;
+      c.boxes.forEach(b=>{
+        const h = boxH(b);
+        pos[b.id] = { x, y, w:nodeW, h, cx:x+nodeW/2, cy:y+h/2, left:x, right:x+nodeW };
+        b._h = h;
+        y += h + vGap;
+      });
+    });
+
+    let arrows='', labels='', boxes='', heads='';
+
+    // 화살표 (박스보다 먼저)
+    EDGES.forEach(([f,to,lab])=>{
+      const a=pos[f], b=pos[to]; if(!a||!b) return;
+      const x1=a.right, y1=a.cy, x2=b.left-4, y2=b.cy;
+      arrows += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${T.muted}" `+
+                `stroke-width="1" marker-end="url(#arrow)"/>`;
+      if(lab){ const mx=(x1+x2)/2, my=(y1+y2)/2, w=lab.length*9+10;
+        labels += `<rect x="${mx-w/2}" y="${my-9}" width="${w}" height="14" rx="2" fill="${T.paper}"/>`+
+                  t(mx,my+2,lab,{size:8.5,col:T.muted,w:600,ls:0.04}); }
+    });
+
+    // 열 제목
+    COLS.forEach(c=>{ heads += t(c._headX, c._headY, c.head,
+        {size:8.5,col:T.soft,w:600,ls:0.12}); });
+
+    // 박스
+    COLS.forEach(c=>c.boxes.forEach(b=>{
+      const p=pos[b.id], s=STYLE[b.type]||STYLE.model;
+      const hasSub=(b.sub||[]).length>0;
+      boxes += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${T.paper}"/>`+
+               `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="6" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`;
+      const ny = hasSub ? p.y+22 : p.cy+4;
+      boxes += t(p.cx, ny, b.n, {size:12.5,col:TEXT,w:700});
+      (b.sub||[]).forEach((ln,i)=>{ boxes += t(p.cx, p.y+38+i*14, ln, {size:10,col:T.muted,w:400}); });
+    }));
+
+    // 범례
+    let legend = `<line x1="${padX}" y1="${legendY}" x2="${vbW-padX}" y2="${legendY}" stroke="${T.rule}" stroke-width="0.8"/>`;
+    let lx=padX, ly=legendY+10;
+    LEGEND.forEach(it=>{ const s=STYLE[it.type]||STYLE.model;
+      legend += `<rect x="${lx}" y="${ly}" width="12" height="12" rx="2" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1"/>`+
+                t(lx+16, ly+10, it.label, {size:8.5,col:TEXT,w:500,anc:'start',ls:0.03});
+      lx += it.label.length*13 + 40; });
+
+    const svg=document.getElementById('diagram');
+    svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+    svg.innerHTML =
+      `<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">`+
+      `<polygon points="0 0, 8 3, 0 6" fill="${T.muted}"/></marker></defs>`+
+      `<rect width="100%" height="100%" fill="${T.paper}"/>`+
+      arrows + labels + heads + boxes + legend;
+
+    document.getElementById('eyebrow').textContent  = META.eyebrow;
+    document.getElementById('title').textContent    = META.title;
+    document.getElementById('subtitle').textContent = META.subtitle;
+    document.getElementById('note').textContent     = META.note;
+    document.getElementById('footer').textContent   = META.footer;
+  }
+  build();
+</script>
+</body>
+</html>

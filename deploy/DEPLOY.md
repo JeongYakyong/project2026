@@ -248,10 +248,12 @@ cd ~/project2026
 앱·8502 우리 streamlit 모두). ufw 는 8501 을 직접 막아 두었고, 공유기도 80/443 만 포워딩하는 것으로
 보여 **raw 포트(8800)를 ufw 로 열어도 밖에서 닿지 않는다.** 그래서 API 도 localhost 에 띄우고 Caddy 로 잇는다.
 
-(가) API 를 localhost 에 띄운다(가드 wrapper, 끊어도 유지·이미 떠 있으면 그냥 넘어감):
+(가) API 를 localhost 에 띄운다(가드 wrapper, 끊어도 유지·이미 떠 있으면 그냥 넘어감).
+`SERVE_API_ROOT_PATH=/api` 는 Caddy 가 `/api` 아래 둘 때 Swagger·openapi 가 안 깨지게 한다:
 ```bash
-SERVE_API_HOST=127.0.0.1 ~/project2026/deploy/run_serve_api.sh
+SERVE_API_ROOT_PATH=/api SERVE_API_HOST=127.0.0.1 ~/project2026/deploy/run_serve_api.sh
 tail -20 ~/project2026/deploy/logs/serve_api_$(date +%Y%m).log   # "serve_api 기동(pid …)" 확인
+curl -s 127.0.0.1:8800/ ; echo                                  # 서버 자기확인(localhost 는 여기서만 의미)
 ```
 (나) `/etc/caddy/Caddyfile` 의 루트 `handle {}`(8502) **앞에** 한 줄 추가하고 reload:
 ```
