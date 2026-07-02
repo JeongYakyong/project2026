@@ -234,8 +234,8 @@ sqlite3 ~/project2026/"1. data_fetcher_and_db"/data/input_data_land.db \
 한 번 돌고 끝나는 다른 cron 작업과 띄우는 방식이 다르다. 전국(land)만 대상. DB만 읽고 수집은
 절대 트리거하지 않는다(`use_live=False`).
 
-**엔드포인트**: `GET /forecast`(예측 시계열) · `GET /brief`(AI 브리핑) · **`GET /bundle`(둘을 한 번에)** ·
-`GET /briefings`(목록) · `GET /docs`(Swagger UI — 확산성 증거).
+**엔드포인트**: `GET /forecast`(예측 시계열) · **`GET /chart`(예측을 인터랙티브 차트 HTML 로 바로 제공)** ·
+`GET /brief`(AI 브리핑) · **`GET /bundle`(예측+브리핑 한 번에)** · `GET /briefings`(목록) · `GET /docs`(Swagger UI).
 
 **① 의존성** (서빙 venv 에 추가 — streamlit/torch 등은 §7 에서 이미 설치됨):
 ```bash

@@ -6,6 +6,7 @@ HTTP로 노출한다. 계산은 전부 기존 모듈(common·brief_ai·brief_sto
 
 엔드포인트:
   GET /forecast?start=YYYY-MM-DD&days=N      서빙체인 시계열(수요·신재생·가스발전·송출 TON)
+  GET /chart?start=&days=                    ★ 예측을 인터랙티브 차트(HTML)로 바로 제공
   GET /brief?start=&days=&kind=&generate=    저장된 AI 브리핑(없으면 generate=true로 생성·저장)
   GET /bundle?start=&days=&kind=&generate=   ★ 시계열 + 브리핑 텍스트를 한 번에 전송
   GET /briefings                             저장된 브리핑 목록
@@ -22,6 +23,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import brief_ai
@@ -54,7 +56,7 @@ def _series_records(sd: pd.Timestamp, days: int) -> list[dict]:
 @app.get("/")
 def root():
     return {"service": "gas-sendout-forecast + ai-brief",
-            "endpoints": ["/forecast", "/brief", "/bundle", "/briefings", "/docs"],
+            "endpoints": ["/forecast", "/chart", "/brief", "/bundle", "/briefings", "/docs"],
             "kinds": list(KINDS)}
 
 
@@ -68,6 +70,37 @@ def forecast(start: str | None = Query(None, description="시작일 YYYY-MM-DD(�
             "fields": ["timestamp", "horizon_d", "demand_mw", "renew_mw",
                        "gas_gen_mw", "sendout_ton"],
             "n_rows": len(recs), "series": recs}
+
+
+@app.get("/chart", response_class=HTMLResponse)
+def chart(start: str | None = Query(None, description="시작일 YYYY-MM-DD(기본 오늘)"),
+          days: int = Query(1, ge=1, le=15, description="시작일부터 N일")):
+    """예측 시계열을 인터랙티브 차트(HTML)로 바로 제공 — 링크만 열면 그림이 뜬다.
+
+    데이터(/forecast)와 같은 값을 plotly 로 그린다. 브라우저가 렌더하므로 한글 폰트 문제 없음.
+    """
+    import plotly.graph_objects as go   # lazy — 다른 엔드포인트는 plotly 없이도 동작
+    sd = _resolve(start)
+    ser = brief_ai.forecast_series(sd, days, use_live=False)
+    if ser.empty or ser["sendout_ton"].dropna().empty:   # 행은 있어도 값이 전부 비면 404
+        raise HTTPException(404, f"{sd:%Y-%m-%d} 예측이 적재 범위에 없습니다.")
+
+    fig = go.Figure()
+    fig.add_scatter(x=ser["timestamp"], y=ser["sendout_ton"], name="가스 송출 (TON/h)",
+                    line=dict(color="#c2410c", width=2.4))
+    fig.add_scatter(x=ser["timestamp"], y=ser["demand_mw"], name="전력수요 (MW)",
+                    line=dict(color="#1d4ed8", width=1.6, dash="dot"), yaxis="y2")
+    fig.add_scatter(x=ser["timestamp"], y=ser["renew_mw"], name="신재생 (MW)",
+                    line=dict(color="#059669", width=1.6, dash="dot"), yaxis="y2")
+    fig.update_layout(
+        title=f"전국 가스 송출량 예측 · {sd:%Y-%m-%d} 부터 {days}일",
+        xaxis=dict(title="시각"),
+        yaxis=dict(title="가스 송출 (TON/h)"),
+        yaxis2=dict(title="전력수요·신재생 (MW)", overlaying="y", side="right", showgrid=False),
+        legend=dict(orientation="h", y=1.1, x=0),
+        template="plotly_white", height=560, margin=dict(t=80, r=70, l=70, b=50),
+        hovermode="x unified")
+    return fig.to_html(include_plotlyjs="cdn", full_html=True)
 
 
 def _make_brief(sd: pd.Timestamp, start: str, days: int, kind: str) -> dict:

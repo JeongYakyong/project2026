@@ -23,7 +23,7 @@ INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
 BASEC, RULE = '#9aa0ac', '#d9dce3'              # 단순 기준 = 회색
 C_FILL = ACCENT                                  # 줄인 오차 영역 색
 
-TITLE    = '지평별 발전용 가스 예측모델 오차율'
+TITLE    = '지평별 발전용 가스 예측모델 평균 오차율'
 SUBTITLE = ''
 XLABEL   = '예측 거리 (지평)'
 YLABEL   = '예측 오차율 MAPE (%)'

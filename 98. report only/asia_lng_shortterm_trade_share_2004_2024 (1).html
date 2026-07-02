@@ -1,13 +1,13 @@
 <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; font-size: 12px; color: var(--color-text-secondary);">
-  <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #185FA5;"></span>한국</span>
-  <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #BA7517; border-top: 2px dashed #BA7517;"></span>일본</span>
-  <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #993C1D;"></span>중국</span>
-  <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 8px; background: #C0DD97; border-radius: 2px;"></span>아시아 전체 단기거래량(천톤, 우축)</span>
+<span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #185FA5;"></span>한국</span>
+<span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #E6A23C;"></span>일본</span>
+<span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 3px; background: #D90011;"></span>중국</span>
+  <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 14px; height: 8px; background: #C0DD97; border-radius: 2px;"></span>아시아 전체 단기거래량</span>
 </div>
 <div style="position: relative; width: 100%; height: 340px;">
   <canvas id="ltChart" role="img" aria-label="2004년부터 2024년까지 한국, 일본, 중국의 LNG 단기거래 비중 추이와 아시아 전체 단기거래 물량. 한국 비중은 약 10%에서 37%로, 중국은 0%에서 34%로 상승. 전체 물량은 약 13,774천톤에서 144,400천톤으로 약 10배 증가.">2004-2024 아시아 LNG 단기거래 비중 및 물량 추이</canvas>
 </div>
-<p style="margin: 10px 0 0; font-size: 13px; color: var(--color-text-secondary); text-align: center;">아시아 전체 단기거래량: 2004년 13,774천톤 → 2024년 144,400천톤 <span style="color: var(--color-text-primary);">(약 10.5배 증가)</span></p>
+<p style="margin: 10px 0 0; font-size: 13px; color: var(--color-text-secondary); text-align: center;">아시아 LNG 시장 단기거래량의 변화 : 2004년 13,774 천톤 → 2024년 144,400 천톤<span style="color: var(--color-text-primary);">(약 10.5배 증가)</span></p>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 const yrs=[2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024];
@@ -19,8 +19,8 @@ new Chart(document.getElementById('ltChart'),{
   data:{labels:yrs,datasets:[
     {type:'bar',label:'아시아 전체 단기거래량',data:tot,yAxisID:'y1',backgroundColor:'rgba(192,221,151,0.55)',borderColor:'#97C459',borderWidth:0.5,order:3},
     {type:'line',label:'한국',data:kr,yAxisID:'y',borderColor:'#185FA5',backgroundColor:'#185FA5',borderWidth:2.5,tension:0.25,pointRadius:2,order:1},
-    {type:'line',label:'일본',data:jp,yAxisID:'y',borderColor:'#BA7517',backgroundColor:'#BA7517',borderWidth:2,borderDash:[6,4],tension:0.25,pointRadius:2,order:1},
-    {type:'line',label:'중국',data:cn,yAxisID:'y',borderColor:'#993C1D',backgroundColor:'#993C1D',borderWidth:2,tension:0.25,pointRadius:2,pointStyle:'rectRot',order:1}
+    {type:'line',label:'일본',data:jp,yAxisID:'y',borderColor:'#E6A23C',backgroundColor:'#E6A23C',borderWidth:2,tension:0.25,pointRadius:2,order:1},
+    {type:'line',label:'중국',data:cn,yAxisID:'y',borderColor:'#D90011',backgroundColor:'#D90011',borderWidth:2,tension:0.25,pointRadius:2,pointStyle:'rectRot',order:1}
   ]},
   options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
     plugins:{legend:{display:false},tooltip:{callbacks:{label:(c)=>c.dataset.yAxisID==='y1'?`${c.dataset.label}: ${Math.round(c.parsed.y).toLocaleString()}천톤`:`${c.dataset.label}: ${c.parsed.y.toFixed(1)}%`}}},

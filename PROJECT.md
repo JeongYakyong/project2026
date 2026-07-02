@@ -403,7 +403,8 @@
 - **공개 배포 성공**: `https://gascast.gonetis.com/api/bundle` 외부에서 JSON(예측 24h + AI 브리핑) 정상 응답 확인. Caddy `handle_path /api/* { reverse_proxy localhost:8800 }` + API 는 `127.0.0.1:8800`. 도메인 06-29 jejucr→gascast(DDNS) 변경 반영.
 - **Swagger(/api/docs) 정정**: 경로 접두사(/api) 아래서 openapi.json 을 못 찾아 "valid version field 없음" 오류 → `serve_api.py` 에 **`root_path=os.environ['SERVE_API_ROOT_PATH']`**(기본 빈값, 배포 시 `/api`) 추가. crontab ⑥·DEPLOY §9 에 `SERVE_API_ROOT_PATH=/api` 반영. ★데몬은 가드가 재기동 안 하므로 **`pkill -f 'uvicorn serve_api:app'` 후 환경변수 주고 재기동**해야 적용.
 - **streamlit '외부 연동' 메뉴 정정(사용자 지적: localhost 잘못 표시)**: 공개 주소(`API_PUBLIC_DEFAULT`=gascast/api, 화면 표시·예시·문서 링크)와 내부 점검 주소(`API_LOCAL_URL`=127.0.0.1:8800, 헬스·미리보기 호출)를 분리. 화면엔 localhost 안 보이고 gascast 만 노출. 헬스는 내부로 점검(공유기 hairpin 회피). 검증 AppTest(gascast 노출·localhost 미노출·예외0).
-- **남음**: 사용자 commit·push → 서버 pull → API 재기동(root_path)·streamlit 재기동.
+- **`/chart` 엔드포인트 추가(시각화 API)**: `GET /api/chart?start=&days=` → `forecast_series` 를 plotly 인터랙티브 차트(가스송출 TON/h + 수요·신재생 MW 보조축)로 그려 **HTML 로 바로 반환**(`fig.to_html(include_plotlyjs='cdn')`). 새 의존성 0(plotly 이미 있음)·브라우저 렌더라 한글 폰트 무관·plotly lazy import. 값 없으면 404. streamlit '외부 연동' 메뉴에도 노출(엔드포인트 표 + 차트 열기 버튼). 검증 TestClient(200/404·HTML·plotly div)·AppTest. "데이터뿐 아니라 그림까지 바로 가져다 쓴다"=확산성 강화.
+- **남음**: 사용자 commit·push → 서버 pull → API 재기동(root_path·`pkill` 먼저)·streamlit 재기동.
 
 **2026-06-27 — 외부 전송 API(serve_api) 배포 준비물 작성 (8-D2, 'AI 활용 확산성')**
 - 배경: streamlit 서버가 안정적으로 돌고 cron 도 정상인 것을 확인한 뒤, "우리 결과(브리핑+예측데이터)를 외부에서 가져다 쓰게 하는 API"를 추가하려던 계획을 점검. **확인 결과 이미 만들어져 있었다** — 8-D 때 만든 `8. streamlit/serve_api.py`(FastAPI). 새로 만들 필요 없음.

@@ -54,7 +54,7 @@ for y in YEARS2:
 ax[0].axvspan(NOON[0] - 0.5, NOON[1] + 0.5, color='#fff2cc', zorder=0)
 ax[0].axvspan(DAWN[0] - 0.5, DAWN[1] + 0.5, color='#e8f0fe', zorder=0)
 ax[0].axhline(100, color='k', lw=0.5, ls=':')
-ax[0].set_title('4·5월 시간별 전력 수요 (일평균=100%)')
+ax[0].set_title('① 4·5월 시간별 전력 수요 (일평균=100%)')
 ax[0].set_xlabel('시각'); ax[0].set_ylabel('일평균 대비 %'); ax[0].set_xticks(range(0, 24, 3))
 ax[0].axhline(91.5, color='k', lw=1, ls=':')
 ax[0].legend(title='연도', fontsize=9);
@@ -82,7 +82,7 @@ for off, vals, lab in [(-w / 2, apr, '4월'), (w / 2, may, '5월')]:
    
 ax[1].axhline(0, color='k', lw=0.9)
 ax[1].set_xticks(x); ax[1].set_xticklabels([str(y) for y in YEARS])
-ax[1].set_title('4월·5월 낮 수요 - 새벽 수요')
+ax[1].set_title('② 4월·5월 낮 수요 - 새벽 수요')
 ax[1].set_ylabel('MW')
 ax[1].legend(loc='lower left', fontsize=10)
 #ax[1].annotate('4월 = 2025년부터 역전 · 5월 = 2026년 역전  (한낮 < 새벽 = 덕커브)',

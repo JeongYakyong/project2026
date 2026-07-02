@@ -19,15 +19,15 @@ INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
 BASEC, RULE = '#3b6ea5', '#d9dce3'
 
 # 오른쪽 패널 라벨
-R_TITLE   = "하루 전 예측은 ‘전력거래소’보다 정확하다"
+R_TITLE   = "모델의 높은 봄철 하루 뒤(D+1) 예측정확도"
 R_SUB     = "{0} D+1 예측 오차율"
 #— 서비스 제공 모델 vs 전력거래소 하루 전 예측"
 R_BARLAB  = ['전력거래소\n하루 전 예측', '서비스 제공 모델\n(하루 전)']
 R_REDTEXT = "오차\n절반 이하"
 
 # 왼쪽 패널 라벨 (기존 이미지 #1 그대로)
-L_TITLE = "어느 지평에서나 ‘1주 전 패턴’보다 정확하다"
-L_SUB   = ""
+L_TITLE = "예측거리(지평)별 모델의 예측 오차율(MAPE) 변화"
+L_SUB   = "모든 지평에서 모델이 일주일 전 동 시간값 대비 우세"
 #"예측 거리별 오차율 — 서비스 제공 모델 vs 단순 기준(baseline)"
 # ════════════════════════════════════════════════════════════════════
 # ▲▲▲ 보통은 여기까지만 ▲▲▲
@@ -81,7 +81,7 @@ print('%s D+1  n=%d  전력거래소=%.2f%%  대비=%.2f%%  (%.0f%% 감소)' % (
 # ── 왼쪽 패널 그리기 함수 (기존 이미지 #1 재현) ─────────────────────────
 def draw_left(ax):
     ax.fill_between(H, tab.model, tab.baseline, color=ACCENT, alpha=0.07, zorder=1)
-    ax.plot(H, tab.baseline, color=BASEC, lw=2.2, marker='o', ms=4.2, label='1주 전 같은 시각 (단순 기준)',
+    ax.plot(H, tab.baseline, color=BASEC, lw=2.2, marker='o', ms=4.2, label='일주일 전 동 시간값(Baseline)',
             markeredgecolor='white', markeredgewidth=0.6, zorder=3)
     ax.plot(H, tab.model, color=ACCENT, lw=2.8, marker='o', ms=4.6, label='서비스 제공 모델 (PatchTST기반)',
             markeredgecolor='white', markeredgewidth=0.6, zorder=4)
@@ -93,10 +93,10 @@ def draw_left(ax):
             color=MUTED, ha='center', va='center')
     ax.set_xlim(0.5, 15.5); ax.set_ylim(0, 6.6)
     ax.set_xticks(H); ax.set_xticklabels([f'D+{x}' for x in H], fontsize=9.6, color=INK)
-    ax.set_xlabel('예측 거리 (며칠 뒤)', fontsize=11, fontweight='bold')
+    ax.set_xlabel('예측 거리(지평)', fontsize=11, fontweight='bold')
     ax.set_ylabel('예측 오차율 MAPE (%)', fontsize=11, fontweight ='bold')
     ax.set_title(L_TITLE, fontsize=12.5, fontweight='bold', color=INK, loc='center', pad=26)
-    ax.text(0, 1.035, L_SUB, transform=ax.transAxes, fontsize=8.8, color=SOFT, ha='left')
+    ax.text(0.5, 1.035, L_SUB, transform=ax.transAxes, fontsize=8.8, color=SOFT, ha='center')
     ax.legend(loc='lower right', frameon=False, fontsize=8.4, handlelength=1.7)
     clean(ax)
     ax.set_axisbelow(True)

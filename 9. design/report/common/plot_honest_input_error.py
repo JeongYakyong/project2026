@@ -16,11 +16,12 @@ STATIONS = ['daegwallyeong', 'wonju', 'seosan', 'pohang', 'yeonggwang']
 INK, MUTED, SOFT, ACCENT = '#2d3142', '#4f5d75', '#7a8399', '#eb6c36'
 BASEC, RULE = '#3b6ea5', '#d9dce3'
 
-TITLE  = "먼 미래일수록 '입력 날씨'부터 틀린다 — 그 오차까지 떠안고 평가한다"
-SUB    = "모델에 넣는 예보 기온이 실제와 얼마나 다른가 (전국 5개 지점 평균)"
+TITLE  = "오차의 전파 - 먼 미래일수록 오차가 커진다"
+SUB    = ""
+#모델에 넣는 예보 기온이 실제와 얼마나 다른가 (전국 5개 지점 평균)
 YLAB   = "예보 기온의 평균 오차 (°C)"
-BASELABEL = "대부분의 연구가 가정하는 입력\n완벽한 실측 = 오차 0"
-OURLABEL  = "우리가 그대로 떠안는\n예보 입력 오차"
+BASELABEL = "실측 기온을 기준으로 오차 비교"
+OURLABEL  = "지평이 길어질수록\n예보 입력 오차는 확대"
 # ════════════════════════════════════════════════════════════════════
 # ▲▲▲ 보통은 여기까지만 ▲▲▲
 # ════════════════════════════════════════════════════════════════════
@@ -58,7 +59,7 @@ pd.DataFrame({'horizon': H, 'temp_mae_degC': y}).to_csv(os.path.join(HERE, 'hone
 print('D+1=%.2f°C  D+%d=%.2f°C' % (y[0], HMAX, y[-1]))
 
 # ── 그림 ─────────────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(8.2, 4.7))
+fig, ax = plt.subplots(figsize=(6.0, 4.7))
 ax.fill_between(H, 0, y, color=ACCENT, alpha=0.09, zorder=1)
 ax.axhline(0, color=BASEC, lw=2.2, zorder=2)
 ax.plot(H, y, color=ACCENT, lw=3.0, marker='o', ms=5, markeredgecolor='white',
@@ -70,16 +71,16 @@ ax.text(7.5, 0.18, BASELABEL, fontsize=9.2, color=BASEC, ha='center', va='bottom
 ax.text(10.6, 1.7, OURLABEL, fontsize=9.6, color=ACCENT, ha='center', va='center', fontweight='bold')
 
 # 양 끝 값 강조
-ax.annotate(f'D+1 부터 이미\n{y[0]:.1f}°C 틀림', xy=(1, y[0]), xytext=(2.3, 3.4),
+ax.annotate(f'D+1 {y[0]:.1f}°C 의 오차', xy=(1, y[0]), xytext=(1.8, 3.4),
             fontsize=9.0, color=INK, fontweight='bold', ha='left', va='center',
             arrowprops=dict(arrowstyle='->', color=INK, lw=1.2))
-ax.annotate(f'D+{HMAX} 에는\n{y[-1]:.1f}°C', xy=(HMAX, y[-1]), xytext=(HMAX-0.2, y[-1]+0.9),
+ax.annotate(f'D+{HMAX} \n{y[-1]:.1f}°C 오차', xy=(HMAX, y[0]), xytext=(HMAX-0.5, y[-1]+0.2),
             fontsize=9.6, color=ACCENT, fontweight='bold', ha='center', va='bottom')
 
 ax.set_xlim(0.5, HMAX + 0.6)
 ax.set_ylim(0, max(y) * 1.28)
 ax.set_xticks(H); ax.set_xticklabels([f'D+{h}' for h in H], fontsize=9.6, color=INK)
-ax.set_xlabel('예측 거리 (며칠 뒤)', fontsize=11, fontweight='bold')
+ax.set_xlabel('예측 거리 (지평)', fontsize=11, fontweight='bold')
 ax.set_ylabel(YLAB, fontsize=11, fontweight='bold')
 ax.set_title(TITLE, fontsize=13, fontweight='bold', color=INK, loc='left', pad=28)
 ax.text(0, 1.04, SUB, transform=ax.transAxes, fontsize=9.6, color=MUTED, ha='left')

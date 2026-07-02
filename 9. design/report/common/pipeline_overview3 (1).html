@@ -58,12 +58,12 @@
   //   step = 동그라미에 들어갈 번호("" 면 점만)  /  n = 이름  /  sub = 작은 설명
   //   type = focal(공통·주황) | model(예측 모델) | infra(데이터·서비스)
   const NODES = [
-    { step:"1", n:"데이터 정리 및 분석",      sub:"정리 · EDA · 상관관계 도출",        type:"focal" },
-    { step:"2", n:"데이터 수집기",    sub:"공공 API 수집 · 처리 · 관리", type:"model" },
-    { step:"3", n:"전력수요 예측",    sub:"전국 전력수요 모델",          type:"model" },
-    { step:"4", n:"신재생 발전 예측", sub:"발전량 → 순부하(net_load) 산출", type:"model" },
-    { step:"5", n:"천연가스 수요 예측", sub:"발전용 가스 + 송출량",       type:"model" },
-    { step:"6", n:"서비스 대시보드",  sub:"시각화 · AI 브리핑 · API",    type:"model" },
+    { step:"공통", n:"데이터 정리 및 분석",      sub:"정리 · EDA · 상관관계 도출",        type:"focal" },
+    { step:"1", n:"데이터 수집기",    sub:"공공 API 수집 · 처리 · 관리", type:"model" },
+    { step:"2", n:"전력수요 예측",    sub:"전국 전력수요 모델",          type:"model" },
+    { step:"3", n:"신재생 발전 예측", sub:"발전량 → 순부하(net_load) 산출", type:"model" },
+    { step:"4", n:"천연가스 수요 예측", sub:"발전용 가스 + 송출량",       type:"model" },
+    { step:"5", n:"서비스 대시보드",  sub:"시각화 · AI 브리핑 · API",    type:"model" },
   ];
 
   // ── 3) 노드 사이 화살표 라벨 (노드 수 - 1 개) ──────────────
