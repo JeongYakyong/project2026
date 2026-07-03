@@ -883,7 +883,7 @@ def add_forecast(fig: go.Figure, ts, y, name: str, color: str, **kw):
 
 
 def land_forecast_origin(day: pd.Timestamp) -> str | None:
-    """선택일 24h 예측의 발행 시각(base)·지평 라벨 — mode='latest'. '발행 MM-DD HH시 (D+k)' 또는 None.
+    """선택일 24h 예측의 발행 시각(base)·지평 라벨 — mode='latest'. 'MM-DD HH시 (D+k)' 또는 None.
 
     하루는 보통 한 발행본이라 대표(최빈) base 를 쓴다. est_horizon_land 직접 조회(KPX live 무관).
     """
@@ -896,7 +896,7 @@ def land_forecast_origin(day: pd.Timestamp) -> str | None:
     top = base_s.mode().iloc[0]
     hzs = df.loc[df["base"] == top, "horizon_d"].dropna()
     htxt = f" (D+{int(hzs.iloc[0])})" if not hzs.empty else ""
-    return f"발행 {pd.Timestamp(top):%m-%d %H시}{htxt}"
+    return f"{pd.Timestamp(top):%m-%d %H시}{htxt}"
 
 
 def hz_hover(df: pd.DataFrame):
@@ -1069,12 +1069,13 @@ def help_expander(md: str, title: str = "도움말"):
 
 
 def page_header(eyebrow: str, title: str, sub: str, chain: list[tuple[str, str]]):
-    """페이지 헤더 — eyebrow + 제목 + 체인 pill(점 색 = 차트 COLOR 규약과 동일)."""
+    """페이지 헤더 — eyebrow + 제목 + 체인 pill(점 색 = 차트 COLOR 규약과 동일). sub 빈 문자열이면 생략."""
     steps = '<span class="bf-arrow">→</span>'.join(
         f'<span class="bf-step"><i style="background:{c}"></i>{label}</span>'
         for label, c in chain)
+    sub_html = f'<div class="bf-sub">{sub}</div>' if sub else ""
     st.markdown(
         f'<div class="bf-head"><div class="bf-eyebrow">{eyebrow}</div>'
         f'<div class="bf-titlerow"><div class="bf-title">{title}</div>'
         f'<div class="bf-chain">{steps}</div></div>'
-        f'<div class="bf-sub">{sub}</div></div>', unsafe_allow_html=True)
+        f'{sub_html}</div>', unsafe_allow_html=True)

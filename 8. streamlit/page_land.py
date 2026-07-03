@@ -19,11 +19,26 @@ API_PUBLIC_DEFAULT = os.environ.get("SERVE_API_PUBLIC_URL", "https://gascast.gon
 API_LOCAL_URL = os.environ.get("SERVE_API_LOCAL_URL", "http://127.0.0.1:8800")
 
 C.page_header(
-    "GASCAST · 전국", "국가 가스수급 예측 플랫폼",
-    "전력수요·신재생발전·가스 송출량을 D+15까지 예측합니다",
+    "GASCAST · 전국", "국가 가스수급 예측 플랫폼", "",
     [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
      ("순 부하", C.COLOR["net_load"]), ("가스", C.COLOR["gas"])])
 menu = st.sidebar.radio("메뉴", ["수급 예측", "예측 검증", "데이터 현황", "외부 연동", "관리자메뉴"])
+
+
+# 예측 제공 범위 일시 축소 안내 — 세션당 1회 팝업
+@st.dialog("예측 제공 범위 안내")
+def _horizon_notice():
+    st.markdown(
+        "기상청 수치예보 제공 사정으로 **2026-06-14부터** 예측 제공 범위가 "
+        "**D+15 → D+12**로 일시 축소되었습니다.\n\n"
+        "기상청 제공이 복구되면 별도 조치 없이 D+15까지 자동으로 다시 확대됩니다.")
+    if st.button("확인", type="primary", width="stretch"):
+        st.rerun()
+
+
+if not st.session_state.get("hz_notice_seen"):
+    st.session_state["hz_notice_seen"] = True
+    _horizon_notice()
 
 TODAY = pd.Timestamp.now().normalize()
 ORIGIN = TODAY - pd.Timedelta(days=1)  # 어제 23:00 발행 가정(사전 적재)
@@ -43,7 +58,7 @@ def missing_forecast_block(day: pd.Timestamp, key: str):
 def render_forecast_check():
     """예측 확인 탭 — 선택일 24시간 예측(가스 중심) + 수요 실측. 기본 = 오늘."""
     day, _, cap = C.day_navigator("fchk")
-    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
+    mode, value = "latest", None
 
     df = C.land_day_compare(day, mode=mode, value=value)
     if df["est_gas_gen_land"].isna().all():
@@ -52,7 +67,8 @@ def render_forecast_check():
 
     render_series_compare(df, prefix="fchk", gear_col=cap)
     origin = C.land_forecast_origin(day)
-    st.caption(f"표시 기준: {day:%Y-%m-%d} · {label}" + (f" · {origin}" if origin else ""))
+    st.caption(f"{day:%Y-%m-%d} 예측 데이터 발행 시간 - {origin} 예측" if origin
+               else f"{day:%Y-%m-%d}")
 
     # 하단 — 선택일 송출량 지표 5개 (전국 천연가스 = 발전용 + 도시가스 보조)
     ton = df["est_gas_sendout_ton_land"]
@@ -138,8 +154,7 @@ def _rgba(hex_color: str, alpha: float) -> str:
 def render_gen_mix():
     """에너지 믹스 탭 — 발전원별 누적 발전 믹스(실측) + 예측 dot(누적기준 정렬)."""
     day, _, cap = C.day_navigator("mix")
-    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
-    cap.caption(f"{day:%Y-%m-%d} 00~23시 · 실측 누적 + 예측 dot · {label}")
+    mode, value = "latest", None
 
     mix = C.land_day_mix(day)
     # 미수집 시간 절단: 가스 발전 0은 물리적으로 불가(항상 켜짐) → 0/결측 시간은 그래프에서 제외
@@ -181,7 +196,6 @@ def render_gen_mix():
 
     fig.update_xaxes(range=[day, day + pd.Timedelta(hours=24)])
     st.plotly_chart(fig, width="stretch")
-    st.caption("점선(예측)과 색 띠 경계의 간격이 곧 예측 오차입니다.")
     C.help_expander(
         "**색 띠(실측 누적)**: 원전(기저) → 기타발전(석탄·수력·양수·유류 등) → 가스 → "
         "태양광+풍력(시장) → BTM+PPA(추정) 순서로 쌓입니다.\n\n"
@@ -254,9 +268,6 @@ def render_series_compare(df: pd.DataFrame, prefix: str, height: int = 460,
                         tickfont=dict(size=11.5, color=C.COLOR["ton"])))
     fig.update_xaxes(range=[df["timestamp"].min(), df["timestamp"].max()])
     st.plotly_chart(fig, width="stretch", key=f"{prefix}_series")
-    if use_y2:
-        st.caption("오른쪽 축 = 천연가스 송출량(TON/h, 발전량 × 0.1521) · 왼쪽 축 = MW. "
-                   "⚙️ 표시 데이터에서 다른 계열과 함께 켜고 끌 수 있습니다.")
 
 
 def _hero_gas(day, dplus):
@@ -308,8 +319,8 @@ def render_hero():
     day, _, cap = C.day_navigator("hero", refresh=False)
     dplus = (day - TODAY).days
     origin = C.land_forecast_origin(day)
-    cap.caption(f"{day:%Y-%m-%d}" + (f" · {origin}" if origin else "")
-                + " · 09–15시 평균 기준 · 날씨 → 신재생 → 가스를 한 화면에")
+    cap.caption(f"{day:%Y-%m-%d} 예측 데이터 발행 시간 - {origin} 예측" if origin
+                else f"{day:%Y-%m-%d}")
 
     date = day.strftime("%Y-%m-%d")
     zones = W.zone_day(date)
@@ -412,7 +423,7 @@ def render_longhorizon():
     render_series_compare(df, prefix="lh", height=480, show_ton=False)
     st.caption(f"예측 기준: **{label}** · 미래 구간은 실측이 없어 예측만 표시됩니다.")
 
-    with st.expander("일일 송출량 — 발전용 + 도시가스 합산 (일단위 TON/day)"):
+    with st.expander("일일 송출량 — 발전용 + 도시가스 합산 (일단위 TON/day)", expanded=True):
         render_daily_sendout()
 
 
@@ -422,13 +433,15 @@ def render_forecast_menu():
     start, _, cap = C.day_navigator("fm")
     meta = C.land_horizon_meta()
     k = cap.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
-                   key="fm_hzk", help="그 지평의 시계열을 봅니다. D+1은 KPX 하루전 예측과도 비교됩니다.")
+                   key="fm_hzk",
+                   help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 — "
+                        "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
     # 표시 구간을 지평 길이에 비례 — D+1은 1일, D+15는 15일
     win = k
     end = start + pd.Timedelta(days=win - 1)
-    mode, value, label = "fixed", k, f"D+{k} (각 날짜를 {k}일 전에 예측)"
-    st.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} ({win}일) · {label} · "
-               "실측 ━ / 예측 ··· / KPX DA ╌")
+    mode, value = "fixed", k
+    st.caption(f"지금 보는 것은 각 날짜를 **{k}일 전에 예측한(D+{k})** 값과 실측의 비교입니다. "
+               "지평 D+k를 올리면 예측과 실측의 차이가 점점 벌어지는 **오차 증폭**을 확인할 수 있습니다.")
 
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or (df["est_demand_land"].isna().all() and df["real_demand_land"].isna().all()):
@@ -450,7 +463,7 @@ def render_forecast_menu():
         fig.add_scatter(x=ts, y=df["land_est_demand_da"], name="KPX 수요예측(DA)",
                         line=dict(color="#17becf", dash="dash", width=2), hovertemplate=da_hover)
         st.plotly_chart(fig, width="stretch")
-        st.caption("KPX 수요예측(DA)은 전력거래소 하루 전 발표 — **표시 지평이 D+1일 때만** 비교에 나옵니다.")
+        st.caption("KPX 수요예측(DA)은 전력거래소 하루 전 발표값으로, 표시 지평이 D+1일 때만 비교가 가능합니다.")
 
     with t2:
         fig = C.make_fig()
@@ -481,7 +494,7 @@ def render_forecast_menu():
         render_validation(df)
 
     with t5:
-        st.caption("발행본을 모아 본 D+1~D+15 지평별 정확도(단위 %). 긴 지평은 더 오래된 발행본에서 채워집니다.")
+        st.caption("D+1 ~ D+15 지평별 정확도를 비교합니다. 각 지평별 오차의 증폭을 확인할 수 있습니다.")
         render_horizon_accuracy()
 
 
@@ -601,7 +614,6 @@ def render_daily_trend_land():
                             connectgaps=False,
                             hovertemplate="%{x|%m-%d} · %{y:.1f}%<extra>" + label + "</extra>")
     st.plotly_chart(fig, width="stretch")
-    st.caption(f"D+{k} 일별 오차율(수요·순 부하·가스=MAPE, 신재생=nMAE) · 솟은 날 = 그 날 기상 급변으로 빗나간 날.")
 
 
 def render_horizon_accuracy():
@@ -726,10 +738,8 @@ def _coverage_heatmap(heat: pd.DataFrame, end: pd.Timestamp, row_groups=None):
         legend = " &nbsp; ".join(
             f"<span style='color:{DS_GROUP_COLORS.get(g, '#94a3b8')};font-size:1.1em'>■</span> {g}"
             for g in used)
-        st.markdown(f"<div style='font-size:.85rem;color:#64748b'>색 = 데이터 성격 &nbsp; {legend}</div>",
+        st.markdown(f"<div style='font-size:.85rem;color:#64748b'>{legend}</div>",
                     unsafe_allow_html=True)
-    st.caption("셀 진하기 = 6시간 단위의 수집률(연할수록 0% → 진할수록 100%). "
-               "빨간 점선 = 현재 시각. 행 자체가 없는 구간도 0%로 표시됩니다.")
 
 
 def _ds_db_browser(table: str, s: str, e: str, default_cols: list[str], extra=None):
@@ -779,7 +789,6 @@ def _ds_timestamp(table: str):
         _coverage_heatmap(sub, end, row_groups=rgroups)
         with st.expander("항목별 최신 현황 요약"):
             st.dataframe(C.coverage_table("land"), width="stretch", hide_index=True)
-            st.caption("데이터는 서버가 매일 정해진 시각에 자동 수집합니다(API 호출 한도 보호).")
     with tab_full:
         heat_full = C.coverage_heat("land", table, s, e)
         _coverage_heatmap(heat_full, end, row_groups=[_hist_group(c) for c in heat_full.index])
@@ -799,9 +808,7 @@ def _ds_tall(table: str):
     m1.metric("발행본(base) 수", f"{len(cov):,}")
     m2.metric(f"완전 발행본(D+1~{full})", f"{n_full:,}")
     m3.metric("최신 발행본 완성도", f"{cov['완성도%'].iloc[0]:.0f}%" if len(cov) else "—")
-    st.caption(f"{C.TABLE_LABEL.get(table, table)} — 발행본별 완성도. "
-               f"완전 발행본 = D+1~{full}까지 모두 저장된 것. "
-               "최신 발행본이 일부만 채워져 있으면 야간 갱신 작업 전이라는 뜻입니다.")
+    st.caption(f"{C.TABLE_LABEL.get(table, table)} - 발행본별 완성도")
     st.dataframe(cov.head(45), width="stretch", hide_index=True, height=420)
 
     with st.expander("항목별 최신 현황 요약"):
@@ -821,7 +828,6 @@ def _ds_tall(table: str):
 
 def render_data_status():
     st.subheader("데이터 현황 (전국)")
-    st.caption("데이터가 언제까지, 얼마나 채워져 있는지 확인합니다.")
     table = st.segmented_control("저장소", ["historical", "est_horizon_land", "forecast_horizon"],
                                  default="historical", key="ds_table",
                                  format_func=lambda t: C.TABLE_LABEL.get(t, t)) or "historical"
@@ -1031,33 +1037,30 @@ def _local_bundle(sd: pd.Timestamp, days: int, kind: str) -> dict:
 
 
 def render_api_use():
-    """외부 연동 · 'API 활용' 탭 — 공개 주소·엔드포인트·Swagger 문서·예측 차트를 한자리에."""
-    st.subheader("API 활용 — 예측과 AI 브리핑을 외부 시스템에 제공")
-    st.caption("저장된 예측 결과와 AI 브리핑을 표준 형식(JSON)으로 조회할 수 있습니다.")
-
-    pub = st.text_input("API 공개 주소", value=API_PUBLIC_DEFAULT, key="api_base",
-                        help="외부에서 호출하는 주소입니다. Caddy 가 이 도메인을 받아 내부 API 로 연결합니다.").rstrip("/")
-    # 점검은 서버 내부 주소(127.0.0.1)로 — 공개 주소는 가정용 공유기 특성상 서버 자신이 못 불러 '꺼짐'으로 오인될 수 있다.
+    """외부 연동 · 'API 활용' 탭 — 상태·공개 주소·문서/차트 버튼·엔드포인트 표."""
+    head, badge = st.columns([8, 2], vertical_alignment="center")
+    head.subheader("API 활용 — 예측과 AI 브리핑을 외부 시스템에 제공")
+    # 점검은 서버 내부 주소(127.0.0.1)로 — 공개 주소는 공유기 특성상 서버 자신이 못 불러 '꺼짐'으로 오인될 수 있다.
     ok, _detail = _api_health(API_LOCAL_URL)
     if ok:
-        st.success(f"🟢 API 서버 응답 정상 — 문서: {pub}/docs")
+        badge.success("🟢 API 서버 정상")
     else:
-        st.info("⚪ 지금은 API 서버가 응답하지 않습니다(서버에서 API 를 띄우면 정상 표시됩니다).")
+        badge.error("🔴 API 서버 비정상")
+
+    pub = st.text_input("API 공개 주소", value=API_PUBLIC_DEFAULT, key="api_base",
+                        help="외부에서 호출하는 주소입니다.").rstrip("/")
+
+    cs = pd.Timestamp(st.session_state.get("api_day", TODAY.date())).strftime("%Y-%m-%d")
+    cd = int(st.session_state.get("api_days", 1))
+    b1, b2, _sp = st.columns([1.2, 1.2, 2.6])
+    b1.link_button("API 문서 열기  ↗  /docs", f"{pub}/docs", type="primary", width="stretch",
+                   help="대화형 문서(Swagger) — 모든 주소를 화면에서 직접 호출해 볼 수 있습니다.")
+    b2.link_button("예측 차트 열기  ↗  /chart", f"{pub}/chart?start={cs}&days={cd}", width="stretch",
+                   help="링크 접속만으로 대화형 예측 그래프를 확인할 수 있습니다.")
 
     st.markdown("**제공하는 주소(엔드포인트)**")
     st.dataframe(pd.DataFrame(_API_ENDPOINTS, columns=["주소", "무엇을", "내용"]),
                  width="stretch", hide_index=True)
-
-    st.divider()
-    _lo, hi = C.land_date_range()
-    st.markdown("**대화형 문서 (Swagger)** — 모든 주소를 화면에서 직접 호출해 볼 수 있습니다.")
-    st.link_button("API 문서 열기  ↗  /docs", f"{pub}/docs", type="primary")
-
-    cs = pd.Timestamp(st.session_state.get("api_day", pd.Timestamp(hi).date())).strftime("%Y-%m-%d")
-    cd = int(st.session_state.get("api_days", 1))
-    st.markdown("**예측 차트** — 링크 접속만으로 대화형 예측 그래프를 확인할 수 있습니다.")
-    st.link_button("예측 차트 열기  ↗  /chart", f"{pub}/chart?start={cs}&days={cd}")
-    st.caption(f"{pub}/chart?start={cs}&days={cd}")
 
 
 def render_api_help():
@@ -1067,7 +1070,7 @@ def render_api_help():
     lo, hi = C.land_date_range()
 
     c1, c2, c3 = st.columns([1.4, 1, 1.2], vertical_alignment="bottom")
-    sday = c1.date_input("시작일", value=pd.Timestamp(hi).date(), key="api_day",
+    sday = c1.date_input("시작일", value=min(TODAY.date(), pd.Timestamp(hi).date()), key="api_day",
                          help=f"예측 보유 범위: {lo} ~ {hi}")
     ndays = c2.slider("일수", 1, 7, 1, key="api_days")
     kind = c3.selectbox("브리핑 종류", ["overview", "sendout", "weather"], key="api_kind")

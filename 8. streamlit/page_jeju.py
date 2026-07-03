@@ -10,8 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
 
 C.page_header(
-    "GASCAST · 제주", "국가 가스수급 예측 플랫폼",
-    "제주 전력수요·신재생·SMP 예측 · 참고용 · D+7까지",
+    "GASCAST · 제주", "국가 가스수급 예측 플랫폼", "",
     [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
      ("순 부하", C.COLOR["net_load"]), ("SMP", C.COLOR["smp"])])
 menu = st.sidebar.radio("메뉴", ["종합", "검증", "데이터 현황"])

@@ -569,9 +569,7 @@ def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     """상단 날짜 선택기가 고른 '그 날짜'의 하루치 종합 브리핑을 자동 표시(생성 버튼 없음).
 
     fresh 룰 — 날짜별 가장 최신 발행본을 과거·오늘·미래 가리지 않고 그대로 보여준다. 저장 키가
-    (날짜, days=1, kind)뿐이라 upsert 로 항상 '마지막에 생성된(=가장 최신 지평) 발행본' 하나만
-    남으므로, 날짜로 읽으면 그게 곧 최신본이다. 캡션에 '며칠 앞서 내다본 발행본인지'(발행 지평
-    = 그 날짜 − 생성일)를 함께 표기한다. 예: 6/28 카드 = 6/27 생성 'D+1 발행본'.
+    (날짜, days=1, kind)뿐이라 upsert 로 마지막 생성본 하나만 남으므로, 날짜로 읽으면 곧 최신본.
     저장이 없으면 안내만. 두 탭이 동시 렌더되므로 숨은 prefix 마커로 ID 충돌 방지.
     """
     today = pd.Timestamp.now().normalize()
@@ -582,15 +580,10 @@ def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     sd = target.strftime("%Y-%m-%d")
     saved = store.load(sd, 1, "overview")   # 날짜 키 = 최신 발행본(upsert 라 마지막 생성분만 남음)
     if saved and saved.get("brief_text"):
-        ca = saved.get("created_at", "") or ""
-        # 발행 지평 = 대상일 − 생성일(며칠 앞서 내다본 예측인지). 가장 최신 발행본의 지평.
-        try:
-            pub_lead = (target - pd.Timestamp(ca[:10]).normalize()).days
-            hz = f"D+{pub_lead} 발행본" if pub_lead >= 1 else "당일 발행본"
-        except Exception:  # noqa: BLE001 — created_at 비정상 시 지평 표기 생략
-            hz = "최신 발행본"
+        pub = (saved.get("created_at", "") or "")[:10]
         st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {sd} 종합 · 최신 {hz} · {ca} 생성 — 매일 자동 갱신됩니다.{mark}",
+        st.caption((f"💾 {sd} 종합브리핑 - {pub} 발행 (매일 자동 갱신){mark}" if pub
+                    else f"💾 {sd} 종합브리핑 (매일 자동 갱신){mark}"),
                    unsafe_allow_html=True)
     elif lead > 15:
         st.caption(f"예측 브리핑은 **D+15까지** 제공합니다 (선택일 {sd}). "
