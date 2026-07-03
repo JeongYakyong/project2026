@@ -972,10 +972,16 @@ _CSS = """
 [class*="metric_sm"] [data-testid="stMetricValue"]{ font-size:1.05rem; }
 [class*="metric_sm"] [data-testid="stMetric"]{ padding:.7rem .9rem; }
 
-/* ---- 예측 검증 '표시 구간' pill — 2×2 격자 배치 ---- */
-.st-key-fm_win_box [data-testid="stButtonGroup"]{
-  display:grid !important; grid-template-columns:1fr 1fr; gap:4px; }
-.st-key-fm_win_box [data-testid="stButtonGroup"] button{ width:100%; justify-content:center; }
+/* ---- 예측 검증 '표시 구간' pill — 줄바꿈 없이 한 줄(4×1) 균등 배치 ----
+   stButtonGroup은 라벨까지 감싸므로 안쪽 버튼 그룹(data-baseweb)에만 적용한다.
+   위젯 컨테이너가 fit-content 라 움츠러들어 글자가 잘림 → 열 너비 100%로 강제. */
+.st-key-fm_win_box [data-testid="stElementContainer"],
+.st-key-fm_win_box [data-testid="stButtonGroup"]{ width:100% !important; }
+.st-key-fm_win_box [data-baseweb="button-group"]{
+  display:flex !important; flex-wrap:nowrap !important; gap:4px; width:100%; }
+.st-key-fm_win_box [data-baseweb="button-group"] button{
+  flex:1 1 0; min-width:0; padding:.15rem .3rem;
+  justify-content:center; white-space:nowrap; }
 
 /* ---- 버튼·캡션 ---- */
 .stButton button p{ font-weight:700; font-size:.88rem; }

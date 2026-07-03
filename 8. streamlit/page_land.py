@@ -447,14 +447,15 @@ def render_forecast_menu():
     # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 '정확도 평가' 탭이 담당.
     day, _, cap = C.day_navigator("fm")
     meta = C.land_horizon_meta()
-    c_hz, c_win = cap.columns([2.1, 1.6], vertical_alignment="bottom")
+    c_hz, c_win = cap.columns([1.8, 2.0], vertical_alignment="bottom")
     k = c_hz.slider("지평 D+k (며칠 전 예측인지)", meta["h_lo"], meta["h_hi"], 1,
                     key="fm_hzk",
                     help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 —\n\n "
                          "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
     WIN_OPTS = {"3일": 3, "7일": 7, "12일": 12, "15일": 15}
-    with c_win, st.container(key="fm_win_box"):     # 2×2 pill — 전용 CSS는 common._CSS
+    with c_win, st.container(key="fm_win_box"):     # 한 줄(4×1) pill — 전용 CSS는 common._CSS
         wsel = st.segmented_control("표시 구간", list(WIN_OPTS), default="7일", key="fm_win",
+                                    width="stretch",
                                     help="선택일까지 지난 N일을 표시합니다. 15일은 기상청 예보 "
                                          "축소(D+13~15)로 일부 구간이 빌 수 있습니다.") or "7일"
     # 선택일 = 구간의 끝 — 기본(오늘)이면 지난 N일이 꽉 찬 화면. 지평(D+k)만 바꿔 오차 증폭을 비교.
