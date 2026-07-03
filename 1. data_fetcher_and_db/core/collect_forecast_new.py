@@ -24,6 +24,7 @@ collect_data_jeju_new.build_forecast_wide(KIMR+KIMG 병합, 일사 3지점)로 �
     python core/collect_forecast_new.py --region both         # 육지 + 제주
     python core/collect_forecast_new.py --base 20260610       # 2026-06-10 의 12z 발표
     python core/collect_forecast_new.py --backfill 30         # 과거 30일치 12z (resume-skip)
+    python core/collect_forecast_new.py --utc 18              # 최신 18z (12z 발표에 문제가 있을 때 수동 대체)
     python core/collect_forecast_new.py --backfill 10 --out bf# data/bf_<region>.db 에 격리 적재
     python core/collect_forecast_new.py --merge bf            # bf_*.db -> 본 DB 병합
     python core/collect_forecast_new.py --verify              # base 별 완전성 검사 (fetch 없음)
@@ -64,6 +65,23 @@ def fetch_one(region: str, base_utc: datetime, days: int) -> pd.DataFrame:
     if region == "jeju":
         return cdjn.build_forecast_wide(base=base_utc, forecast_days=days)
     return cfr.fetch_one(region, base_utc, days)
+
+
+# ── base 선택: 발행시각(UTC) 일반화 ────────────────────────────────────────
+def latest_base(utc_hour: int, now_utc: datetime | None = None) -> datetime:
+    """공개 지연을 감안한 가장 최근 가용 발표 (cfr.latest_12z 의 발행시각 일반화).
+
+    KIMG/KIMR 은 00/06/12/18 UTC 발표.  운영 cron 은 12z 고정이고, 12z 발표에
+    문제가 있을 때(예: 장지평 빈 응답) 관리자 메뉴에서 06z·18z 를 수동 수집한다.
+    utc_hour=12 이면 cfr.latest_12z 와 동일한 base 를 돌려준다.
+    """
+    if now_utc is None:
+        now_utc = datetime.now(tz=UTC)
+    cutoff = now_utc - timedelta(hours=cfr.PUBLISH_DELAY_HOURS)
+    cand = cutoff.replace(hour=utc_hour, minute=0, second=0, microsecond=0)
+    if cand > cutoff:
+        cand -= timedelta(days=1)
+    return cand
 
 
 # ── 완결성 기반 skip (육지·제주 공통) ──────────────────────────────────────
@@ -170,18 +188,18 @@ def run_region(
 def main() -> None:
     p = argparse.ArgumentParser(
         description=(
-            "12 UTC 발표를 horizon-tagged 로 forecast_horizon 에 적재 (KMA 기상 전용). "
-            "육지는 clean wide(collect_data_land_new), 제주는 현행 경로 위임."
+            "KMA 발표(기본 12 UTC, --utc 로 변경)를 horizon-tagged 로 forecast_horizon 에 적재 "
+            "(KMA 기상 전용). 육지는 clean wide(collect_data_land_new), 제주는 현행 경로 위임."
         ),
     )
     mode = p.add_mutually_exclusive_group()
     mode.add_argument(
         "--base", metavar="YYYYMMDD",
-        help="특정 날짜의 12 UTC 발표 (기본: 최신 가용 12z)",
+        help="특정 날짜의 발표 (기본: 최신 가용 발표, 시각은 --utc)",
     )
     mode.add_argument(
         "--backfill", type=int, metavar="N_DAYS",
-        help="과거 N 일치 12z 발표를 차례로 적재 (resume-skip)",
+        help="과거 N 일치 발표를 차례로 적재 (resume-skip, 시각은 --utc)",
     )
     mode.add_argument(
         "--merge", metavar="NAME",
@@ -190,6 +208,11 @@ def main() -> None:
     mode.add_argument(
         "--verify", action="store_true",
         help="base 별 완전성 검사 (행수 + 지점별 NULL 셀) -- fetch 없음",
+    )
+    p.add_argument(
+        "--utc", type=int, choices=[0, 6, 12, 18], default=12,
+        help="발표 시각 UTC (default 12 -- 운영 cron 과 동일). "
+             "12z 발표에 문제가 있을 때 06/18z 를 수동 수집하는 용도",
     )
     p.add_argument(
         "--region", choices=["jeju", "land", "both"], default="land",
@@ -237,15 +260,16 @@ def main() -> None:
         return
 
     if args.base:
-        bases = [datetime.strptime(args.base, "%Y%m%d").replace(hour=12, tzinfo=UTC)]
+        bases = [datetime.strptime(args.base, "%Y%m%d").replace(hour=args.utc, tzinfo=UTC)]
     elif args.backfill:
-        bases = cfr.backfill_12z_bases(args.backfill)
+        bases = [latest_base(args.utc) - timedelta(days=k)
+                 for k in range(args.backfill)][::-1]
     else:
-        bases = [cfr.latest_12z()]
+        bases = [latest_base(args.utc)]
 
     print(
         f"[collect_forecast_new] regions={regions}  bases={len(bases)} "
-        f"({bases[0].strftime('%Y%m%d')}~{bases[-1].strftime('%Y%m%d')} 12Z)  "
+        f"({bases[0].strftime('%Y%m%d')}~{bases[-1].strftime('%Y%m%d')} {args.utc:02d}Z)  "
         f"out={'main DB' if not args.out else args.out + '_<region>.db'}  "
         f"table='{RUNS_TABLE}' key=(base,timestamp)"
     )

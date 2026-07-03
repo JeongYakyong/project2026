@@ -878,8 +878,16 @@ def render_run_ops():
     col_f, col_h = st.columns(2)
     with col_f:
         st.markdown("**① 기상예보 → forecast_horizon**")
-        fmode = st.radio("대상", ["최신 12z", "최근 N개(backfill)"], key="cf_mode")
+        fmode = st.radio("대상", ["최신", "최근 N개(backfill)"], key="cf_mode")
+        futc = st.selectbox("발표 시각 (UTC)",
+                            ["12Z (기본·cron 동일)", "18Z", "06Z", "00Z"], key="cf_utc")
+        futc_h = int(futc[:2])
+        st.caption("12z 발표에 문제가 있을 때(예: 장지평 빈 응답) 다른 발표 시각으로 "
+                   "수동 수집합니다. 지평(D+n)은 발표 시각의 KST 날짜 기준이라 "
+                   "18z는 KST 다음날 새벽 3시 발표 → 같은 날 12z보다 D+1 시작일이 하루 늦습니다.")
         fargs = ["--region", "land"]
+        if futc_h != 12:
+            fargs += ["--utc", str(futc_h)]
         if fmode == "최근 N개(backfill)":
             fn = st.number_input("N (최근 base)", 1, 7, 3, key="cf_n")
             fargs += ["--backfill", str(int(fn))]
