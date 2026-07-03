@@ -429,23 +429,37 @@ def render_longhorizon():
 
 
 # ================================================================ 예측 검증
+def _mark_selected_day(fig, day: pd.Timestamp, label: bool = True, **kw):
+    """선택일(구간 끝) 시작 위치에 세로 점선 표시 — 검증 차트 공용.
+
+    plotly add_vline은 날짜 축에 Timestamp를 주면 주석 위치 계산에서 깨진다 → epoch(ms)로 우회.
+    """
+    x = day.timestamp() * 1000
+    opts = dict(line_dash="dot", line_color="#dc2626", opacity=0.55)
+    if label:
+        opts.update(annotation_text="선택일", annotation_position="top left",
+                    annotation_font=dict(size=11, color="#dc2626"))
+    fig.add_vline(x=x, **opts, **kw)
+
+
 def render_forecast_menu():
     # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 '정확도 평가' 탭이 담당.
     day, _, cap = C.day_navigator("fm")
     meta = C.land_horizon_meta()
-    k = cap.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
-                   key="fm_hzk",
-                   help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 — "
-                        "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
-    # 표시 구간은 15일 고정, 선택일 = 구간의 끝 — 기본(오늘)이면 지난 15일이 꽉 찬 화면.
-    # 지평(D+k)만 바꿔 같은 구간에서 오차 증폭을 비교한다.
-    win = 15
+    c_hz, c_win = cap.columns([2.1, 1.6], vertical_alignment="bottom")
+    k = c_hz.slider("지평 D+k (며칠 전 예측인지)", meta["h_lo"], meta["h_hi"], 1,
+                    key="fm_hzk",
+                    help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 —\n\n "
+                         "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
+    WIN_OPTS = {"3일": 3, "7일": 7, "12일": 12, "15일": 15}
+    wsel = c_win.segmented_control("표시 구간", list(WIN_OPTS), default="7일", key="fm_win",
+                                   help="선택일까지 지난 N일을 표시합니다. 15일은 기상청 예보 "
+                                        "축소(D+13~15)로 일부 구간이 빌 수 있습니다.") or "7일"
+    # 선택일 = 구간의 끝 — 기본(오늘)이면 지난 N일이 꽉 찬 화면. 지평(D+k)만 바꿔 오차 증폭을 비교.
+    win = WIN_OPTS[wsel]
     end = day
     start = end - pd.Timedelta(days=win - 1)
     mode, value = "fixed", k
-    st.caption(f"**선택일까지 지난 15일**을 표시합니다. 지금 보는 것은 각 날짜를 "
-               f"**{k}일 전에 예측한(D+{k})** 값과 실측의 비교 — 지평 D+k를 올리면 "
-               "예측과 실측의 차이가 점점 벌어지는 **오차 증폭**을 확인할 수 있습니다.")
 
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or (df["est_demand_land"].isna().all() and df["real_demand_land"].isna().all()):
@@ -466,6 +480,7 @@ def render_forecast_menu():
                        customdata=cd, hovertemplate=tmpl)
         fig.add_scatter(x=ts, y=df["land_est_demand_da"], name="KPX 수요예측(DA)",
                         line=dict(color="#17becf", dash="dash", width=2), hovertemplate=da_hover)
+        _mark_selected_day(fig, day)
         st.plotly_chart(fig, width="stretch")
         st.caption("KPX 수요예측(DA)은 전력거래소 하루 전 발표값으로, 표시 지평이 D+1일 때만 비교가 가능합니다.")
 
@@ -476,6 +491,7 @@ def render_forecast_menu():
                        customdata=cd, hovertemplate=tmpl)
         C.add_forecast(fig, ts, df["est_market_renew_land"], "신재생 예측(참고)", C.COLOR["renew"],
                        customdata=cd, hovertemplate=tmpl)
+        _mark_selected_day(fig, day)
         st.plotly_chart(fig, width="stretch")
         st.caption("순 부하(Net Load) = 전력수요 − 신재생 발전. 실측도 같은 기준으로 재구성해 비교합니다.")
 
@@ -491,11 +507,12 @@ def render_forecast_menu():
                        customdata=cd, hovertemplate=tmpl)
         C.add_forecast(fig, ts, df["est_gas_sendout_ton_land"], "송출량 예측 (TON/h)", C.COLOR["ton"],
                        customdata=cd, hovertemplate=tmpl)
+        _mark_selected_day(fig, day)
         st.plotly_chart(fig, width="stretch")
         st.caption("송출량(TON) = 발전량(MWh) × 0.1521 — 발전 효율 기준 환산계수입니다.")
 
     with t4:
-        render_validation(df)
+        render_validation(df, day)
 
     with t5:
         st.caption("D+1 ~ D+15 지평별 정확도를 비교합니다. 각 지평별 오차의 증폭을 확인할 수 있습니다.")
@@ -511,8 +528,8 @@ CHAIN_PANELS = [  # (제목, est 컬럼, 실측 컬럼, 색, 지표종류 — �
 ]
 
 
-def render_validation(df: pd.DataFrame):
-    """체인 스택 4행 검증 — 구간은 수요 예측 메뉴의 공통 시간 선택을 따른다."""
+def render_validation(df: pd.DataFrame, day: pd.Timestamp | None = None):
+    """체인 스택 4행 검증 — 구간은 예측 검증 메뉴의 공통 시간 선택을 따른다."""
     # ---- 체인 스택 4행 (x축 공유) — 패널 제목에 평가지표 배지(구간 전체 기준)
     from plotly.subplots import make_subplots
     titles = []
@@ -544,6 +561,8 @@ def render_validation(df: pd.DataFrame):
     fig.update_layout(height=900, margin=dict(t=40, b=10),
                       legend=dict(orientation="h", y=-0.04), showlegend=False)
     fig.update_annotations(font_size=13, x=0.0, xanchor="left")
+    if day is not None:
+        _mark_selected_day(fig, day, label=False, row="all", col=1)
     st.plotly_chart(fig, width="stretch")
     st.caption("신재생 발전이 늘면 순 부하가 줄고 가스 발전도 줄어듭니다 — 같은 시각을 위아래로 비교해 보세요. "
                "실측은 전력거래소 실시간 자료로 채워지며, 오차를 숨기지 않고 그대로 보여줍니다.")
