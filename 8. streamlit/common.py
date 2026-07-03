@@ -972,6 +972,11 @@ _CSS = """
 [class*="metric_sm"] [data-testid="stMetricValue"]{ font-size:1.05rem; }
 [class*="metric_sm"] [data-testid="stMetric"]{ padding:.7rem .9rem; }
 
+/* ---- 예측 검증 '표시 구간' pill — 2×2 격자 배치 ---- */
+.st-key-fm_win_box [data-testid="stButtonGroup"]{
+  display:grid !important; grid-template-columns:1fr 1fr; gap:4px; }
+.st-key-fm_win_box [data-testid="stButtonGroup"] button{ width:100%; justify-content:center; }
+
 /* ---- 버튼·캡션 ---- */
 .stButton button p{ font-weight:700; font-size:.88rem; }
 [data-testid="stCaptionContainer"]{ color:#64748b; }

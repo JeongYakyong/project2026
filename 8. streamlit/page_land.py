@@ -418,7 +418,8 @@ def render_longhorizon():
     c1.metric(f"{start:%m-%d}~{end:%m-%d} ({n_days}일) 가스 송출량(예측 합)", f"{ton:,.0f} TON")
     c2.metric("가스비(환산)", f"{cost / 1e8:,.0f} 억원")
     if gm:
-        c3.metric("가스 MAPE", f"{gm['mape']:.1f} %", f"bias {gm['bias']:+.1f}%", delta_color="off")
+        # bias는 delta(아랫줄) 대신 라벨 옆에 — 카드 3개 높이를 똑같이 유지
+        c3.metric(f"가스 MAPE · bias {gm['bias']:+.1f}%", f"{gm['mape']:.1f} %")
 
     render_series_compare(df, prefix="lh", height=480, show_ton=False)
     st.caption("각 날짜의 **가장 최근 발행 예측**을 이어 붙인 미래 전망입니다 · "
@@ -452,9 +453,10 @@ def render_forecast_menu():
                     help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 —\n\n "
                          "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
     WIN_OPTS = {"3일": 3, "7일": 7, "12일": 12, "15일": 15}
-    wsel = c_win.segmented_control("표시 구간", list(WIN_OPTS), default="7일", key="fm_win",
-                                   help="선택일까지 지난 N일을 표시합니다. 15일은 기상청 예보 "
-                                        "축소(D+13~15)로 일부 구간이 빌 수 있습니다.") or "7일"
+    with c_win, st.container(key="fm_win_box"):     # 2×2 pill — 전용 CSS는 common._CSS
+        wsel = st.segmented_control("표시 구간", list(WIN_OPTS), default="7일", key="fm_win",
+                                    help="선택일까지 지난 N일을 표시합니다. 15일은 기상청 예보 "
+                                         "축소(D+13~15)로 일부 구간이 빌 수 있습니다.") or "7일"
     # 선택일 = 구간의 끝 — 기본(오늘)이면 지난 N일이 꽉 찬 화면. 지평(D+k)만 바꿔 오차 증폭을 비교.
     win = WIN_OPTS[wsel]
     end = day

@@ -95,7 +95,7 @@ ax.plot(H, tab.model, color=ACCENT, lw=3.0, marker='o', ms=5, label=LAB_MODEL,
 ax.annotate(f'하루 뒤 {tab.model[0]:.1f}%', xy=(1, tab.model[0]), xytext=(1.5, tab.model[0] - 3.6),
             fontsize=9.3, color=ACCENT, fontweight='bold', ha='left', va='center',
             arrowprops=dict(arrowstyle='->', color=ACCENT, lw=1.2))
-ax.annotate(f'2주 뒤 {tab.model.iloc[-1]:.1f}%', xy=(15, tab.model.iloc[-1]),
+ax.annotate(f'15일 뒤 {tab.model.iloc[-1]:.1f}%', xy=(15, tab.model.iloc[-1]),
             xytext=(13.4, tab.model.iloc[-1] + 3.2),
             fontsize=9.3, color=ACCENT, fontweight='bold', ha='center', va='center',
             arrowprops=dict(arrowstyle='->', color=ACCENT, lw=1.2))
