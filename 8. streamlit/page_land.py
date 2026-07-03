@@ -431,18 +431,21 @@ def render_longhorizon():
 # ================================================================ 예측 검증
 def render_forecast_menu():
     # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 '정확도 평가' 탭이 담당.
-    start, _, cap = C.day_navigator("fm")
+    day, _, cap = C.day_navigator("fm")
     meta = C.land_horizon_meta()
     k = cap.slider("지평 D+k (각 날짜를 정확히 k일 전에 예측한 값)", meta["h_lo"], meta["h_hi"], 1,
                    key="fm_hzk",
                    help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 — "
                         "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
-    # 표시 구간은 15일 고정 — 지평(D+k)만 바꿔 같은 구간에서 오차 증폭을 비교
+    # 표시 구간은 15일 고정, 선택일 = 구간의 끝 — 기본(오늘)이면 지난 15일이 꽉 찬 화면.
+    # 지평(D+k)만 바꿔 같은 구간에서 오차 증폭을 비교한다.
     win = 15
-    end = start + pd.Timedelta(days=win - 1)
+    end = day
+    start = end - pd.Timedelta(days=win - 1)
     mode, value = "fixed", k
-    st.caption(f"지금 보는 것은 각 날짜를 **{k}일 전에 예측한(D+{k})** 값과 실측의 비교입니다. "
-               "지평 D+k를 올리면 예측과 실측의 차이가 점점 벌어지는 **오차 증폭**을 확인할 수 있습니다.")
+    st.caption(f"**선택일까지 지난 15일**을 표시합니다. 지금 보는 것은 각 날짜를 "
+               f"**{k}일 전에 예측한(D+{k})** 값과 실측의 비교 — 지평 D+k를 올리면 "
+               "예측과 실측의 차이가 점점 벌어지는 **오차 증폭**을 확인할 수 있습니다.")
 
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or (df["est_demand_land"].isna().all() and df["real_demand_land"].isna().all()):
