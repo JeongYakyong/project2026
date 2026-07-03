@@ -29,9 +29,9 @@ menu = st.sidebar.radio("메뉴", ["수급 예측", "예측 검증", "데이터 
 @st.dialog("예측 제공 범위 안내")
 def _horizon_notice():
     st.markdown(
-        "기상청 수치예보 제공 사정으로 **2026-06-14부터** 예측 제공 범위가 "
+        "기상청 수치예보 생산부서 정책으로 **2026-06-14부터** 예측 제공 범위가 "
         "**D+15 → D+12**로 일시 축소되었습니다.\n\n"
-        "기상청 제공이 복구되면 별도 조치 없이 D+15까지 자동으로 다시 확대됩니다.")
+        "기상청 제공정책 변경 시 D+15까지 자동으로 다시 확대됩니다.")
     if st.button("확인", type="primary", width="stretch"):
         st.rerun()
 
@@ -405,7 +405,7 @@ def render_longhorizon():
         format_func=lambda d: f"{d:%m-%d}" + (f" (D+{(d - ORIGIN).days})" if d >= TODAY else ""))
     n_days = (end - start).days + 1
 
-    mode, value, label = "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
+    mode, value = "latest", None
     df = C.land_range_compare(start, end, mode=mode, value=value)
     if df.empty or df["est_demand_land"].isna().all():
         st.warning(f"선택 구간의 예측이 없습니다. (예측 보유 범위: {lo} ~ {hi})")
@@ -421,7 +421,8 @@ def render_longhorizon():
         c3.metric("가스 MAPE", f"{gm['mape']:.1f} %", f"bias {gm['bias']:+.1f}%", delta_color="off")
 
     render_series_compare(df, prefix="lh", height=480, show_ton=False)
-    st.caption(f"예측 기준: **{label}** · 미래 구간은 실측이 없어 예측만 표시됩니다.")
+    st.caption("각 날짜의 **가장 최근 발행 예측**을 이어 붙인 미래 전망입니다 · "
+               "미래 구간은 실측이 없어 예측만 표시됩니다.")
 
     with st.expander("일일 송출량 — 발전용 + 도시가스 합산 (일단위 TON/day)", expanded=True):
         render_daily_sendout()
@@ -436,8 +437,8 @@ def render_forecast_menu():
                    key="fm_hzk",
                    help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 — "
                         "지평이 길어질수록 오차가 커지는 '오차 증폭'을 확인할 수 있습니다.")
-    # 표시 구간을 지평 길이에 비례 — D+1은 1일, D+15는 15일
-    win = k
+    # 표시 구간은 15일 고정 — 지평(D+k)만 바꿔 같은 구간에서 오차 증폭을 비교
+    win = 15
     end = start + pd.Timedelta(days=win - 1)
     mode, value = "fixed", k
     st.caption(f"지금 보는 것은 각 날짜를 **{k}일 전에 예측한(D+{k})** 값과 실측의 비교입니다. "

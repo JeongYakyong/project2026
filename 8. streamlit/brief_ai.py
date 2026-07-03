@@ -580,11 +580,7 @@ def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
     sd = target.strftime("%Y-%m-%d")
     saved = store.load(sd, 1, "overview")   # 날짜 키 = 최신 발행본(upsert 라 마지막 생성분만 남음)
     if saved and saved.get("brief_text"):
-        pub = (saved.get("created_at", "") or "")[:10]
         st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
-        st.caption((f"💾 {sd} 종합브리핑 - {pub} 발행 (매일 자동 갱신){mark}" if pub
-                    else f"💾 {sd} 종합브리핑 (매일 자동 갱신){mark}"),
-                   unsafe_allow_html=True)
     elif lead > 15:
         st.caption(f"예측 브리핑은 **D+15까지** 제공합니다 (선택일 {sd}). "
                    f"날짜를 그 안으로 옮겨 주세요.{mark}", unsafe_allow_html=True)
