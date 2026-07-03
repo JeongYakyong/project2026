@@ -972,6 +972,9 @@ _CSS = """
 [class*="metric_sm"] [data-testid="stMetricValue"]{ font-size:1.05rem; }
 [class*="metric_sm"] [data-testid="stMetric"]{ padding:.7rem .9rem; }
 
+/* ---- 슬라이더 라벨 — ? 도움말 아이콘을 오른쪽 끝이 아니라 라벨 글자 바로 옆에 ---- */
+[data-testid="stSlider"] [data-testid="stWidgetLabel"]{ width:fit-content !important; }
+
 /* ---- 예측 검증 '표시 구간' pill — 줄바꿈 없이 한 줄(4×1) 균등 배치 ----
    stButtonGroup은 라벨까지 감싸므로 안쪽 버튼 그룹(data-baseweb)에만 적용한다.
    위젯 컨테이너가 fit-content 라 움츠러들어 글자가 잘림 → 열 너비 100%로 강제. */

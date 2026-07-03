@@ -447,7 +447,7 @@ def render_forecast_menu():
     # 검증 시계열은 "어느 지평(D+k)을 볼지"가 핵심 — 정밀 비교는 '정확도 평가' 탭이 담당.
     day, _, cap = C.day_navigator("fm")
     meta = C.land_horizon_meta()
-    c_hz, c_win = cap.columns([1.8, 2.0], vertical_alignment="bottom")
+    c_hz, c_win = cap.columns([1.8, 2.0], vertical_alignment="top")
     k = c_hz.slider("지평 D+k (며칠 전 예측인지)", meta["h_lo"], meta["h_hi"], 1,
                     key="fm_hzk",
                     help="k를 올릴수록 더 먼 미래를 내다본 예측으로 바뀝니다 —\n\n "
