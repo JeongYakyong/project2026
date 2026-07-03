@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""제주 페이지 — 종합(수요·신재생·net_load·SMP 한 화면) · 검증(모델별 지평 정확도) · 데이터 현황.
-
-명제: 신재생이 만든 잔여부하(net_load)가 SMP를 흔든다 — 2(수요)→3(신재생)→4(SMP) 서빙 체인.
-예측은 사전 적재된 지평 아카이브(est_horizon_jeju·est_smp_horizon_jeju)에서 읽기만 한다.
-"""
+"""제주 페이지 — 종합(수요·신재생·순 부하·SMP) · 검증(모델별 지평 정확도) · 데이터 현황."""
 import sys
 from pathlib import Path
 
@@ -14,11 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common as C
 
 C.page_header(
-    "JEJU · DAILY BRIEFING", "제주 가스수요 예측 브리핑",
-    "수요, 신재생발전량, SMP 예측 모델",
-    #— 2→3→4 서빙 체인의 사전 적재 예측",
+    "GASCAST · 제주", "국가 가스수급 예측 플랫폼",
+    "제주 전력수요·신재생·SMP 예측 · 참고용 · D+7까지",
     [("수요", C.COLOR["demand"]), ("신재생", C.COLOR["renew"]),
-     ("net_load", C.COLOR["net_load"]), ("SMP", C.COLOR["smp"])])
+     ("순 부하", C.COLOR["net_load"]), ("SMP", C.COLOR["smp"])])
 menu = st.sidebar.radio("메뉴", ["종합", "검증", "데이터 현황"])
 TODAY = pd.Timestamp.now().normalize()
 
@@ -50,8 +45,8 @@ JEJU_SERIES = [
     ("전력수요 예측", "est_demand_jeju", "est", C.COLOR["demand"], True),
     ("신재생 실측", "real_renew_gen_jeju", "act", C.COLOR["renew"], True),
     ("신재생 예측", "est_renew_gen_jeju", "est", C.COLOR["renew"], True),
-    ("net_load 실측", "real_net_load_jeju", "act", C.COLOR["net_load"], True),
-    ("net_load 예측", "est_net_load_jeju", "est", C.COLOR["net_load"], True),
+    ("순 부하 실측", "real_net_load_jeju", "act", C.COLOR["net_load"], True),
+    ("순 부하 예측", "est_net_load_jeju", "est", C.COLOR["net_load"], True),
     ("태양광 실측", "real_solar_gen_jeju", "act", C.COLOR["rad"], False),
     ("태양광 예측", "est_solar_gen_jeju", "est", C.COLOR["rad"], False),
     ("풍력 실측", "real_wind_gen_jeju", "act", C.COLOR["wind"], False),
@@ -60,7 +55,7 @@ JEJU_SERIES = [
 
 
 def render_mw(df: pd.DataFrame, chosen: dict, show_da: bool, day: pd.Timestamp, k: int):
-    """수요·신재생·net_load 비교(MW) — D+1~D+k를 한 화면. x축은 지평만큼 넓어진다(지평 D+k → k일)."""
+    """수요·신재생·순 부하 비교(MW) — D+1~D+k를 한 화면. x축은 지평만큼 넓어진다(지평 D+k → k일)."""
     cd, tmpl = C.hz_hover(df)
     ts = df["timestamp"]
     fig = C.make_fig(height=440)
@@ -116,7 +111,7 @@ def render_smp(smp: pd.DataFrame, day: pd.Timestamp):
 
 
 def render_overview():
-    """제주 종합 — 수요·신재생·net_load(D+1~D+k) + SMP 검증 24h(D+2 예측 vs 하루전 SMP, expander)."""
+    """제주 종합 — 수요·신재생·순 부하(D+1~D+k) + SMP 검증 24h(D+2 예측 vs 하루전 SMP, expander)."""
     day, _, cap = C.day_navigator("jeju_ov")
     h_lo, h_hi = C.jeju_horizon_range()
     # 컨트롤 묶음: …실시간 새로고침 | 설정 | 슬라이더 (네비게이터 끝 칸을 둘로 나눔)
@@ -126,15 +121,14 @@ def render_overview():
                   for label, col, _, _, default in JEJU_SERIES}
         show_da = st.checkbox("KPX 수요예측(DA)", value=True, key="jmw_da")
     k = c_sld.slider(f"지평 D+1~D+{h_hi}", h_lo, h_hi, 1, key="jeju_hzk", width="stretch",
-                     help="선택일 기준 예측길이(지평)을 선택합니다. ")
+                     help="선택일 기준 예측 길이(지평)를 선택합니다.")
     end = day + pd.Timedelta(days=k - 1)
     df = C.jeju_range_compare(day, end, mode="latest")
     if df["est_demand_jeju"].isna().all() and df["real_demand_jeju"].isna().all():
         lo, hi = C.jeju_date_range()
-        st.warning(f"선택한 날짜의 예측이 지평 아카이브(est_horizon_jeju)에 없습니다. "
-                   f"적재 범위: **{lo} ~ {hi}**.")
+        st.warning(f"선택한 날짜의 예측이 아직 없습니다. 예측 보유 범위: **{lo} ~ {hi}**.")
         return
-    # 차트 ① — 수요·신재생·net_load (D+1~D+k, x축이 지평만큼 넓어짐)
+    # 차트 ① — 수요·신재생·순 부하 (D+1~D+k, x축이 지평만큼 넓어짐)
     render_mw(df, chosen, show_da, day, k)
 
     # 지표 5개 — 차트 ①과 같은 표시 구간(D+1~D+k) 전체 기준. 보조줄 = 최대/최소가 '발생한 시점'.
@@ -155,9 +149,9 @@ def render_overview():
     # 지표 카드: 라벨·값·보조줄 전부 가운데 정렬(공용 스타일).
     inject_metric_style()
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("최대 net_load(예측)", "—" if nl.isna().all() else f"{nl.max():,.0f} MW",
+    m1.metric("최대 순 부하(예측)", "—" if nl.isna().all() else f"{nl.max():,.0f} MW",
               _when(nl, "max"), delta_color="off")
-    m2.metric("최저 net_load(예측)", "—" if nl.isna().all() else f"{nl.min():,.0f} MW",
+    m2.metric("최저 순 부하(예측)", "—" if nl.isna().all() else f"{nl.min():,.0f} MW",
               _when(nl, "min"), delta_color="off")
     m3.metric("신재생 최대 이용률", "—" if comb.isna().all() else f"{comb.max():.0f} %",
               _when(comb, "max"), delta_color="off",
@@ -167,22 +161,16 @@ def render_overview():
     m5.metric("풍력 최대 이용률", "—" if wu.isna().all() else f"{wu.max() * 100:.0f} %",
               _when(wu, "max"), delta_color="off")
 
-    #· 최근 발행 예보 · "            "실측 ━ / 예측 ··· / KPX 하루전 ╌
-
-    #st.caption("지표는 표시 구간(D+1~D+k) 전체 기준 · 카드 아래 시각 = 그 최대/최소가 발생한 시점입니다.")
-
-    # 차트 ② — SMP 검증(펼쳐 보기). D+1=발표값 그대로라 검증 의미 없음 → 우리 모델 산출 D+2로 검증. 선택일 24h.
+    # 차트 ② — SMP 검증(펼쳐 보기). D+1=발표값 그대로라 검증 의미 없음 → 모델 산출 D+2로 검증. 선택일 24h.
     smp = C.jeju_smp_frame(day, day, mode="fixed", value=2)
     with st.expander("SMP 검증 — D+2 예측 vs 하루전 SMP(KPX) (선택일 24시간)"):
         render_smp(smp, day)
-        st.caption("우리 SMP 모델의 진짜 산출은 **D+2(이틀 전 예측)** 입니다 — D+1은 하루전 발표 SMP를 그대로 쓰기 "
-                   "때문입니다(회귀로 못 이김이 검증됨). 그래서 **그 날을 이틀 전에 예측한 값(빨강)** 을, **하루 전 KPX가 "
-                   "발표한 SMP(회색)** 와 비교합니다 — 예: 오늘이 22일이면 20일에 예측한 D+2 vs 21일 발표 SMP. "
-                   "실시간 SMP 수집이 끊겨 발표 SMP를 기준값으로 씁니다. ▽ = D+2 음수가격 경보.")
+        st.caption("SMP 모델의 실제 산출은 **D+2(이틀 전 예측, 빨강)** 이며, "
+                   "**하루 전 KPX가 발표한 SMP(회색)** 와 비교합니다. ▽ = 음수가격 경보.")
 
 
-# 검증 차트 — 모델별 색(실측·예측 공용). 수요=파랑·순수요=보라·태양광=주황·풍력=회색.
-ACC_COLORS = {"수요": C.COLOR["demand"], "순수요": C.COLOR["net_load"],
+# 검증 차트 — 모델별 색(실측·예측 공용). 수요=파랑·순 부하=보라·태양광=주황·풍력=회색.
+ACC_COLORS = {"수요": C.COLOR["demand"], "순 부하": C.COLOR["net_load"],
               "태양광": C.COLOR["rad"], "풍력": C.COLOR["wind"]}
 VAL_PERIODS = {"7일": 7, "14일": 14, "한달": 30, "3개월": 92, "전체": None, "직접 설정": "custom"}
 
@@ -226,7 +214,7 @@ def render_daily_trend():
         row = acc_h.loc[hz_lbl]
         st.markdown(f"**{hz_lbl} 정확도** — 검증기간 전체 기준")
         cards = st.columns(4)
-        CARD = [("수요", "수요", "MAPE"), ("순수요", "순수요", "nMAE"),
+        CARD = [("수요", "수요", "MAPE"), ("순 부하", "순 부하", "nMAE"),
                 ("태양광", "태양광", "설비용량 nMAE"), ("풍력", "풍력", "설비용량 nMAE")]
         for col, (title, key, kind) in zip(cards, CARD):
             v = row[key] if pd.notna(row[key]) else None
@@ -234,7 +222,7 @@ def render_daily_trend():
 
     acc = C.jeju_daily_accuracy(start, end, k)
     if acc.empty:
-        st.caption("이 기간·지평에 집계할 적재분이 없습니다.")
+        st.caption("이 기간·지평에 집계할 데이터가 없습니다.")
         return
     st.markdown(f"**일별 추이** — D+{k}")
     fig = C.make_fig(height=400, ytitle="오차율 (%)")
@@ -244,7 +232,7 @@ def render_daily_trend():
                         connectgaps=False,
                         hovertemplate="%{x|%m-%d} · %{y:.1f}%<extra>" + name + "</extra>")
     st.plotly_chart(fig, width="stretch")
-    st.caption(f"D+{k}(각 날짜를 {k}일 전에 예측) 기준 일별 오차율 · 수요=MAPE, 순수요=평균 대비 nMAE, "
+    st.caption(f"D+{k}(각 날짜를 {k}일 전에 예측) 기준 일별 오차율 · 수요=MAPE, 순 부하=평균 대비 nMAE, "
                "태양광·풍력=설비용량 기준 nMAE · 값이 갑자기 솟은 날 = 그 날 기상이 급변(비·구름 등)해 "
                "예측이 빗나간 날로 읽습니다.")
 
@@ -257,7 +245,7 @@ def render_horizon_curve():
     start, end = pr
     acc = C.jeju_horizon_accuracy(start, end)
     if acc.empty:
-        st.caption("이 기간에 집계할 적재분이 없습니다.")
+        st.caption("이 기간에 집계할 데이터가 없습니다.")
         return
     hz_num = [int(s[2:]) for s in acc.index]          # "D+3" → 3
     fig = C.make_fig(height=400, ytitle="오차율 (%)")
@@ -269,7 +257,7 @@ def render_horizon_curve():
                      tickvals=hz_num, ticktext=list(acc.index))
     st.plotly_chart(fig, width="stretch")
     st.caption("왼→오로 갈수록(지평이 길수록) 오차가 커지는 추세 = 멀리서 예측할수록 어렵다는 뜻 · "
-               "수요=MAPE, 순수요=평균 대비 nMAE, 태양광·풍력=설비용량 기준 nMAE.")
+               "수요=MAPE, 순 부하=평균 대비 nMAE, 태양광·풍력=설비용량 기준 nMAE.")
     with st.expander("정확한 수치 표로 보기"):
         st.dataframe(acc, width="stretch")
 
@@ -311,7 +299,7 @@ def render_date_series():
 def render_validation():
     """제주 검증 — 모델 정확도 시각화 3종(일별 추이·지평별 성능·지정일 시계열). SMP는 제외(종합에서 따로)."""
     st.subheader("모델 정확도 검증 (제주)")
-    st.caption("수요=MAPE · 순수요=평균 대비 nMAE · 태양광·풍력=설비용량 기준 nMAE(MAE÷설비용량) · "
+    st.caption("수요=MAPE · 순 부하=평균 대비 nMAE · 태양광·풍력=설비용량 기준 nMAE(MAE÷설비용량) · "
                "값이 낮을수록 정확 · 검증기간 = 실측이 있는 대상일 기준.")
     t1, t2, t3 = st.tabs(["① 일별 정확도 추이", "② 지평별 성능", "③ 지정일 예측 시계열"])
     with t1:
@@ -323,15 +311,15 @@ def render_validation():
 
 
 def render_data_status():
-    """데이터 적재 현황 — 주요 항목 × 날짜 일별 적재율 히트맵(흰 0% → 초록 100%)."""
+    """데이터 현황 — 주요 항목 × 날짜 일별 수집률 히트맵(흰 0% → 초록 100%)."""
     import plotly.graph_objects as go
 
-    st.subheader("데이터 적재 현황 (제주 DB)")
+    st.subheader("데이터 현황 (제주)")
     heat = C.jeju_coverage_daily()
     cols, labels = list(heat.columns), list(heat.index)
     is_lh = {lab: lh for lab, _, _, lh in C.JEJU_COVERAGE_ITEMS}   # 장지평(예보)=초록 / 그 외=파랑
-    cov = heat.values                                              # 실제 적재율(0~1)
-    # 부호로 색 구분: 장지평(예보)=+적재율(초록), 그 외=−적재율(파랑). 0=빈칸(연회색).
+    cov = heat.values                                              # 실제 수집률(0~1)
+    # 부호로 색 구분: 장지평(예보)=+수집률(초록), 그 외=−수집률(파랑). 0=빈칸(연회색).
     signed = cov.copy()
     for i, lab in enumerate(labels):
         if not is_lh.get(lab, False):
@@ -339,7 +327,7 @@ def render_data_status():
     fig = go.Figure(go.Heatmap(
         z=signed, x=cols, y=labels, customdata=cov, xgap=1, ygap=2,
         colorscale=[[0.0, "#1d6fb8"], [0.5, "#f1f5f9"], [1.0, "#059669"]], zmin=-1, zmax=1,
-        hovertemplate="%{y}<br>%{x} · 적재율 %{customdata:.0%}<extra></extra>", showscale=False))
+        hovertemplate="%{y}<br>%{x} · 수집률 %{customdata:.0%}<extra></extra>", showscale=False))
     fig.update_layout(height=max(360, 34 * len(labels) + 90),
                       margin=dict(t=10, b=10, l=10, r=10),
                       yaxis=dict(autorange="reversed", tickfont=dict(size=12)),
@@ -349,11 +337,15 @@ def render_data_status():
     if today_lbl in cols:
         fig.add_vline(x=today_lbl, line_dash="dot", line_color="#dc2626")
     st.plotly_chart(fig, width="stretch")
-    st.caption("🟩 **초록 = 예보**(장지평 D+3 이상 수집 가능: 수요·net_load·태양광·풍력·기상) · "
-               "🟦 **파랑 = 실측·근일**(장지평 불가: SMP·실측·하루전 SMP — SMP는 D+1·D+2만). "
-               "셀 진하기 = 그날 24시간 중 적재율, 빨간 점선 = 오늘. 예보는 미래까지·실측은 오늘까지 채워집니다. "
-               "수집은 crontab 백그라운드에서만 갱신됩니다.")
-    with st.expander("항목별 신선도 요약 (마지막 적재·경과 시간)"):
+    st.caption("🟩 초록 = 예보(미래까지 채워짐) · 🟦 파랑 = 실측(오늘까지 채워짐) · "
+               "진할수록 그날 수집률이 높음 · 빨간 점선 = 오늘.")
+    C.help_expander(
+        "**초록(예보 계열)** — 수요·순 부하·태양광·풍력 예측과 기상 예보는 D+3 이후 미래까지 "
+        "미리 채워집니다.\n\n"
+        "**파랑(실측 계열)** — 실측값과 하루전 SMP는 오늘까지만 채워집니다. "
+        "SMP 예측은 D+1·D+2까지만 발행됩니다.\n\n"
+        "데이터는 서버가 매일 정해진 시각에 자동 수집합니다.")
+    with st.expander("항목별 최신 현황 요약"):
         st.dataframe(C.coverage_table("jeju"), width="stretch", hide_index=True)
 
 

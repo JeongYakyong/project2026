@@ -1,17 +1,9 @@
 # -*- coding: utf-8 -*-
-"""8-D · 전국 가스 송출량 예측 브리핑봇 (Gemini).
+"""전국 가스 송출량 AI 브리핑.
 
-설계 원칙:
-  ── 코드가 사실을 확정하고, LLM은 그 위에서 서술만 한다. ──
-원시 시계열은 LLM에 절대 넣지 않는다. 코드가 통계로 압축한 '사실표(fact sheet)'만
-넘기므로 (1) LLM 컨텍스트가 병목이 되지 않고 (2) 없는 수치를 지어낼 여지가 없다.
-
-목적: 5→6→7 체인이 산출한 선택일~장지평 송출량 예측(TON)을, 가스 수급·조달 담당이
-읽기 쉬운 자연어로 해설. 발전기 급전 지시·SMP 단정은 범위 밖(그건 제주 영역).
-
-객관식 2축:
-  - 지평/구간 : 선택일부터 N일(슬라이더). 코드가 그 구간만 DB에서 읽어 요약.
-  - 요약 종류 : 종합 요약 / 송출량 요약 / 기상 요약. 종류마다 담는 사실·시스템 지침이 다름.
+설계 원칙: 코드가 사실을 확정하고, LLM은 그 위에서 서술만 한다.
+원시 시계열은 LLM에 넣지 않는다 — 코드가 통계로 압축한 '사실표(fact sheet)'만 넘겨
+없는 수치를 지어낼 여지를 없앤다.
 """
 from html import escape
 from pathlib import Path
@@ -31,12 +23,11 @@ try:
 except Exception:
     pass
 
-# 모델 — gemini-3.1-flash-lite(stable, 2026-05). 저비용·저지연, 버튼식 소량 호출에 충분.
-# 더 풍부한 서술이 필요하면 gemini-3.1-flash 로 올리면 됨(한 줄 변경).
+# 모델 — 저비용·저지연, 버튼식 소량 호출에 충분. 더 풍부한 서술이 필요하면 상위 모델로 한 줄 변경.
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # 발전용 가스 단가 환산은 common(gas_cost_won)을 그대로 쓴다.
-# 송출량(TON) = 발전량(MWh) × 0.1521 (7-C). 여기선 est_gas_sendout_ton_land 적재값을 직접 읽는다.
+# 송출량(TON) = 발전량(MWh) × 0.1521. 여기선 est_gas_sendout_ton_land 저장값을 직접 읽는다.
 
 
 # ============================================================ 시계열 요약 통계 (ground truth)
@@ -153,7 +144,7 @@ def _sendout_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
     ts = df["timestamp"]
     ton = df["est_gas_sendout_ton_land"]
     if ton.dropna().empty:
-        return ["송출량 예측 없음(구간 미적재)"]
+        return ["송출량 예측 없음(이 구간 예측 미보유)"]
 
     n_days = (end.normalize() - start.normalize()).days + 1
     gen_total = float(ton.sum())
@@ -262,7 +253,7 @@ def _solar_util_fact(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
 
 def _weather_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
                    wx: pd.DataFrame, rain_hours: int) -> list[str]:
-    """기상 요약(weather kind 전용) — 전운량·일사·강수 + 태양광 이용률 + net_load 저점. 풍력은 다루지 않음."""
+    """기상 요약(weather kind 전용) — 전운량·일사·강수 + 태양광 이용률 + 순 부하 저점. 풍력은 다루지 않음."""
     out = []
     if not wx.empty:
         ts = wx["timestamp"]
@@ -274,7 +265,7 @@ def _weather_facts(start: pd.Timestamp, end: pd.Timestamp, df: pd.DataFrame,
     nl = df["est_net_load_land"]
     if nl.dropna().any():
         nlpk = _argext(df["timestamp"], nl, "min")
-        out.append(f"net_load 저점(가스가 메울 잔여부하 최저): {nlpk[0]:,.0f} MW ({_hhmm(nlpk[1])})")
+        out.append(f"순 부하(Net Load) 저점 — 가스가 메울 잔여 수요 최저: {nlpk[0]:,.0f} MW ({_hhmm(nlpk[1])})")
     return out
 
 
@@ -599,13 +590,13 @@ def render_brief_display(prefix: str, target_day: pd.Timestamp | None = None):
         except Exception:  # noqa: BLE001 — created_at 비정상 시 지평 표기 생략
             hz = "최신 발행본"
         st.markdown(_brief_html(saved["brief_text"]) + mark, unsafe_allow_html=True)
-        st.caption(f"💾 {sd} 종합 · 최신 {hz} · {ca} 생성 — 매일 자동 갱신(운영 실행).{mark}",
+        st.caption(f"💾 {sd} 종합 · 최신 {hz} · {ca} 생성 — 매일 자동 갱신됩니다.{mark}",
                    unsafe_allow_html=True)
     elif lead > 15:
         st.caption(f"예측 브리핑은 **D+15까지** 제공합니다 (선택일 {sd}). "
                    f"날짜를 그 안으로 옮겨 주세요.{mark}", unsafe_allow_html=True)
     else:
-        st.caption(f"{sd} 브리핑이 아직 없습니다 — **운영 실행**에서 생성.{mark}",
+        st.caption(f"{sd} 브리핑이 아직 없습니다 — 매일 새벽 자동 생성됩니다.{mark}",
                    unsafe_allow_html=True)
 
 
@@ -623,7 +614,7 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1,
         # 컨트롤 한 줄 — 구간(N일) → 요약 종류 → 생성 버튼 순서로 흐르게 배치
         c_n, c_kind, c_gen = st.columns([1.7, 2.0, 1.1], vertical_alignment="bottom")
         n = c_n.slider("① 브리핑 구간 (선택일부터 N일)", 1, 15, default_n, key=f"{prefix}_bn",
-                       help="사전 적재 예측을 읽기만 하므로 길게 잡아도 지연 없음")
+                       help="미리 저장된 예측을 불러오므로 길게 잡아도 빠릅니다")
     klabel = c_kind.segmented_control("요약 종류" if fixed_n else "② 요약 종류", list(_KINDS),
                                       default="종합 요약", key=f"{prefix}_bk") or "종합 요약"
     kind = _KINDS[klabel]
@@ -640,9 +631,9 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1,
     saved = store.load(sd, n, kind)           # (시작일·지평·종류)로 저장된 브리핑
 
     if c_gen.button("③ AI 브리핑 생성", key=f"{prefix}_bgen", type="primary", width="stretch"):
-        with st.spinner("Gemini가 통계 요약을 해설하는 중..."):
+        with st.spinner("AI 브리핑 작성 중..."):
             text = generate_brief(kind, fact_text)
-        # 생성 즉시 별도 저장소에 적재(upsert) — 같은 카테고리는 갱신
+        # 생성 즉시 별도 저장소에 저장(upsert) — 같은 카테고리는 갱신
         ca = store.save(sd, n, kind, text, fact_text=fact_text, model=GEMINI_MODEL)
         st.session_state[res_key] = text
         saved = {"brief_text": text, "created_at": ca}
@@ -657,13 +648,13 @@ def render_brief_panel(prefix: str, start_day: pd.Timestamp, default_n: int = 1,
     else:
         st.caption(f"‘{klabel}’ · 선택일부터 {n}일 구간. 버튼을 누르면 아래 근거 위에서 해설하고 저장합니다.")
 
-    with st.expander("브리핑 근거 — 코드가 확정한 사실(이 수치 밖은 창작 금지)"):
+    with st.expander("브리핑 근거 — 코드가 확정한 수치"):
         st.code(fact_text)
-    # '저장된 브리핑' 목록은 종합 화면 밖(운영 실행)으로 — render_saved_briefs() 참조.
+    # '저장된 브리핑' 목록은 종합 화면 밖(관리자메뉴)으로 — render_saved_briefs() 참조.
 
 
 def render_saved_briefs(region: str = "land", limit: int = 30):
-    """저장된 브리핑 기록 표 — 종합 화면이 아닌 조용한 위치(운영 실행)에 둔다."""
+    """저장된 브리핑 기록 표 — 종합 화면이 아닌 조용한 위치(관리자메뉴)에 둔다."""
     rows = store.list_all(region=region, limit=limit)
     if not rows:
         st.caption("저장된 브리핑이 아직 없습니다.")

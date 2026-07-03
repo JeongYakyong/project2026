@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
-"""기상개황 — 8권역 단색(초록) choropleth, Leaflet HTML 임베드 (9. design/visual.md A안).
+"""기상개황 — 8권역 단색(초록) 지도, Leaflet HTML 임베드.
 
-- 디자인 = 9. design/renewable_capacity_map.html 프로토타입 재현(§7 임의 변경 금지).
-  날짜 선택만 Streamlit(◀/▶ 네비게이터) 쪽으로 빼고, 표시 모드(신재생 강도/일사/풍속)와
-  발전원 토글은 HTML 내부 JS — 실데이터는 렌더 시 주입(A안).
+- 표시 모드(신재생 강도/일사/풍속)와 발전원 토글은 HTML 내부 JS — 실데이터는 렌더 시 주입.
 - 기준 시간 = 09–15시 평균(일사·기온·풍속·강수·운량). 별도 시각 선택 없음.
-- 면 색(초록 진하기): 신재생 강도(설비용량×활성도, §3.4) / 일사 비율 / 풍속.
-- 권역 라벨 = 하늘상태 이모지 + 권역명·기온.
-- 제주 = jeju DB 실데이터(고산 west) — 육지 보간 대체 금지(§7).
+- 면 색(초록 진하기): 신재생 강도(설비용량×활성도) / 일사 비율 / 풍속.
+- 제주 = jeju DB 실데이터(고산 west) — 육지 보간으로 대체하지 않는다(확정 규칙).
 """
 from pathlib import Path
 import json
@@ -22,7 +19,7 @@ _GEO_CANDIDATES = [ROOT / "9. design" / "skorea_provinces_simplified.json",
                    ROOT / "9. design" / "old design" / "skorea_provinces_simplified.json"]
 GEOJSON = next((p for p in _GEO_CANDIDATES if p.exists()), _GEO_CANDIDATES[0])
 
-# 17 시도 → 8 권역 (visual.md §4)
+# 17 시도 → 8 권역
 SIDO2ZONE = {
     "서울특별시": "수도권", "경기도": "수도권", "인천광역시": "수도권",
     "대전광역시": "충청권", "세종특별자치시": "충청권", "충청남도": "충청권", "충청북도": "충청권",
@@ -33,7 +30,7 @@ SIDO2ZONE = {
     "강원도": "강원", "제주특별자치도": "제주",
 }
 
-# 8 권역 — 구성·기상 지점·설비용량(MW, 2026.04 전국총량 × 2024 지역비율)·라벨 좌표 (visual.md §3.1)
+# 8 권역 — 구성·기상 지점·설비용량(MW, 2026.04 전국총량 × 2024 지역비율)·라벨 좌표
 ZONES = {
     "광주·전남": dict(mem="광주·전남", db="land", stn="yeonggwang", stname="영광",
                    solar=7160, wind=616, lat=34.95, lon=126.85),
@@ -55,15 +52,12 @@ ZONES = {
 
 HOURS = ("09:00:00", "15:00:00")   # 기준 시간대 — 09–15시 평균(별도 시각 선택 없음)
 
-# ---- 활성도 BIN — 실측 교정 완료(2026-06-11 사용자 확정) -------------------
-# historical 2022-01~2026-06(1,620일)의 5지점 평균 기상 ↔ 실제 전국 이용률
-# (gen_solar/wind_utilization_kr, 09–15시 평균)을 역산, bin별 실측 평균으로 교정.
-# 활성도 % = 기대 전국 이용률 — 하단 테이블의 이용률 예측과 같은 단위.
-# 전국 기준 교정을 권역 단일 지점에 적용 → 권역 간 상대 신호(바람 많은 권역이 진함).
+# ---- 활성도 BIN — 실측 역산으로 교정된 확정값(수치 변경 금지) ----------------
+# 활성도 % = 기대 전국 이용률(과거 실측 기상↔이용률 관계로 교정) — 이용률 예측과 같은 단위.
+# 전국 기준 교정을 권역 단일 지점에 적용 → 권역 간 상대 신호로만 쓴다.
 SOLAR_BINS = [(0.80, 61, "매우 좋음"), (0.60, 49, "좋음"), (0.40, 36, "보통"),
               (0.20, 23, "낮음"), (0.00, 12, "매우 낮음")]
-# 풍속 경계 = ASOS 10m 지점 스케일. 허브높이 파워커브 경계(3/6/9/13)는
-# 지점 평균이 사실상 도달 불가(6년간 ≥9m/s 0일)라 폐기.
+# 풍속 경계 = ASOS 10m 지점 스케일(허브높이 파워커브 경계 아님 — 지점 평균으로는 도달 불가).
 WIND_BINS = [(0, 2, 11, "미풍"), (2, 3, 21, "약함"), (3, 4.5, 44, "양호"),
              (4.5, 6, 72, "좋음"), (6, 25, 77, "최적"), (25, 999, 0, "차단")]
 SA_MAX = max(p for _, p, _ in SOLAR_BINS)     # 강도맵 기준 — 최상 bin 기대 이용률
@@ -73,8 +67,7 @@ WA_MAX = max(p for _, _, p, _ in WIND_BINS)
 CLEARSKY_0915 = {1: 1.64, 2: 2.09, 3: 2.50, 4: 2.93, 5: 3.10, 6: 3.06,
                  7: 2.79, 8: 2.69, 9: 2.59, 10: 2.20, 11: 1.83, 12: 1.47}
 
-# 하늘상태 4분류(맑음/약간흐림/흐림/비·눈) — 2026-06-11 관측 분포로 경계 확정:
-# 운량<0.5는 일사비율 ~0.7(감쇄 미미), ≥0.85에서 0.26으로 급락. 빈도 45/30/25% 균형.
+# 하늘상태 4분류(맑음/약간흐림/흐림/비·눈) — 관측 분포로 경계 확정.
 # DB total_cloud_*는 0~1 비율(기상청 0~10 아님), rainfall_*은 mm/h.
 RAIN_MMH = 0.3            # 09–15 평균 강수 ≥ 이 값이면 강수로 판정
 CLOUD_OVC, CLOUD_BKN = 0.85, 0.50   # 흐림 / 약간흐림 경계
@@ -105,7 +98,7 @@ def wind_act(ws: float | None) -> dict | None:
 
 def sky_of(cloud: float | None, rain: float | None, temp: float | None,
            ratio: float | None) -> dict:
-    """하늘상태 4분류 — 강수 우선, 운량 기준. 운량 결측 시 일사 비율로 근사(§3.3 fallback)."""
+    """하늘상태 4분류 — 강수 우선, 운량 기준. 운량 결측 시 일사 비율로 근사(폴백)."""
     rain = 0.0 if rain is None or pd.isna(rain) else rain
     if rain >= RAIN_MMH:
         if temp is not None and not pd.isna(temp) and temp < SNOW_TEMP:
@@ -156,10 +149,10 @@ def _station_means(region: str, suffixes: list[str], date: str,
 
 
 def _station_means_fh(region: str, suffixes: list[str], date: str) -> dict[str, dict]:
-    """forecast_horizon(지평 아카이브) 09–15시 평균 — 예보 전용(전국·제주 공용, 레거시 forecast 폐기 대체).
+    """forecast_horizon(지평 아카이브) 09–15시 평균 — 예보 전용(전국·제주 공용).
 
-    예측은 timestamp 당 여러 base 가 있으므로 **최신 base** 행만 골라 freshest 예보를 쓴다
-    (구 forecast 단일 스냅샷과 같은 의미).  컬럼명은 forecast 와 동일(KMA 기상)이라 _PREFIX 재사용.
+    timestamp 당 여러 base 가 있으므로 최신 base 행만 골라 가장 새 예보를 쓴다.
+    컬럼명은 forecast 와 동일(KMA 기상)이라 _PREFIX 재사용.
     """
     px = _PREFIX["forecast"]
     s, e = f"{date} {HOURS[0]}", f"{date} {HOURS[1]}"
@@ -195,7 +188,7 @@ def _util_label(pct: float) -> str:
 @st.cache_data(ttl=C.CACHE_TTL)
 def jeju_wind_util(date: str, forecast: bool) -> float | None:
     """제주 그날 풍력 이용률(%) — 고산 풍속을 육지 풍속 칸에 넣으면 과대표시(≥6m/s 49%→'최적' 77%)되어,
-    제주 자체 값을 쓴다. forecast=True면 제주 3단계 예측(est_wind_util_jeju, 최신 base),
+    제주 자체 값을 쓴다. forecast=True면 제주 예측(est_wind_util_jeju, 최신 base),
     False면 실측 CF(real_wind_gen ÷ capacity). 둘 다 그날 평균(%). 데이터 없으면 None.
     """
     s, e = f"{date} 00:00:00", f"{date} 23:00:00"
@@ -215,8 +208,7 @@ def jeju_wind_util(date: str, forecast: bool) -> float | None:
 def _build_zones(date: str, table: str) -> dict[str, dict]:
     """8권역 기상(09–15시 평균)·하늘상태·활성도 — 예보/실측 공용 계산.
 
-    예보는 양 권역 모두 forecast_horizon(최신 base) — 레거시 forecast 폐기(전국 06-19·제주 06-20).
-    실측은 양 권역 historical.
+    예보는 양 권역 모두 forecast_horizon(최신 base), 실측은 양 권역 historical.
     """
     if table == "forecast":
         land = _station_means_fh("land", C.STATIONS_LAND, date)
@@ -316,7 +308,7 @@ def national_util(date: str) -> dict:
             "wind_max": pct(day["est_wind_util_land"].max())}
 
 
-# ---------------------------------------------------------------- HTML (A안 임베드)
+# ---------------------------------------------------------------- HTML 임베드
 @st.cache_resource
 def _geo_text() -> str:
     return GEOJSON.read_text(encoding="utf-8")
@@ -331,7 +323,7 @@ def conf_of(dplus: int) -> tuple[str, str]:
     return _CONF[key]
 
 
-# 잠정 상수(visual.md §3.4) — 단색 강도맵. 투명도 상한 40% → opacity ≤ 0.60
+# 단색 강도맵 상수 — 투명도 상한 40% → opacity ≤ 0.60
 GREEN = "#059669"
 OP_MIN, OP_MAX = 0.06, 0.60
 
@@ -441,7 +433,7 @@ _TEMPLATE = """<!DOCTYPE html>
   .wxwrap{background:none!important;border:none!important;}
   .wx{transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1px;pointer-events:none;}
   .wx .emo{font-size:22px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,.3));}
-  .wx .nm{font-size:11px;font-weightNORTH_TRIM:800;color:#0f172a;background:rgba(255,255,255,.85);
+  .wx .nm{font-size:11px;font-weight:800;color:#0f172a;background:rgba(255,255,255,.85);
     padding:1px 6px;border-radius:7px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.14);}
   .wx .nm small{font-weight:600;color:#475569;}
 
@@ -517,9 +509,9 @@ const GREEN = "__GREEN__", OP_MIN = __OP_MIN__, OP_MAX = __OP_MAX__, WIND_FULL =
 const SA_MAX = __SA_MAX__, WA_MAX = __WA_MAX__;   /* 교정 활성도 상한(최상 bin) */
 
 const LEGEND = {
-  gen: "<b>면 색(초록)</b> = 신재생 발전 강도(설비용량 × 활성도, 진할수록 강함)<br>체크된 발전원만 반영 · 커서를 올리면 권역 카드",
-  rad: "<b>면 색(초록)</b> = 일사 비율(09–15시 평균 ÷ 청천 일사, 진할수록 강함)<br>커서를 올리면 권역 카드",
-  wind:"<b>면 색(초록)</b> = 풍속(09–15시 평균, " + WIND_FULL + " m/s에서 최대)<br>커서를 올리면 권역 카드",
+  gen: "<b>면 색</b> = 신재생 발전 강도 — 진할수록 강함 · 체크된 발전원만 반영",
+  rad: "<b>면 색</b> = 일사 비율 — 진할수록 강함",
+  wind:"<b>면 색</b> = 풍속 — 진할수록 강함",
 };
 
 const map = L.map("map", {zoomControl:false, scrollWheelZoom:false, zoomSnap:0.25, zoomDelta:0.5});
@@ -610,7 +602,7 @@ function render(){
   document.getElementById("toggles").style.display = (mode==="gen") ? "" : "none";
   document.getElementById("legend").innerHTML = LEGEND[mode];
 
-  /* 신재생 강도(§3.4): gen = Σ(용량×기대이용률). 기준 = 최대 권역이 최상 bin일 때 */
+  /* 신재생 강도: gen = Σ(용량×기대이용률). 기준 = 최대 권역이 최상 bin일 때 */
   let refGen = 0;
   Object.keys(Z).forEach(name=>{
     const d=Z[name];
@@ -763,7 +755,7 @@ def _util_cards_html(util: dict, util_act: dict | None = None) -> str:
 
 
 def _gas_panel_html(gas: dict | None) -> str:
-    """오른쪽 패널 — 예상 가스 송출량(+발전용 시계열) · 전력수요 시계열(실측 겹침) · 순수요 범위.
+    """오른쪽 패널 — 예상 가스 송출량(+발전용 시계열) · 전력수요 시계열(실측 겹침) · 순 부하 범위.
 
     날짜는 왼쪽 패널에만 두어 중복 표기하지 않는다. gas 없으면 빈 문자열.
     """
@@ -792,13 +784,13 @@ def _gas_panel_html(gas: dict | None) -> str:
                f'<span class="gv">{f(gas["demand_peak"])}<small>MW 최대</small></span></div>'
                + _sparkline_svg(gas["demand_spark"], color="#1f77b4",
                                 overlay=gas.get("demand_real_spark")))
-    # 8. 순수요(net_load) 최대·최소
+    # 8. 순 부하(Net Load) 최대·최소
     nl = ""
     if gas.get("nl_max") is not None:
         nl = ('<div class="divider"></div>'
-              '<div class="gasrow"><span class="gk">순수요 최대</span>'
+              '<div class="gasrow"><span class="gk">순 부하 최대</span>'
               f'<span class="gv">{f(gas["nl_max"])}<small>MW</small></span></div>'
-              '<div class="gasrow"><span class="gk">순수요 최소</span>'
+              '<div class="gasrow"><span class="gk">순 부하 최소</span>'
               f'<span class="gv">{f(gas.get("nl_min"))}<small>MW</small></span></div>')
     return (
         '<div class="panel panel--gas">'
@@ -823,10 +815,10 @@ def _gas_panel_html(gas: dict | None) -> str:
 def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict,
                gas: dict | None = None, util_act: dict | None = None,
                humidity: float | None = None) -> str:
-    """A안 임베드 HTML — 선택일 데이터 주입(프로토타입 디자인 그대로).
+    """임베드 HTML — 선택일 데이터 주입.
 
     gas(예상 가스 송출량+전력수요)·util_act(이용률 실측)·humidity(전국 습도)를 주면
-    좌우 패널을 풍부하게 채운다(종합 브리핑 메인 hero).
+    좌우 패널을 채운다(종합브리핑 탭의 메인 화면).
     """
     conf_t, conf_c = conf_of(dplus)
     skies = [z["sky"]["t"] for z in zones.values() if z["ok"]]

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""8단계 공용 레이어 — DB 조회(읽기 전용)·KPX 실시간 수급·단가 환산·적재 현황·운영 실행."""
+"""Gascast 공용 레이어 — DB 조회·KPX 실측 보강·단가 환산·데이터 현황·관리자 실행 헬퍼."""
 from pathlib import Path
 import importlib
 import os
@@ -20,8 +20,8 @@ DB = {
 }
 PRICE_CSV = ROOT / "7. land_gas_forecaster" / "model" / "tab" / "7c_monthly_price_cost.csv"
 
-GJ_PER_TON = 55.0      # LNG 열량(GJ/ton), 7-C
-TON_PER_MWH = 0.1521   # 발전량→송출량 변환계수, 7-C
+GJ_PER_TON = 55.0      # LNG 열량(GJ/ton)
+TON_PER_MWH = 0.1521   # 발전량(MWh)→송출량(TON) 변환계수
 CACHE_TTL = 600
 STATIONS_LAND = ["daegwallyeong", "wonju", "seosan", "pohang", "yeonggwang"]
 
@@ -54,25 +54,22 @@ def has_table(region: str, table: str) -> bool:
         con.close()
 
 
-# ---------------------------------------------------------------- 운영 실행 (서빙 체인·수집)
-# 대시보드에서 러너/수집기를 직접 트리거.
-#   - 서빙 체인: 로컬 추론(API 무관) → 무가드.  cwd=ROOT.
-#   - 수집(기상/실측): KMA/KPX API 호출 → ★개발단계 임시 비밀번호(OPS_PASSWORD) 게이트.
-#     수집기는 .env(API 키)를 load_dotenv()(cwd 기준)로 읽으므로 cwd 를 데이터 폴더로 둔다(cron 과 동일).
+# ---------------------------------------------------------------- 관리자 실행 (예측 체인·수집)
+# 수집기는 .env(API 키)를 load_dotenv()(cwd 기준)로 읽으므로 cwd 를 데이터 폴더로 둔다(cron 과 동일).
 # 같은 인터프리터(sys.executable = 이 streamlit 의 venv)로 실행해 로컬·서버 동일 동작.
 DATA_DIR = ROOT / "1. data_fetcher_and_db"
 SERVE_CHAIN_LAND = ROOT / "7. land_gas_forecaster" / "serve_chain_land_new.py"
-COLLECT_FORECAST = DATA_DIR / "core" / "collect_forecast_new.py"   # ① 기상 → forecast_horizon
-COLLECT_LAND_HIST = DATA_DIR / "core" / "collect_data_land_new.py"  # ② 실측 → historical
-OPS_PASSWORD = os.getenv("OPS_PASSWORD", "8888")   # ★ .env/systemd 의 OPS_PASSWORD 로 강한 값 지정(미설정 시 fallback).
+COLLECT_FORECAST = DATA_DIR / "core" / "collect_forecast_new.py"   # 기상 예보 수집기
+COLLECT_LAND_HIST = DATA_DIR / "core" / "collect_data_land_new.py"  # 실측 수집기
+OPS_PASSWORD = os.getenv("OPS_PASSWORD", "8888")   # .env/systemd 의 OPS_PASSWORD 로 지정(미설정 시 fallback)
 
 
 def run_script(script: Path, args: list[str], timeout: int = 3600,
                cwd: Path | None = None) -> tuple[int, str]:
     """script 를 현재 인터프리터로 실행 → (returncode, stdout+stderr 합본).
 
-    blocking — 호출부에서 st.spinner 로 감싼다.  서빙 체인은 base 당 수 초, 기상 수집은 수 분.
-    cwd 미지정이면 ROOT(서빙).  수집기는 cwd=DATA_DIR 로 넘겨 .env 를 찾게 한다.
+    blocking — 호출부에서 st.spinner 로 감싼다.
+    cwd 미지정이면 ROOT.  수집기는 cwd=DATA_DIR 로 넘겨 .env 를 찾게 한다.
     """
     try:
         proc = subprocess.run(
@@ -88,20 +85,20 @@ def run_script(script: Path, args: list[str], timeout: int = 3600,
 
 
 def ops_gate() -> bool:
-    """운영 실행 메뉴 전체 잠금.  해제 상태면 True(본문 렌더 허용), 잠김이면 잠금화면만 그리고 False.
+    """관리자메뉴 전체 잠금.  해제 상태면 True(본문 렌더 허용), 잠김이면 잠금화면만 그리고 False.
 
     호출부 맨 위에서:  ``if not C.ops_gate(): return``  — 해제 전에는 어떤 버튼도 그려지지 않는다.
     세션 단위(브라우저별)로 해제되며, 비밀번호는 OPS_PASSWORD(환경변수 권장).
     """
     if st.session_state.get("ops_unlocked"):
         c1, c2 = st.columns([5, 1])
-        c1.success("🔓 운영 실행 — 잠금 해제됨")
+        c1.success("🔓 관리자메뉴 — 잠금 해제됨")
         if c2.button("🔒 잠그기", key="ops_lock"):
             st.session_state["ops_unlocked"] = False
             st.rerun()
         return True
-    st.markdown("### 🔒 운영 실행 — 잠김")
-    st.caption("이 메뉴는 서빙 체인·데이터 수집을 **직접 실행**합니다. 비밀번호 입력 후 사용하세요.")
+    st.markdown("### 🔒 관리자메뉴 — 잠김")
+    st.caption("이 메뉴는 예측 실행과 데이터 수집을 **직접 수행**합니다. 비밀번호 입력 후 사용하세요.")
     with st.form("ops_gate_form"):
         pw = st.text_input("비밀번호", type="password")
         ok = st.form_submit_button("잠금 해제")
@@ -137,7 +134,7 @@ def land_horizon_meta() -> dict:
 
 @st.cache_data(ttl=CACHE_TTL)
 def land_date_range() -> tuple[str, str]:
-    """예측 표시 가능 목표시각 범위 — 지평 아카이브 기준(G-15 ④)."""
+    """예측 표시 가능 목표시각 범위 — 지평 아카이브 기준."""
     df = query("land", f"SELECT MIN(timestamp) lo, MAX(timestamp) hi FROM {HZ_TABLE} "
                        "WHERE est_demand_land IS NOT NULL")
     return str(df.loc[0, "lo"])[:10], str(df.loc[0, "hi"])[:10]
@@ -179,7 +176,7 @@ def land_est_horizon(mode: str, value, start: str, end: str) -> pd.DataFrame:
     return _hz_select("land", HZ_TABLE, HZ_EST_COLS, mode, value, start, end)
 
 
-# ---------------------------------------------------------------- 도시가스 지평 아카이브 (10단계, 보조·일단위)
+# ---------------------------------------------------------------- 도시가스 지평 아카이브 (보조·일단위)
 # 도시가스(난방 중심·기온 기반)는 발전용과 별개인 보조·참고 산출물. 일단위 모델이라
 # timestamp = 목표일 00:00. 발전용(ton/h)·도시가스(ton/day) 모두 단위 TON → 일단위에서 합산.
 CITYGAS_TABLE = "est_horizon_citygas"
@@ -243,7 +240,7 @@ def land_daily_sendout(start_day: pd.Timestamp, end_day: pd.Timestamp,
 
 
 # ---------------------------------------------------------------- 최근 실측 DB 채움 (갭필 후 저장)
-# 원칙(사용자 2026-06-15): DB에 현재 시각까지 데이터가 있으면 DB에서 읽고, 없으면(뒤처졌으면)
+# 원칙: DB에 현재 시각까지 데이터가 있으면 DB에서 읽고, 없으면(뒤처졌으면)
 # 그 부족분만 KPX 라이브 수집 → historical 에 저장.  매번 전체를 다시 긁지 않는다.
 # region별 실시간 보강 설정 — (실측 판정 컬럼, fetcher 모듈, fetcher 함수명).
 # 수집·저장 로직은 똑같고 호출하는 KPX 창구만 다르다:
@@ -337,7 +334,7 @@ def land_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
                 ensure_recent("land", day.strftime("%Y-%m-%d"))
 
     est = land_est_horizon(mode, value, s, e)
-    # KPX DA는 historical에 완전 적재(forecast 스냅샷판은 결측 많음 → 폐기). 동일 값.
+    # KPX DA는 historical에서 읽는다
     da = query("land", "SELECT timestamp, land_est_demand_da FROM historical "
                        "WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp", (s, e))
     act = query("land", """
@@ -361,9 +358,9 @@ def land_day_compare(day: pd.Timestamp, use_live: bool = True,
     return land_range_compare(day, day, use_live=use_live, mode=mode, value=value)
 
 
-# ---------------------------------------------------------------- 제주 지평 아카이브·비교 (2→3→4)
-# 제주는 수요(2)·신재생/net_load(3) 예측을 est_horizon_jeju, SMP(4)를 est_smp_horizon_jeju 에 적재.
-# 발행본(base)=전날 21:00(육지 23:00과 다름)·지평 D+1~7(SMP는 D+1~2). 실측 live 보강은 없음(서버 cron).
+# ---------------------------------------------------------------- 제주 지평 아카이브·비교
+# 제주는 수요·신재생·순 부하 예측을 est_horizon_jeju, SMP를 est_smp_horizon_jeju 에 저장.
+# 발행본(base)=전날 21:00(육지 23:00과 다름)·지평 D+1~7(SMP는 D+1~2).
 JEJU_HZ_TABLE = "est_horizon_jeju"
 JEJU_SMP_TABLE = "est_smp_horizon_jeju"
 JEJU_EST_COLS = ["est_demand_jeju", "est_solar_gen_jeju", "est_wind_gen_jeju", "est_net_load_jeju",
@@ -395,7 +392,7 @@ def jeju_range_compare(start_day: pd.Timestamp, end_day: pd.Timestamp,
     신재생 예측 = 태양광+풍력 발전 예측 합. net_load 실측 = 수요−신재생(예측과 같은 기준 재구성).
     KPX 제주 하루전 수요예측(jeju_est_demand_da)은 비교용 참조로 그대로 싣는다(각 날짜의 하루 전 발표분).
     실측 보강은 육지와 동일 — 최근 구간이 DB에 비면 chejusukub 에서 부족분만 채운다(ensure_recent).
-    SMP(4)는 별도 jeju_smp_frame 으로 다룬다.
+    SMP는 별도 jeju_smp_frame 으로 다룬다.
     """
     s = start_day.strftime("%Y-%m-%d 00:00:00")
     e = end_day.strftime("%Y-%m-%d 23:00:00")
@@ -437,16 +434,16 @@ def jeju_smp_frame(start_day: pd.Timestamp, end_day: pd.Timestamp,
 
 
 # 검증탭 4개 모델 — (표시 라벨, est 컬럼, 실측 컬럼, 지표종류, 설비용량 컬럼).  SMP는 검증탭에서 제외.
-#   수요   = MAPE          (분모=실측수요, 크고 안정).
-#   순수요 = nMAE          (분모=평균 |net_load| — net_load는 설비용량이 없고 한낮 0 근처라 MAPE는 튐).
-#   태양광·풍력 = capmae   (MAE ÷ 설비용량 — 신재생 예측의 표준 nMAE. 저발전 시간 분모 0 문제 회피).
+#   수요    = MAPE          (분모=실측수요, 크고 안정).
+#   순 부하 = nMAE          (분모=평균 |net_load| — 설비용량이 없고 한낮 0 근처라 MAPE는 튐).
+#   태양광·풍력 = capmae    (MAE ÷ 설비용량 — 신재생 예측의 표준 nMAE. 저발전 시간 분모 0 문제 회피).
 JEJU_ACC_SPECS = [
     ("수요", "est_demand_jeju", "real_demand_jeju", "mape", None),
-    ("순수요", "est_net_load_jeju", "real_net_load_jeju", "nmae", None),
+    ("순 부하", "est_net_load_jeju", "real_net_load_jeju", "nmae", None),
     ("태양광", "est_solar_gen_jeju", "real_solar_gen_jeju", "capmae", "real_solar_capacity_jeju"),
     ("풍력", "est_wind_gen_jeju", "real_wind_gen_jeju", "capmae", "real_wind_capacity_jeju"),
 ]
-JEJU_ACC_MODELS = [s[0] for s in JEJU_ACC_SPECS]   # ["수요","순수요","태양광","풍력"]
+JEJU_ACC_MODELS = [s[0] for s in JEJU_ACC_SPECS]   # ["수요","순 부하","태양광","풍력"]
 
 
 def _jeju_acc_join(start: str | None, end: str | None) -> pd.DataFrame:
@@ -490,7 +487,7 @@ def _acc_metric(g: pd.DataFrame, ec: str, ac: str, kind: str, cap_col):
 def jeju_horizon_accuracy(start: str | None = None, end: str | None = None) -> pd.DataFrame:
     """제주 4개 모델의 지평별 정확도 — 검증기간(실측 대상일 = 타깃 timestamp) 안에서 D+1~7 집계.
 
-    수요 = MAPE, 순수요 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE(MAE÷설비용량), 단위 %.
+    수요 = MAPE, 순 부하 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE(MAE÷설비용량), 단위 %.
     est_horizon_jeju(D+1~7) × historical 실측. 미래 대상일·실측 없는 칸은 자동 제외.
     반환: index=지평(D+1..), 컬럼=모델별 지표(%, 없으면 None) + 표본(시간).
     """
@@ -514,7 +511,7 @@ def jeju_horizon_accuracy(start: str | None = None, end: str | None = None) -> p
 def jeju_daily_accuracy(start: str, end: str | None, k: int) -> pd.DataFrame:
     """선택 지평 D+k에서 검증기간의 '일별' 정확도 추이 — index=날짜, 컬럼=모델별 지표(%).
 
-    수요 = MAPE, 순수요 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE. 하루 표본 < 8이면 그 날 그 모델은 NaN(낮만인 태양광 보호).
+    수요 = MAPE, 순 부하 = nMAE, 태양광·풍력 = 설비용량 기준 nMAE. 하루 표본 < 8이면 그 날 그 모델은 NaN(낮만인 태양광 보호).
     맑은 날 정확하다가 특정일 급등 = 그 날 기상 급변(비·구름) 신호로 읽는다.
     """
     mw = _jeju_acc_join(start, end)
@@ -549,7 +546,7 @@ def jeju_renew_capacity() -> tuple[float, float]:
 # 장지평(D+3 이상) 수집 가능=예보(green) / 불가=실측·근일(blue). SMP는 D+1·D+2뿐이라 장지평 불가(blue).
 JEJU_COVERAGE_ITEMS = [
     ("수요 예측", "est_horizon_jeju", "est_demand_jeju", True),
-    ("net_load 예측", "est_horizon_jeju", "est_net_load_jeju", True),
+    ("순 부하 예측", "est_horizon_jeju", "est_net_load_jeju", True),
     ("태양광 예측", "est_horizon_jeju", "est_solar_gen_jeju", True),
     ("풍력 예측", "est_horizon_jeju", "est_wind_gen_jeju", True),
     ("기상 예보", "forecast_horizon", "temp_west", True),
@@ -636,7 +633,7 @@ def error_metrics(est: pd.Series, act: pd.Series) -> dict | None:
 @st.cache_data(ttl=CACHE_TTL)
 def land_daily_error_history(end_day: str, days: int = 30,
                              mode: str = "latest", value=None) -> pd.DataFrame:
-    """최근 N일 일별 MAPE 추이 (수요/신재생/net_load/가스). 지평 아카이브 적재분만 사용.
+    """최근 N일 일별 MAPE 추이 (수요/신재생/순 부하/가스). 지평 아카이브 저장분만 사용.
 
     mode/value = 평가 지평(기본 'latest' = 과거 구간이라 사실상 D+1).
     """
@@ -652,7 +649,7 @@ def land_daily_error_history(end_day: str, days: int = 30,
     df = est.merge(act, on="timestamp", how="inner")
     pairs = {"수요": ("est_demand_land", "real_demand_land", "mape"),
              "신재생": ("est_market_renew_land", "renew_gen_total_kr", "nmae"),
-             "net_load": ("est_net_load_land", "net_load_actual", "mape"),
+             "순 부하": ("est_net_load_land", "net_load_actual", "mape"),
              "가스": ("est_gas_gen_land", "gen_gas_kr", "mape")}
     out = {}
     grp = df.groupby(df["timestamp"].dt.date)
@@ -679,7 +676,7 @@ def land_horizon_accuracy(start: str | None = None, end: str | None = None,
     필터(택일/병용):
       - 기간별: start(발행일 base 하한)·end(상한). 둘 다 None 이면 전 기간.
       - 계절별: season ∈ {봄,여름,가을,겨울} → 타깃 시각의 월로 필터(전 기간 대상).
-    수요·net_load·가스 = MAPE, 신재생 = nMAE(심야 분모 문제 회피), 단위 %.  가스 bias·표본 동반.
+    수요·순 부하·가스 = MAPE, 신재생 = nMAE(심야 분모 문제 회피), 단위 %.  가스 bias·표본 동반.
     최근 발행본의 먼 지평은 실측이 아직 없어 자동 제외 — 긴 지평은 더 오래된 발행본에서 채워진다.
     """
     where, params = [], []
@@ -703,7 +700,7 @@ def land_horizon_accuracy(start: str | None = None, end: str | None = None,
     df["real_net_load"] = df["real_demand_land"] - df["renew_gen_total_kr"]
     specs = [("수요 MAPE", "est_demand_land", "real_demand_land", "mape"),
              ("신재생 nMAE", "est_market_renew_land", "renew_gen_total_kr", "nmae"),
-             ("net_load MAPE", "est_net_load_land", "real_net_load", "mape"),
+             ("순 부하 MAPE", "est_net_load_land", "real_net_load", "mape"),
              ("가스 MAPE", "est_gas_gen_land", "gen_gas_kr", "mape")]
     rows = []
     for hz in range(1, 16):
@@ -725,10 +722,10 @@ def land_horizon_accuracy(start: str | None = None, end: str | None = None,
 # ---------------------------------------------------------------- 단가 환산
 @st.cache_data(ttl=CACHE_TTL)
 def gas_tariff_by_month() -> pd.Series:
-    """발전용 가스 단가(원/GJ), 월별. 기본값 = 7-C CSV, 운영 입력값이 그 위를 덮어쓴다.
+    """발전용 가스 단가(원/GJ), 월별. 기본값 = CSV, 관리자 입력값이 그 위를 덮어쓴다.
 
-    CSV(`7c_monthly_price_cost.csv`)는 과거 실적 단가의 폴백이고, 운영 실행 화면에서 입력한
-    월 단가(gas_price_store)가 override 로 우선한다. CSV 에 없는 최근·앞으로의 월도 입력해 추가할 수
+    CSV(`7c_monthly_price_cost.csv`)는 과거 실적 단가의 폴백이고, 관리자메뉴에서 입력한
+    월 단가(gas_price_store)가 우선한다. CSV 에 없는 최근·앞으로의 월도 입력해 추가할 수
     있다(끝내 없는 월은 gas_cost_won 이 마지막 값으로 폴백). 저장 후 st.cache_data.clear() 로 반영.
     """
     import gas_price_store as gps
@@ -747,17 +744,26 @@ def gas_cost_won(ts: pd.Series, ton: pd.Series) -> pd.Series:
     return ton * GJ_PER_TON * t
 
 
-# ---------------------------------------------------------------- 적재 현황
+# ---------------------------------------------------------------- 데이터 현황
+# 화면 표기용 테이블 이름 — 값(실제 테이블명)은 그대로 두고 표시만 바꾼다.
+TABLE_LABEL = {
+    "historical": "실측 기록",
+    "forecast_horizon": "기상 예보 아카이브",
+    "est_horizon_land": "예측 아카이브",
+    "est_horizon_citygas": "도시가스 예측(참고)",
+    "est_horizon_jeju": "예측 아카이브",
+    "est_smp_horizon_jeju": "SMP 예측 아카이브",
+}
+
 COVERAGE = {
     "land": [
-        # 예측 정본 = est_horizon_land(지평 아카이브). 기상 정본 = forecast_horizon.
-        ("est_horizon_land", "수요 예측 — 5단계", "est_demand_land"),
-        ("est_horizon_land", "신재생 예측 — 6단계", "est_market_renew_land"),
-        ("est_horizon_land", "net_load 예측 — 6단계", "est_net_load_land"),
-        ("est_horizon_land", "가스 발전 예측 — 7단계", "est_gas_gen_land"),
-        ("est_horizon_land", "가스 송출량 예측 — 7단계", "est_gas_sendout_ton_land"),
-        ("est_horizon_citygas", "도시가스 송출량 예측 — 10단계(보조)", "est_citygas_sendout"),
-        ("forecast_horizon", "기상 예보 아카이브(서산 기온)", "temp_seosan"),
+        ("est_horizon_land", "수요 예측", "est_demand_land"),
+        ("est_horizon_land", "신재생 예측", "est_market_renew_land"),
+        ("est_horizon_land", "순 부하 예측", "est_net_load_land"),
+        ("est_horizon_land", "가스 발전 예측", "est_gas_gen_land"),
+        ("est_horizon_land", "가스 송출량 예측", "est_gas_sendout_ton_land"),
+        ("est_horizon_citygas", "도시가스 송출량 예측(참고)", "est_citygas_sendout"),
+        ("forecast_horizon", "기상 예보(서산 기온)", "temp_seosan"),
         ("historical", "수요 실측(KPX)", "real_demand_land"),
         ("historical", "신재생 실측(KPX)", "renew_gen_total_kr"),
         ("historical", "가스 발전 실측(KPX)", "gen_gas_kr"),
@@ -765,17 +771,16 @@ COVERAGE = {
         ("historical", "기상 관측(서산 일사)", "solar_rad_seosan"),
     ],
     "jeju": [
-        # 예측 정본 = est_horizon_jeju·est_smp_horizon_jeju(지평 아카이브). 기상 정본 = forecast_horizon.
-        ("est_horizon_jeju", "수요 예측 — 2단계", "est_demand_jeju"),
-        ("est_horizon_jeju", "net_load 예측 — 3단계", "est_net_load_jeju"),
-        ("est_horizon_jeju", "태양광 이용률 예측 — 3단계", "est_solar_util_jeju"),
-        ("est_horizon_jeju", "풍력 이용률 예측 — 3단계", "est_wind_util_jeju"),
-        ("est_smp_horizon_jeju", "SMP 예측 — 4단계", "est_smp"),
-        ("est_smp_horizon_jeju", "SMP 음수경보 — 4단계", "smp_danger"),
-        ("forecast_horizon", "기상 예보 아카이브(서부 기온)", "temp_west"),
+        ("est_horizon_jeju", "수요 예측", "est_demand_jeju"),
+        ("est_horizon_jeju", "순 부하 예측", "est_net_load_jeju"),
+        ("est_horizon_jeju", "태양광 이용률 예측", "est_solar_util_jeju"),
+        ("est_horizon_jeju", "풍력 이용률 예측", "est_wind_util_jeju"),
+        ("est_smp_horizon_jeju", "SMP 예측", "est_smp"),
+        ("est_smp_horizon_jeju", "SMP 음수가격 경보", "smp_danger"),
+        ("forecast_horizon", "기상 예보(서부 기온)", "temp_west"),
         ("historical", "수요 실측(KPX)", "real_demand_jeju"),
         ("historical", "신재생 실측(KPX)", "real_renew_gen_jeju"),
-        ("historical", "net_load 실측", "real_net_load_jeju"),
+        ("historical", "순 부하 실측", "real_net_load_jeju"),
         ("historical", "실시간 SMP", "smp_jeju_rt"),
     ],
 }
@@ -822,15 +827,16 @@ def coverage_table(region: str) -> pd.DataFrame:
         have = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")} for t in tables}
         for table, label, col in COVERAGE[region]:
             if col not in have[table]:
-                rows.append([table, label, "—", "—", 0, None]); continue
+                rows.append([TABLE_LABEL.get(table, table), label, "—", "—", 0, None]); continue
             lo, hi, n = con.execute(
                 f"SELECT MIN(timestamp), MAX(timestamp), COUNT({col}) "
                 f"FROM {table} WHERE {col} IS NOT NULL").fetchone()
             lag = round((now - pd.Timestamp(hi)).total_seconds() / 3600, 1) if hi else None
-            rows.append([table, label, (lo or "—")[:16], (hi or "—")[:16], n, lag])
+            rows.append([TABLE_LABEL.get(table, table), label,
+                         (lo or "—")[:16], (hi or "—")[:16], n, lag])
     finally:
         con.close()
-    return pd.DataFrame(rows, columns=["테이블", "항목", "시작", "마지막 적재", "행수", "경과(시간)"])
+    return pd.DataFrame(rows, columns=["저장소", "항목", "시작", "마지막 저장", "행수", "경과(시간)"])
 
 
 # ---------------------------------------------------------------- 차트 헬퍼
@@ -911,7 +917,7 @@ def hz_hover(df: pd.DataFrame):
     return cd, tmpl
 
 
-# ---------------------------------------------------------------- UI 레이어 (8-A 디자인)
+# ---------------------------------------------------------------- UI 레이어
 # 디자인 토큰 = 기상개황 지도(weather_map.py)와 동일: ink #0f172a / sub #64748b /
 # line #e2e8f0 / green #059669. 캔버스·사이드바 색은 .streamlit/config.toml 테마가 담당.
 _CSS = """
@@ -1019,7 +1025,7 @@ def inject_style():
 
 def day_navigator(prefix: str, ndays: tuple[int, int, int] | None = None,
                   refresh: bool = True):
-    """8단계 표준 날짜 컨트롤 — ◀ 어제 | 날짜 | 내일 ▶ | (새로고침) | (표시 기간) | 캡션.
+    """표준 날짜 컨트롤 — ◀ 어제 | 날짜 | 내일 ▶ | (새로고침) | (표시 기간) | 캡션.
 
     탭/메뉴마다 독립 배치(prefix 별 session 키). ndays=(최소, 최대, 기본)이면
     표시 기간(일) 슬라이더 포함, refresh=False면 새로고침 버튼 없는 슬림 버전.
@@ -1052,46 +1058,18 @@ def day_navigator(prefix: str, ndays: tuple[int, int, int] | None = None,
     if ndays:
         n = cols[i].slider("표시 기간(일)", ndays[0], ndays[1], ndays[2],
                            key=f"{prefix}_ndays",
-                           help="시작일부터 N일 — 사전 적재된 예측을 읽기만 하므로 지연 없음")
+                           help="시작일부터 N일치를 표시합니다")
     return pd.Timestamp(st.session_state[key]), n, cols[-1]
 
 
-# 예측 기준(basetime × horizon) 선택 — est_horizon_land의 세 정리축을 UI로 노출.
-HZ_MODES = {"최신 발행": "latest", "발행일 고정": "asof", "지평 고정 (D+k)": "fixed"}
-
-
-def horizon_picker(prefix: str) -> tuple[str, object, str]:
-    """예측 기준 컨트롤 — (mode, value, label) 반환.  해석을 쉬운 말로 안내.
-
-    최신 발행  = 각 날짜를 '가장 최근에 예측한' 값(과거 구간은 사실상 하루 전 예측).
-    발행일 고정 = '특정 날짜에 예측한' 결과 — 그 날 기준 앞으로 며칠치(D+1~D+15)를 그대로.
-    지평 고정  = '며칠 전에 예측했는지(k일 전)'를 고정 — 모든 날짜를 k일 전 예측으로 통일.
-    """
-    meta = land_horizon_meta()
-    c0, c1 = st.columns([1.3, 3], vertical_alignment="bottom")
-    pick = c0.segmented_control("예측 기준", list(HZ_MODES), default="최신 발행",
-                                key=f"{prefix}_hzmode") or "최신 발행"
-    mode = HZ_MODES[pick]
-    if mode == "asof":
-        bases = meta["bases"]
-        b = c1.select_slider("예측을 돌린 날짜", options=bases, value=bases[-1],
-                             key=f"{prefix}_hzbase",
-                             format_func=lambda t: f"{t:%Y-%m-%d}에 예측",
-                             help="그 날짜에 예측한 예보가 내다본 앞으로 며칠치"
-                                  "(D+1~D+15, 최대 15일 뒤)를 그대로 보여줍니다.")
-        return mode, b, f"{b:%Y-%m-%d}에 예측한 예보 (앞으로 D+1~D+{meta['h_hi']})"
-    if mode == "fixed":
-        k = c1.slider("며칠 전에 예측한 값인지 (D+k)", meta["h_lo"], meta["h_hi"], 1,
-                      key=f"{prefix}_hzk",
-                      help="모든 날짜를 '정확히 k일 전에 예측한' 값으로 통일합니다. "
-                           "예: D+3 이면 각 날짜를 3일 전에 미리 예측한 값.")
-        return mode, k, f"D+{k} — 각 날짜를 {k}일 전에 예측한 값"
-    c1.caption("각 날짜를 '가장 최근에 예측한' 값으로 보여줍니다 — 과거 구간은 사실상 하루 전(D+1) 예측입니다.")
-    return "latest", None, "가장 최근 예측 (날짜별 최신 발행본)"
+def help_expander(md: str, title: str = "도움말"):
+    """화면 하단 도움말 — 접힌 expander에 상세 설명(markdown)."""
+    with st.expander(title, expanded=False):
+        st.markdown(md)
 
 
 def page_header(eyebrow: str, title: str, sub: str, chain: list[tuple[str, str]]):
-    """페이지 헤더 — eyebrow + 제목 + 체인 pill(단계 점 색 = 차트 COLOR 규약과 동일)."""
+    """페이지 헤더 — eyebrow + 제목 + 체인 pill(점 색 = 차트 COLOR 규약과 동일)."""
     steps = '<span class="bf-arrow">→</span>'.join(
         f'<span class="bf-step"><i style="background:{c}"></i>{label}</span>'
         for label, c in chain)

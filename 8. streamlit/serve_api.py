@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
-"""8-D · 가스 송출량 예측 + AI 브리핑 전송 API (FastAPI).
+"""Gascast — 가스 수급 예측 + AI 브리핑 제공 API (FastAPI).
 
-목적(루브릭 'AI 활용 확산성'): 우리 서빙체인 결과와 AI 브리핑을 다른 환경이 가져다 쓸 수 있게
-HTTP로 노출한다. 계산은 전부 기존 모듈(common·brief_ai·brief_store) 재사용 — 새 로직 없음.
+계산은 전부 기존 모듈(common·brief_ai·brief_store) 재사용 — 새 로직 없음.
 
 엔드포인트:
-  GET /forecast?start=YYYY-MM-DD&days=N      서빙체인 시계열(수요·신재생·가스발전·송출 TON)
-  GET /chart?start=&days=                    ★ 예측을 인터랙티브 차트(HTML)로 바로 제공
+  GET /forecast?start=YYYY-MM-DD&days=N      예측 시계열(수요·신재생·가스발전·송출 TON)
+  GET /chart?start=&days=                    예측을 대화형 차트(HTML)로 제공
   GET /brief?start=&days=&kind=&generate=    저장된 AI 브리핑(없으면 generate=true로 생성·저장)
-  GET /bundle?start=&days=&kind=&generate=   ★ 시계열 + 브리핑 텍스트를 한 번에 전송
+  GET /bundle?start=&days=&kind=&generate=   시계열 + 브리핑 텍스트를 한 번에 제공
   GET /briefings                             저장된 브리핑 목록
 
 실행:  uvicorn serve_api:app --port 8800   (cwd = 8. streamlit)
-문서:  http://localhost:8800/docs           (Swagger UI — 확산성 증거)
+문서:  http://localhost:8800/docs           (Swagger UI)
 
 주의: API는 use_live=False — DB만 읽고 KPX/KMA 수집은 절대 트리거하지 않는다(한도 보호).
 """
@@ -34,9 +33,9 @@ KINDS = ("overview", "sendout", "weather")
 # Caddy 등 리버스 프록시가 /api 경로 아래 둘 때 Swagger·openapi 가 깨지지 않게 root_path 설정.
 # 프록시 없이 직접 띄울 땐 빈 값 → 동작 변화 없음.  배포 시 = SERVE_API_ROOT_PATH=/api
 ROOT_PATH = os.environ.get("SERVE_API_ROOT_PATH", "")
-app = FastAPI(title="전국 가스 송출량 예측·AI 브리핑 API", version="0.1",
+app = FastAPI(title="Gascast — 국가 가스수급 예측 API", version="0.1",
               root_path=ROOT_PATH,
-              description="서빙체인(수요→신재생→가스 송출) 예측과 AI 브리핑을 외부로 전송.")
+              description="가스 수급 예측(수요→신재생→가스 송출)과 AI 브리핑을 외부 시스템에 제공합니다.")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])   # 다양한 환경에서 호출 가능하게
 
@@ -46,7 +45,7 @@ def _resolve(start: str | None) -> pd.Timestamp:
 
 
 def _series_records(sd: pd.Timestamp, days: int) -> list[dict]:
-    """서빙체인 시계열 → JSON 직렬화(결측은 null)."""
+    """예측 시계열 → JSON 직렬화(결측은 null)."""
     ser = brief_ai.forecast_series(sd, days, use_live=False)
     ser = ser.assign(timestamp=ser["timestamp"].astype(str))
     ser = ser.where(pd.notna(ser), None)
@@ -55,7 +54,7 @@ def _series_records(sd: pd.Timestamp, days: int) -> list[dict]:
 
 @app.get("/")
 def root():
-    return {"service": "gas-sendout-forecast + ai-brief",
+    return {"service": "Gascast forecast + ai-brief",
             "endpoints": ["/forecast", "/chart", "/brief", "/bundle", "/briefings", "/docs"],
             "kinds": list(KINDS)}
 
@@ -63,7 +62,7 @@ def root():
 @app.get("/forecast")
 def forecast(start: str | None = Query(None, description="시작일 YYYY-MM-DD(기본 오늘)"),
              days: int = Query(1, ge=1, le=15, description="시작일부터 N일")):
-    """서빙체인 예측 시계열 — 수요(MW)·신재생(MW)·가스발전(MW)·송출(TON/h)."""
+    """예측 시계열 — 수요(MW)·신재생(MW)·가스발전(MW)·송출(TON/h)."""
     sd = _resolve(start)
     recs = _series_records(sd, days)
     return {"region": "land", "start": sd.strftime("%Y-%m-%d"), "days": days,
@@ -93,7 +92,7 @@ def chart(start: str | None = Query(None, description="시작일 YYYY-MM-DD(기�
     fig.add_scatter(x=ser["timestamp"], y=ser["renew_mw"], name="신재생 (MW)",
                     line=dict(color="#059669", width=1.6, dash="dot"), yaxis="y2")
     fig.update_layout(
-        title=f"전국 가스 송출량 예측 · {sd:%Y-%m-%d} 부터 {days}일",
+        title=f"Gascast 가스 송출량 예측 · {sd:%Y-%m-%d} 부터 {days}일",
         xaxis=dict(title="시각"),
         yaxis=dict(title="가스 송출 (TON/h)"),
         yaxis2=dict(title="전력수요·신재생 (MW)", overlaying="y", side="right", showgrid=False),
@@ -135,7 +134,7 @@ def bundle(start: str = Query(..., description="시작일 YYYY-MM-DD"),
            days: int = Query(1, ge=1, le=15),
            kind: str = Query("overview"),
            generate: bool = Query(False)):
-    """★ 서빙체인 시계열 + AI 브리핑 텍스트를 한 번에 전송(다른 시스템 연동용)."""
+    """예측 시계열 + AI 브리핑 텍스트를 한 번에 제공(다른 시스템 연동용)."""
     if kind not in KINDS:
         raise HTTPException(400, f"kind는 {KINDS} 중 하나")
     sd = _resolve(start)

@@ -122,7 +122,7 @@
 > 테이블은 2026-06-19 폐기**(전국 DB = est_horizon_land·forecast_horizon·historical 3테이블). KPX DA·
 > 기상·데이터현황은 historical·forecast_horizon에서 읽는다. `common.land_est_horizon(mode, value, …)`의 3축:
 > `latest`(목표별 최근 발행=과거는 D+1) / `asof`(발행일 고정 → 그 발행본 D+1~15) /
-> `fixed`(지평 D+k 고정). UI는 `common.horizon_picker`. **KPX `*_da`는 day-ahead라
+> `fixed`(지평 D+k 고정). **KPX `*_da`는 day-ahead라
 > 표시 지평이 D+1인 행에서만 비교 유효**(다른 지평 행은 비움). 제주는 아직 지평 아카이브 미구축
 > (forecast 스냅샷 유지) — 별도 단계.
 
