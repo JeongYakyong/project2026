@@ -74,6 +74,47 @@ def _load_calib():
     return day, night, float(c['conv_ton_per_mwh']), w, clim
 
 
+# ── 저부하(밤·저녁) 임시 보정 (2026 여름 냉방부족 과대예측) ──────────────────
+# 원인: 시원한 여름으로 전력수요 급락 → 모델 수요→가스 곡선이 저수요서 과대(학습기울기<실제).
+# 편향은 '시간대 모양 × 시간에 따라 커지는 레벨' 구조. 낮(9-16h)은 무편향이라 보호(가중치0).
+# corr(h)=hour_weight[h]×level, est_gas_gen_land = raw - corr.  raw 보존 → 되돌리기 쉬움.
+def _load_lowload():
+    """gas_serving_calib.json 의 lowload_night_correction 설정(없으면 빈 dict)."""
+    c = json.load(open(CALIB_JSON, encoding='utf-8'))
+    return c.get('lowload_night_correction', {})
+
+
+def lowload_level(con, O, ll):
+    """밤 보정 레벨(MW). manual=고정치 / adaptive=최근 lookback일 밤 nowcast 편향(인과적)."""
+    if str(ll.get('level_mode', 'adaptive')) == 'manual':
+        return float(ll.get('manual_level', 0.0))
+    ad = ll.get('adaptive', {})
+    look = int(ad.get('lookback_days', 7)); hz = int(ad.get('nowcast_horizon', 1))
+    minr = int(ad.get('min_rows', 30)); day_hrs = set(int(x) for x in ll.get('day_protect_hours', []))
+    lo = (O.normalize() - pd.Timedelta(days=look)).strftime('%Y-%m-%d %H:%M:%S')
+    hi = O.normalize().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        p = pd.read_sql("SELECT timestamp, est_gas_gen_land_raw FROM est_horizon_land "
+                        f"WHERE horizon_d={hz} AND timestamp>='{lo}' AND timestamp<'{hi}'",
+                        con, parse_dates=['timestamp'])
+        a = pd.read_sql("SELECT timestamp, gen_gas_kr FROM historical "
+                        f"WHERE timestamp>='{lo}' AND timestamp<'{hi}'", con, parse_dates=['timestamp'])
+    except Exception:
+        return float(ll.get('manual_level', 0.0))
+    d = p.merge(a, on='timestamp').dropna()
+    d = d[(d.gen_gas_kr > 0) & (~d.timestamp.dt.hour.isin(day_hrs))]
+    if len(d) < minr:                                   # 데이터 부족 → 수동 폴백
+        return float(ll.get('manual_level', 0.0))
+    return float((d.est_gas_gen_land_raw - d.gen_gas_kr).mean())
+
+
+def lowload_corr(idx: pd.DatetimeIndex, level: float, ll) -> np.ndarray:
+    """행별 밤 보정량 corr(h)=hour_weight[h]×level (낮=가중치0 → 0)."""
+    hw = ll.get('hour_weight', {})
+    w = np.array([float(hw.get(str(int(h)), 0.0)) for h in idx.hour])
+    return w * float(level)
+
+
 _CLIM = {}
 def load_gas_climatology(years='2022-2024', window=7):
     """가스 기후값(우리 historical 실측): doy±window 슬라이딩 × 시각 × 요일유형 평균. 폴백=시각만."""

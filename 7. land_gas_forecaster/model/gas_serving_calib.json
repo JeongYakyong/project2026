@@ -92,6 +92,18 @@
   "derivation": "Stage5(2026-06-15): 정직 풀체인 백테스트(D+1~15)로 보정 낮/밤×지평 재적합 + 기후값 블렌딩 w(h)(전체+계절 MAPE 검증, Option A 단조). 전체 13.96→13.72%, 여름 장지평 −3%p.",
   "apply": "gas_cal=(booster.predict+init_score)×calib(dayahead,daypart); final=(1-w(dayahead))×gas_cal + w×climatology(doy,hour,day_type).",
   "conv_ton_per_mwh": 0.1521,
+  "lowload_night_correction": {
+    "enabled": true,
+    "note": "2026 여름 저수요(냉방부족) 밤·저녁 가스 과대예측 임시보정 (2026-07-06 설계). 원인=시원한 여름으로 전력수요 전년比 -8~-13%↓ → 모델의 수요→가스 곡선이 저수요서 너무 높음(학습 기울기 0.34 vs 실제 0.71). 낮(9-16h)은 무편향이라 보호(가중치0). corr(h)=hour_weight[h]×level, est_gas_gen_land = est_gas_gen_land_raw - corr. raw 보존이라 되돌리기 쉬움(enabled=false).",
+    "level_mode": "adaptive",
+    "manual_level": 1300.0,
+    "manual_level_note": "level_mode=manual 일 때 쓰는 밤 평균 과대치(MW). 관리자메뉴에서 갱신, 주1회 재확인 권장.",
+    "adaptive": {"lookback_days": 7, "nowcast_horizon": 1, "min_rows": 30, "note": "최근 lookback일 밤 nowcast(raw D+hz vs 실측) 평균편향을 level 로. 데이터<min_rows 면 manual_level 폴백. 레짐 정상화되면 자동 0 수렴."},
+    "day_protect_hours": [9, 10, 11, 12, 13, 14, 15, 16],
+    "hour_weight": {"0": 0.84, "1": 0.52, "2": 0.71, "3": 1.18, "4": 1.12, "5": 1.02, "6": 0.71, "7": 1.28, "8": 0.84, "9": 0.0, "10": 0.0, "11": 0.0, "12": 0.0, "13": 0.0, "14": 0.0, "15": 0.0, "16": 0.0, "17": 0.44, "18": 0.77, "19": 1.14, "20": 1.38, "21": 1.44, "22": 1.28, "23": 1.34},
+    "fitted": "train 2026-06-01..06-28. hour_weight=밤편향(h)/밤평균(밤평균 기준 정규화, 낮=0). 검증 test 6/29~7/5(D1-7): 밤편향 +2589 → +943(적응)/+1314(수동), 낮 +1209 유지(보호). 그림=9. design/report/stage7/step7_calib_validation.png.",
+    "revert": "enabled=false 로 두고 체인 재실행(또는 est_gas_gen_land := est_gas_gen_land_raw). 여름 한정 — 반드시 가을 이후 재검토."
+  },
   "bias_calib_prev_v2_h288": {
     "1": {
       "day": 1.057,

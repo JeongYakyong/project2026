@@ -2,6 +2,7 @@
 """전국 페이지 — 수급 예측(종합브리핑/예측 확인/에너지 믹스/장지평 예측) · 예측 검증 · 데이터 현황 · 외부 연동 · 관리자메뉴."""
 import os
 import sys
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -567,8 +568,7 @@ def render_validation(df: pd.DataFrame, day: pd.Timestamp | None = None):
     if day is not None:
         _mark_selected_day(fig, day, label=False, row="all", col=1)
     st.plotly_chart(fig, width="stretch")
-    st.caption("신재생 발전이 늘면 순 부하가 줄고 가스 발전도 줄어듭니다 — 같은 시각을 위아래로 비교해 보세요. "
-               "실측은 전력거래소 실시간 자료로 채워지며, 오차를 숨기지 않고 그대로 보여줍니다.")
+    st.caption("")
 
 
 # 지평별 곡선·일별 추이·카드 공용 — (라벨, land_horizon_accuracy 컬럼, COLOR 키, 지표).
@@ -863,6 +863,64 @@ def render_data_status():
         _ds_timestamp(table)
 
 
+def _lowload_recent_night_bias():
+    """관리자 미리보기용 — 최근 7일 밤(낮 제외) nowcast(D+1 raw vs 실측) 평균편향. 모델 import 없이 SQL 만."""
+    import sqlite3
+    cfg_path = C.ROOT / "7. land_gas_forecaster" / "model" / "gas_serving_calib.json"
+    ll = json.load(open(cfg_path, encoding="utf-8")).get("lowload_night_correction", {})
+    day_hrs = set(int(x) for x in ll.get("day_protect_hours", []))
+    look = int(ll.get("adaptive", {}).get("lookback_days", 7))
+    try:
+        con = sqlite3.connect(C.DBS["land"])
+        a = pd.read_sql("SELECT MAX(timestamp) m FROM historical WHERE gen_gas_kr>0", con).iloc[0]["m"]
+        hi = pd.Timestamp(a).normalize(); lo = hi - pd.Timedelta(days=look)
+        p = pd.read_sql("SELECT timestamp, est_gas_gen_land_raw FROM est_horizon_land "
+                        f"WHERE horizon_d=1 AND timestamp>='{lo}' AND timestamp<'{hi}'", con, parse_dates=["timestamp"])
+        g = pd.read_sql("SELECT timestamp, gen_gas_kr FROM historical "
+                        f"WHERE timestamp>='{lo}' AND timestamp<'{hi}'", con, parse_dates=["timestamp"])
+        con.close()
+        d = p.merge(g, on="timestamp").dropna()
+        d = d[(d.gen_gas_kr > 0) & (~d.timestamp.dt.hour.isin(day_hrs))]
+        if len(d) < 10:
+            return None, 0
+        return float((d.est_gas_gen_land_raw - d.gen_gas_kr).mean()), len(d)
+    except Exception:
+        return None, 0
+
+
+def _render_lowload_calib():
+    """가스 저부하(밤) 임시 보정 설정 — 관리자메뉴. 저장 후 '예측 실행' 재실행해야 반영."""
+    cfg_path = C.ROOT / "7. land_gas_forecaster" / "model" / "gas_serving_calib.json"
+    cfg = json.load(open(cfg_path, encoding="utf-8"))
+    ll = cfg.get("lowload_night_correction", {})
+    with st.expander("⚙ 가스 저부하 밤 보정 (2026 여름 임시)", expanded=False):
+        st.caption("시원한 여름(전력수요 전년比 ↓)으로 밤·저녁 가스가 과대예측됩니다. 낮(9~16시)은 "
+                   "무편향이라 보호(무보정)합니다. **저장 후 위 '예측 실행'을 다시 돌려야** 반영됩니다.")
+        lvl_now, n = _lowload_recent_night_bias()
+        if lvl_now is not None:
+            st.info(f"최근 {int(ll.get('adaptive',{}).get('lookback_days',7))}일 밤 실제 과대치(자동 레벨 추정) "
+                    f"≈ **{lvl_now:,.0f} MW** (표본 {n}시간)")
+        c1, c2 = st.columns(2)
+        en = c1.toggle("보정 사용", value=bool(ll.get("enabled", False)), key="ll_en")
+        mode_lbl = c2.radio("레벨 방식", ["자동(최근 7일 추적)", "수동(고정 레벨)"],
+                            index=0 if ll.get("level_mode", "adaptive") == "adaptive" else 1,
+                            key="ll_mode", horizontal=True)
+        man = st.number_input("수동 레벨 — 밤 평균 과대치(MW), 방식=수동일 때 적용",
+                              min_value=0, max_value=5000, value=int(ll.get("manual_level", 1300)),
+                              step=50, key="ll_man")
+        st.caption("자동=매 발행마다 최근 밤 편향을 재측정해 드리프트를 따라감(권장). "
+                   "수동=이 값을 고정으로 뺌(주1회 위 추정치로 갱신 권장). 되돌리기=‘보정 사용’ 끄고 재실행.")
+        if st.button("💾 보정 설정 저장", key="ll_save"):
+            ll["enabled"] = bool(en)
+            ll["level_mode"] = "adaptive" if mode_lbl.startswith("자동") else "manual"
+            ll["manual_level"] = float(man)
+            cfg["lowload_night_correction"] = ll
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            st.success("저장됨. 위 ‘예측 실행’을 다시 실행하면 새 보정이 est_horizon_land 에 반영됩니다.")
+    st.divider()
+
+
 def render_run_ops():
     """관리자메뉴 — 예측 체인·수집·브리핑 생성 수동 실행. 메뉴 전체가 비밀번호 잠금(C.ops_gate)."""
     if not C.ops_gate():
@@ -903,6 +961,8 @@ def render_run_ops():
         st.code(out or "(출력 없음)")
 
     st.divider()
+    _render_lowload_calib()
+
     st.subheader("데이터 수집 (KMA/KPX API)")
     st.caption("⚠ API 한도 보호 — 평소엔 서버 cron 전용. 수동 실행은 한도에 주의하세요. "
                "기상은 완결성 auto-resume 라 재실행해도 완전한 base 는 콜 없이 skip.")

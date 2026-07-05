@@ -195,6 +195,12 @@ def build_base(base: str, ctx: dict, sc) -> pd.DataFrame:
     final = gas_cal.copy()
     use = np.isfinite(clim)
     final[use] = (1 - wv[use]) * gas_cal[use] + wv[use] * clim[use]
+    # ── 저부하(밤) 임시 보정: est_gas_gen_land = raw(=final) - corr(h)×level. 낮 보호(가중치0). ──
+    ll = sg._load_lowload()
+    if ll.get('enabled'):
+        lvl = sg.lowload_level(con, O, ll)
+        corr = sg.lowload_corr(idx, lvl, ll)
+        final = final - corr
     r['est_gas_gen_land'] = final
     r['est_gas_sendout_ton_land'] = final * conv
     return r
