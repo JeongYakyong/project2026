@@ -1,6 +1,0 @@
-# fname: /ARCV/RAWD/MODL/RDPS/NE57/202606/25/12/r030_v040_easia_etc.2byte.ft019.2026062512.nc, fsize: 38053858byte
-# ÀÚ·áÃ³¸® ¼Ò¿ä½Ã°£ = 0.205783
-# º¯¼ö¸í = ACSWDNB, unit = MJ m-2, level =       0, i =       1, j =       1, map = S (lon1 = 126.5, lat1 = 36.8, lon2 = 126.5, lat2 = 36.8, x_min = 539, y_min = 376, x_max = 539, y_max = 376)
-# j = 1 
- 2.67800e+01 
-# ÀÚ·á Ç¥Ãâ½Ã°£ Æ÷ÇÔ ¼Ò¿ä½Ã°£ = 0.205817

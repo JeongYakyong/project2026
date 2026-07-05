@@ -1,6 +1,0 @@
-# fname: /ARCV/RAWD/MODL/GDPS/NE57/202607/03/12/ERLY/FCST/post/g576_v091_glob_etc.2byte.ft018.2026070312.nc, fsize: 335924922byte
-# ÀÚ·áÃ³¸® ¼Ò¿ä½Ã°£ = 0.120813
-# º¯¼ö¸í = rainl_acc, unit = kg/m2, level =       0, i =       1, j =       1, map = S (lon1 = 126.5, lat1 = 36.8, lon2 = 126.5, lat2 = 36.8, x_min = 1, y_min = 1, x_max = 1, y_max = 1)
-# j = 1 
- 0.00000e+00 
-# ÀÚ·á Ç¥Ãâ½Ã°£ Æ÷ÇÔ ¼Ò¿ä½Ã°£ = 0.120846

@@ -1,9 +1,0 @@
-# ERROR : ÃÖ±Ù 6°³¿ù(180ÀÏ) ÀÌ³»ÀÇ ÀÚ·á¸¸ Á¶È¸°¡ °¡´ÉÇÕ´Ï´Ù.
-# var.group = KIMR
-# var.nwp   = R030
-# var.data  = U
-# var.level = 0
-# var.tmfc  = 2025.07.26.12
-# var.tmef  = 2025.07.27.12 (+24H)
-# var.disp  = A
-# var.help  = 0

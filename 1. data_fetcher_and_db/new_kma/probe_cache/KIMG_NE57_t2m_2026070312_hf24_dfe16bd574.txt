@@ -1,6 +1,0 @@
-# fname: /ARCV/RAWD/MODL/GDPS/NE57/202607/03/12/ERLY/FCST/post/g576_v091_glob_etc.2byte.ft024.2026070312.nc, fsize: 339048599byte
-# ÀÚ·áÃ³¸® ¼Ò¿ä½Ã°£ = 0.267087
-# º¯¼ö¸í = t2m, unit = K, level =       0, i =       1, j =       1, map = S (lon1 = 127.0, lat1 = 37.5, lon2 = 127.0, lat2 = 37.5, x_min = 1, y_min = 1, x_max = 1, y_max = 1)
-# j = 1 
- 2.17720e+02 
-# ÀÚ·á Ç¥Ãâ½Ã°£ Æ÷ÇÔ ¼Ò¿ä½Ã°£ = 0.267119
