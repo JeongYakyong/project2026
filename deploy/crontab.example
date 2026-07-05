@@ -87,6 +87,47 @@
 */5 * * * * SERVE_API_ROOT_PATH=/api SERVE_API_HOST=127.0.0.1 /home/kimjourvanne/project2026/deploy/run_serve_api.sh
 
 
+# ════════════ (준비됨) 기상예보 v2 컷오버 — 2026-07-04 KIM 개편 대응 ════════════
+# 검증(격리 백필·컬럼 호환·A/B·서빙 dry-run) 통과 후 아래 절차로 교체한다
+# (1. data_fetcher_and_db/REPORT_forecast_v2.md 의 컷오버 절차서 참고):
+#   0) 사전: KMA API허브에서 메인 키 계정에 신규 API(nph-kim_nc_pt_txt2_std) "활용신청"
+#      (현재 SUB3 키만 등록됨 — 미등록 키는 403.  kim2 가 등록된 키로 자동 전환하므로
+#       동작은 하지만, 메인 키 등록이 정석)
+#   1) 본 DB 백업(.bak) 후 격리분 병합: python core/collect_forecast_v2.py --merge --region both
+#   2) 위 ①번 4줄(run_collect_forecast.sh 육지 2줄·제주 2줄)을 아래로 교체:
+# 30 1 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --backfill 3 --production
+# 30 4 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --backfill 3 --production
+# 30 2 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --region jeju --backfill 3 --production
+# 30 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --region jeju --backfill 3 --production
+#   3) (선택) L010 아카이브 — 서빙 미연결, EDA 대기용 수집:
+# 50 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_l010.sh --region both --backfill 2 --production
+#   4) 롤백 = 이 4줄을 지우고 기존 run_collect_forecast.sh 줄 복원 (구 수집기 무수정 보존).
+#   ※ frcc(1h 운량 아카이브)는 등압면 GRIB 이라 밤 혼잡 시 느리고 부분 응답이 잦다.
+#     새벽 수집이 자주 늦으면 위 4줄에 --skip-frcc 를 붙이고 아래 낮 시간 줄로 분리:
+# 0 10 * * * cd /home/kimjourvanne/project2026/1.\ data_fetcher_and_db && .venv 경로의 python \
+#            core/temp/backfill_frcc_cols.py --from $(date -d '3 days ago' +\%Y\%m\%d) --to $(date +\%Y\%m\%d)
+#   ※ v2 는 R030(지역 3km) 1h 로 D+1~5 해상도를 복원하고 D+6~12 는 기존 NE57 경로 그대로.
+#     기존 컬럼명·수식·반올림 동일 + 신규 컬럼(cape/cinn/hpbl·일사 직달/산란)만 추가.
+#     서빙 cron(③~⑥)은 무변경.
+
+# ════════════ (준비됨/선택) 자동 백필 — 지평 아카이브 확장 (EDA·재훈련용, 2026-07-05) ════════════
+# 목적: R030/L010 개시일(2026-02-09)부터 146일 지평 아카이브를 격리 DB(data/v2_*.db)에 쌓는다
+#   (신재생·급변동·ACSWDNB 계절/D+2~5 검증용).  ★서빙 무접촉 — --production 없음(격리 DB 전용).
+# 안전장치:
+#   ① --max-bases 33 = 실행당 33 base 만 수집(나머지는 다음날 resume-skip).  base 하나 ~1,743콜
+#      (육지+제주, frcc·L010 제외) → 하루 ~5.7만콜.  운영 수집(~1.5만)과 합쳐 ~6만 (4키 풀 8만 대비
+#      ~2만 여유 — gascast 운영 수집이 굶지 않게 8만을 다 쓰지 않는다).  약 5일이면 146 base 완료,
+#      이후 실행은 전부 skip(콜 0)=자동 정지.
+#   ② 시간대 07:30 = 운영 수집창(01:30~05:30)·서빙(06:00~07:00)·자정 KMA 혼잡을 모두 피함.
+#      백필 1회 ~2–3시간(33 base × ~4.7분) → ~10시 종료(낮 KMA 한산).
+#   ③ 격리 DB → 서빙·운영 DB 무영향.  중단·재개 안전(resume-skip).  롤백 = 이 한 줄 삭제.
+#   ④ --production 절대 붙이지 말 것(붙이면 본 DB 적재).  로그는 wrapper 가 deploy/logs/
+#      collect_forecast_v2_YYYYMM.log 로 남긴다(별도 리다이렉트 불필요).  wrapper 는 자체 flock
+#      (v2 전용)이라 운영 수집과 락은 다르지만, 07:30 은 운영 수집창(01:30~05:30) 밖이라 안 겹친다.
+# ※ ACSWDNB(누적 총일사)·cape/cinn/hpbl·80m 바람·직달/산란 컬럼이 함께 쌓인다(수집기 2026-07-05 갱신).
+# 30 7 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --backfill 146 --region both --max-bases 33
+
+
 # ════════════ (폐기) 기존 전국 줄 — 위 신규로 대체. 서버에서 제거할 것 ════════════
 #   아래 두 줄은 레거시 forecast 테이블(전국)을 갱신하던 것 — forecast 폐기로 더는 안 쓴다.
 # 40 6,12,18 * * * /home/kimjourvanne/project2026/deploy/run_collect_land.sh

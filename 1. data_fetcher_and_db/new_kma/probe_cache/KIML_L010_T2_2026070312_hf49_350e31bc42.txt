@@ -1,0 +1,10 @@
+# fname: /ARCV/RAWD/MODL/RDPS/NE57/202607/03/12/l010_v040_korea_etc.2byte.ft049.2026070312.nc, fsize: -1byte
+# ERROR : file is not exist (/ARCV/RAWD/MODL/RDPS/NE57/202607/03/12/l010_v040_korea_etc.2byte.ft049.2026070312.nc)
+# var.group = KIML
+# var.nwp   = L010
+# var.data  = U
+# var.level = 0
+# var.tmfc  = 2026.07.03.12
+# var.tmef  = 2026.07.05.13 (+49H)
+# var.disp  = A
+# var.help  = 0

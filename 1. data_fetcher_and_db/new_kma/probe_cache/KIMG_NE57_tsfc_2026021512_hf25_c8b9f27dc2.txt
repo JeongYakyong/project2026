@@ -1,0 +1,10 @@
+# fname: /ARCV/RAWD/MODL/GDPS/NE57/202602/15/12/ERLY/FCST/post/g576_v091_glob_etc.2byte.ft025.2026021512.nc, fsize: -1byte
+# ERROR : file is not exist (/ARCV/RAWD/MODL/GDPS/NE57/202602/15/12/ERLY/FCST/post/g576_v091_glob_etc.2byte.ft025.2026021512.nc)
+# var.group = KIMG
+# var.nwp   = NE57
+# var.data  = U
+# var.level = 0
+# var.tmfc  = 2026.02.15.12
+# var.tmef  = 2026.02.16.13 (+25H)
+# var.disp  = A
+# var.help  = 0

@@ -1,0 +1,106 @@
+[collect_forecast_v2] regions=['jeju']  bases=10 (20260625~20260704 12Z)  out=v2  points=전체
+
+======================================================================
+[v2:jeju] base 20260625 12Z (2026-06-25 21:00:00 KST)  (1/10, window=7d, points=['west', 'east', 'south'])
+======================================================================
+  KIMR-grib 2026062512 UTC West(Gosan)            1콜 kept_rows= 2023 (12.2s)
+  KIMR-grib 2026062512 UTC East(Seongsan)         1콜 kept_rows= 2023 (15.0s)
+  KIMR-grib 2026062512 UTC solar_farm(south)      1콜 kept_rows= 2023 (6.4s)
+  R030 2026062512 UTC West(Gosan)            hfs=118 kept_rows=  354 failed=  0 empty=  0 (23.0s)
+  R030 2026062512 UTC East(Seongsan)         hfs=118 kept_rows=  354 failed=  0 empty=  0 (15.5s)
+  R030 2026062512 UTC solar_farm(south)      hfs=118 kept_rows=  354 failed=  0 empty=  0 (12.5s)
+  R030-frcc 2026062512 UTC West(Gosan)            2콜 시각 22/118 (115.5s)
+  R030-frcc 2026062512 UTC East(Seongsan)         2콜 시각 22/118 (112.1s)
+  R030-frcc 2026062512 UTC solar_farm(south)      2콜 시각 22/118 (110.0s)
+  pivot West(Gosan)          ->  119 rows x 22 cols
+  pivot East(Seongsan)       ->  119 rows x 22 cols
+  pivot solar_farm(south)    ->  119 rows x 22 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (12)
+  NE57-std 2026062512 UTC West(Gosan)            hfs= 56 kept_rows=  784 failed=  0 empty=  0 (19.5s)
+  NE57-std 2026062512 UTC East(Seongsan)         hfs= 56 kept_rows=  784 failed=  0 empty=  0 (13.9s)
+  NE57-std 2026062512 UTC solar_farm(south)      hfs= 56 kept_rows=  784 failed=  0 empty=  0 (13.8s)
+  pivot West(Gosan)          ->   56 rows x 15 cols
+  pivot East(Seongsan)       ->   56 rows x 15 cols
+  pivot solar_farm(south)    ->   56 rows x 15 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (3)
+[v2:jeju] base 20260625 12Z (2026-06-25 21:00:00 KST) -- UPSERT 134 rows -> v2_jeju.db::forecast_horizon (horizon D+1~D+7)
+
+======================================================================
+[v2:jeju] base 20260626 12Z (2026-06-26 21:00:00 KST)  (2/10, window=7d, points=['west', 'east', 'south'])
+======================================================================
+  KIMR-grib 2026062612 UTC West(Gosan)            1콜 kept_rows= 2023 (5.7s)
+  KIMR-grib 2026062612 UTC East(Seongsan)         1콜 kept_rows= 2023 (4.1s)
+  KIMR-grib 2026062612 UTC solar_farm(south)      1콜 kept_rows= 2023 (3.7s)
+  R030 2026062612 UTC West(Gosan)            hfs=118 kept_rows=  354 failed=  0 empty=  0 (4.5s)
+  R030 2026062612 UTC East(Seongsan)         hfs=118 kept_rows=  354 failed=  0 empty=  0 (3.9s)
+  R030 2026062612 UTC solar_farm(south)      hfs=118 kept_rows=  354 failed=  0 empty=  0 (4.0s)
+  R030-frcc 2026062612 UTC West(Gosan)            2콜 시각 22/118 (111.3s)
+  R030-frcc 2026062612 UTC East(Seongsan)         2콜 시각 118/118 (32.1s)
+  R030-frcc 2026062612 UTC solar_farm(south)      2콜 시각 118/118 (30.6s)
+  pivot West(Gosan)          ->  119 rows x 22 cols
+  pivot East(Seongsan)       ->  119 rows x 22 cols
+  pivot solar_farm(south)    ->  119 rows x 22 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (12)
+  NE57-std 2026062612 UTC West(Gosan)            hfs= 56 kept_rows=  784 failed=  0 empty=  0 (19.1s)
+  NE57-std 2026062612 UTC East(Seongsan)         hfs= 56 kept_rows=  784 failed=  0 empty=  0 (13.9s)
+  NE57-std 2026062612 UTC solar_farm(south)      hfs= 56 kept_rows=  784 failed=  0 empty=  0 (13.4s)
+  pivot West(Gosan)          ->   56 rows x 15 cols
+  pivot East(Seongsan)       ->   56 rows x 15 cols
+  pivot solar_farm(south)    ->   56 rows x 15 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (3)
+[v2:jeju] base 20260626 12Z (2026-06-26 21:00:00 KST) -- UPSERT 134 rows -> v2_jeju.db::forecast_horizon (horizon D+1~D+7)
+
+======================================================================
+[v2:jeju] base 20260627 12Z (2026-06-27 21:00:00 KST)  (3/10, window=7d, points=['west', 'east', 'south'])
+======================================================================
+  KIMR-grib 2026062712 UTC West(Gosan)            1콜 kept_rows= 2023 (5.7s)
+  KIMR-grib 2026062712 UTC East(Seongsan)         1콜 kept_rows= 2023 (4.7s)
+  KIMR-grib 2026062712 UTC solar_farm(south)      1콜 kept_rows= 2023 (3.8s)
+  R030 2026062712 UTC West(Gosan)            hfs=118 kept_rows=  354 failed=  0 empty=  0 (6.6s)
+  R030 2026062712 UTC East(Seongsan)         hfs=118 kept_rows=  354 failed=  0 empty=  0 (4.6s)
+  R030 2026062712 UTC solar_farm(south)      hfs=118 kept_rows=  354 failed=  0 empty=  0 (4.5s)
+  R030-frcc 2026062712 UTC West(Gosan)            2콜 시각 118/118 (110.2s)
+  R030-frcc 2026062712 UTC East(Seongsan)         2콜 시각 118/118 (34.4s)
+  R030-frcc 2026062712 UTC solar_farm(south)      2콜 시각 118/118 (25.4s)
+  pivot West(Gosan)          ->  119 rows x 22 cols
+  pivot East(Seongsan)       ->  119 rows x 22 cols
+  pivot solar_farm(south)    ->  119 rows x 22 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (12)
+  NE57-std 2026062712 UTC West(Gosan)            hfs= 56 kept_rows=  784 failed=  0 empty=  0 (26.7s)
+  NE57-std 2026062712 UTC East(Seongsan)         hfs= 56 kept_rows=  784 failed=  0 empty=  0 (14.6s)
+  NE57-std 2026062712 UTC solar_farm(south)      hfs= 56 kept_rows=  784 failed=  0 empty=  0 (17.2s)
+  pivot West(Gosan)          ->   56 rows x 15 cols
+  pivot East(Seongsan)       ->   56 rows x 15 cols
+  pivot solar_farm(south)    ->   56 rows x 15 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (3)
+[v2:jeju] base 20260627 12Z (2026-06-27 21:00:00 KST) -- UPSERT 134 rows -> v2_jeju.db::forecast_horizon (horizon D+1~D+7)
+
+======================================================================
+[v2:jeju] base 20260628 12Z (2026-06-28 21:00:00 KST)  (4/10, window=7d, points=['west', 'east', 'south'])
+======================================================================
+  KIMR-grib 2026062812 UTC West(Gosan)            1콜 kept_rows= 2023 (200.4s)
+  KIMR-grib 2026062812 UTC East(Seongsan)         1콜 kept_rows= 2023 (2.9s)
+  KIMR-grib 2026062812 UTC solar_farm(south)      1콜 kept_rows= 2023 (2.9s)
+  R030 2026062812 UTC West(Gosan)            hfs=118 kept_rows=  354 failed=  0 empty=  0 (6.6s)
+  R030 2026062812 UTC East(Seongsan)         hfs=118 kept_rows=  354 failed=  0 empty=  0 (5.6s)
+  R030 2026062812 UTC solar_farm(south)      hfs=118 kept_rows=  354 failed=  0 empty=  0 (4.6s)
+  R030-frcc 2026062812 UTC West(Gosan)            2콜 시각 22/118 (112.9s)
+  R030-frcc 2026062812 UTC East(Seongsan)         2콜 시각 86/118 (66.4s)
+  R030-frcc 2026062812 UTC solar_farm(south)      2콜 시각 118/118 (73.2s)
+  pivot West(Gosan)          ->  119 rows x 22 cols
+  pivot East(Seongsan)       ->  119 rows x 22 cols
+  pivot solar_farm(south)    ->  119 rows x 22 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (12)
+  NE57-std 2026062812 UTC West(Gosan)            hfs= 56 kept_rows=  784 failed=  0 empty=  0 (18.0s)
+  NE57-std 2026062812 UTC East(Seongsan)         hfs= 56 kept_rows=  784 failed=  0 empty=  0 (14.3s)
+  NE57-std 2026062812 UTC solar_farm(south)      hfs= 56 kept_rows=  784 failed=  0 empty=  0 (13.6s)
+  pivot West(Gosan)          ->   56 rows x 15 cols
+  pivot East(Seongsan)       ->   56 rows x 15 cols
+  pivot solar_farm(south)    ->   56 rows x 15 cols
+  postprocess.clip_ranges: out-of-range -> NaN (0), NaN -> 0 in zero-fill cols (3)
+[v2:jeju] base 20260628 12Z (2026-06-28 21:00:00 KST) -- UPSERT 134 rows -> v2_jeju.db::forecast_horizon (horizon D+1~D+7)
+
+======================================================================
+[v2:jeju] base 20260629 12Z (2026-06-29 21:00:00 KST)  (5/10, window=7d, points=['west', 'east', 'south'])
+======================================================================
+  KIMR-grib 2026062912 UTC West(Gosan)            1콜 kept_rows= 2023 (6.5s)

@@ -1,0 +1,11 @@
+# fname: /ARCV/RAWD/MODL/RDPS/NE57/202607/03/12/l010_v040_korea_etc.2byte.ft018.2026070312.nc, fsize: 70568389byte
+# ERROR : NetCDF error: NetCDF: Variable not found
+# ERROR : file is not readed (/ARCV/RAWD/MODL/RDPS/NE57/202607/03/12/l010_v040_korea_etc.2byte.ft018.2026070312.nc, 70568389 bytes)
+# var.group = KIML
+# var.nwp   = L010
+# var.data  = U
+# var.level = 0
+# var.tmfc  = 2026.07.03.12
+# var.tmef  = 2026.07.04.06 (+18H)
+# var.disp  = A
+# var.help  = 0

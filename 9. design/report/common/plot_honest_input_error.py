@@ -59,7 +59,7 @@ pd.DataFrame({'horizon': H, 'temp_mae_degC': y}).to_csv(os.path.join(HERE, 'hone
 print('D+1=%.2f°C  D+%d=%.2f°C' % (y[0], HMAX, y[-1]))
 
 # ── 그림 ─────────────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(6.0, 4.7))
+fig, ax = plt.subplots(figsize=(10.0, 4.7))
 ax.fill_between(H, 0, y, color=ACCENT, alpha=0.09, zorder=1)
 ax.axhline(0, color=BASEC, lw=2.2, zorder=2)
 ax.plot(H, y, color=ACCENT, lw=3.0, marker='o', ms=5, markeredgecolor='white',

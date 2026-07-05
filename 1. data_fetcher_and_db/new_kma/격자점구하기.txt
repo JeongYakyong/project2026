@@ -1,0 +1,26 @@
+인자명	의미	설명
+
+수치예보모델 종류(nwp)
+u128(UM 전구), u120(UM 지역), u015(UM 국지)
+k128(KIM 전구), k120(KIM 지역(12km)), k030(KIM 지역(3km)
+g576(KIM 전구(8km)), r030(KIM 지역(3km)), l010(KIM 국지(1km))
+
+latlon 위도경도 선택
+
+lon(경도), lat(위도)
+※ (KIM 전구/ UM 전구) lon 입력시 좌상단에서 우하단으로 이동하며 격자별 경도값 표출
+(KIM 전구/ UM 전구) lat 입력시 좌상단에서 우하단으로 이동하며 격자별 위도값 표출
+※ (KIM 지역/ UM 지역·국지) lon 입력시 좌하단에서 우상단으로 이동하며 격자별 경도값 표출
+(KIM 지역/ UM 지역·국지) lat 입력시 좌하단에서 우상단으로 이동하며 격자별 위도값 표출
+
+disp 표출방식
+
+A(ASCII) - 격자점수 + 자료 출력
+B(BINARY) - 격자갯수((short)nx * (short)ny)가 정수로 조회(4byte) + 자료가 실수로 조회
+자료 순서는 격자자료가 저장된 순서되로 출력됨
+
+authKey
+
+인증키 발급된 API 인증키
+
+예시) https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-nwp_latlon_api?nwp=l010&latlon=lon&disp=A&authKey=ngO4lNeuTxeDuJTXrl8XFw

@@ -364,7 +364,7 @@ def _figs(A, regions, B, df, dff, daily, anchors, base_anchors, base_by_year, c1
     fig, ax = plt.subplots(figsize=(7.4, 3.6))
     colors = [ACCENT if i == 0 else INK for i in range(len(share))]
     ax.bar(range(len(share)), share.values, color=colors, width=0.72)
-    ax.set_xticks(range(len(share))); ax.set_xticklabels(share.index, fontsize=8)
+    ax.set_xticks(range(len(share))); ax.set_xticklabels(share.index, fontsize=10)
     ax.set_ylabel("비중(%)"); _title(ax, "시도별 도시가스 비중 (최근 12개월)")
     _style(ax)
     fig.tight_layout(); _save(fig, os.path.join(FIG, "03_region_share.png"))
@@ -378,7 +378,7 @@ def _figs(A, regions, B, df, dff, daily, anchors, base_anchors, base_by_year, c1
                    edgecolors="none", label=s)
     ax.axvline(BASE_TEMP, ls="--", lw=0.9, color=SOFT)
     ax.text(BASE_TEMP + 0.5, 0.96, "난방 임계 18℃", transform=ax.get_xaxis_transform(),
-            fontsize=8.5, color=MUTED, va="top", ha="left")
+            fontsize=11, fontweight='bold', color=MUTED,va="top", ha="left")
     ax.set_xlabel("월평균 기온(℃)"); ax.set_ylabel("월 도시가스 공급량")
     _title(ax, "월 기온 ↔ 가스 — 난방 주도, 여름은 기저")
     _style(ax); _season_legend(fig)
@@ -454,7 +454,7 @@ def _figs(A, regions, B, df, dff, daily, anchors, base_anchors, base_by_year, c1
     fig, ax = plt.subplots(figsize=(7.6, 3.6))
     vals = sp2["서울"].values * 100
     ax.bar(range(len(pick)), vals, color=ACCENT, alpha=0.9, width=0.72)
-    ax.set_xticks(range(len(pick))); ax.set_xticklabels(pick, fontsize=8, rotation=20)
+    ax.set_xticks(range(len(pick))); ax.set_xticklabels(pick, fontsize=10, rotation=20)
     ax.set_ylabel("평일 대비 수요 변화(%)")
     _title(ax, "특수일 효과 — 연휴일수록 도시가스 수요 급감 (서울)")
     ax.axhline(0, color=MUTED, lw=0.8)

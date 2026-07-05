@@ -1,0 +1,9 @@
+# ERROR : ÃÖ±Ù 6°³¿ù(180ÀÏ) ÀÌ³»ÀÇ ÀÚ·á¸¸ Á¶È¸°¡ °¡´ÉÇÕ´Ï´Ù.
+# var.group = KIML
+# var.nwp   = L010
+# var.data  = U
+# var.level = 0
+# var.tmfc  = 2025.11.11.12
+# var.tmef  = 2025.11.12.12 (+24H)
+# var.disp  = A
+# var.help  = 0

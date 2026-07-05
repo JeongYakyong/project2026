@@ -20,10 +20,10 @@ INK, MUTED, SOFT, ACCENT = '#2d3142', "#141618", '#7a8399', '#eb6c36'
 RULE = '#d9dce3'
 SEA_COL = {'겨울':'#4a78b5', '봄':'#5aa469', '여름':'#eb6c36', '가을':'#b58a3c'}
 START = '2021-01-01'
-TITLE    = "발전용 가스의 순 수요 및 기온과의 상관관계 분석"
+TITLE    = "발전용 가스의 순 부하 및 기온과의 상관관계 분석"
 SUBTITLE = ""
 #"일별 상관 (KOGAS 발전 송출량 · 전국 평균, 2021~2026) — 기온은 추위·더위가 상쇄돼 약하고, net_load가 둘을 모두 담습니다"
-XL_NET, XL_TMP = "순 수요(Net_Load) (GW)", "전국 평균기온 (°C)"
+XL_NET, XL_TMP = "순 부하(Net Load) (GW)", "전국 평균기온 (°C)"
 YL = "발전용 가스 송출량 (천 톤/일)"
 # ======================================================================
 
@@ -89,7 +89,7 @@ handles = [plt.Line2D([0],[0], marker='o', ls='', mfc=c, mec='none', ms=7, label
 fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, -0.03), ncol=4, frameon=False, fontsize=9.5)
 fig.text(0.012, -0.115,
          "출처: 전력거래소 계통통계 + KOGAS 일별 발전 송출량       "
-         "기온 단순상관은 약하지만, 순 수요는 첨두발전인 발전용 가스의 수요를 강하게 설명합니다.",
+         "기온 단순상관은 약하지만, 순 부하는 첨두발전인 발전용 가스의 수요를 강하게 설명합니다.",
          fontsize=8.0, color=MUTED, ha='left')
 fig.subplots_adjust(top=0.86, bottom=0.16, left=0.085, right=0.985, wspace=0.08)
 fig.savefig(os.path.join(HERE, 'step7_gas_corr.png'), bbox_inches='tight', dpi=150)
