@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# 메인화면 접속 비밀번호(평문) — git 추적 제외, 서버 로컬에만 존재
+8. streamlit/site_lock.json
 
 # ===== Databases (대용량, collect_data_*.py 로 재생성 가능) =====
 *.db

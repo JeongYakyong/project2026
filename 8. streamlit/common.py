@@ -2,6 +2,7 @@
 """Gascast 공용 레이어 — DB 조회·KPX 실측 보강·단가 환산·데이터 현황·관리자 실행 헬퍼."""
 from pathlib import Path
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -105,6 +106,51 @@ def ops_gate() -> bool:
     if ok:
         if pw == OPS_PASSWORD:
             st.session_state["ops_unlocked"] = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 틀립니다.")
+    return False
+
+
+# ---------------------------------------------------------------- 메인화면 비밀번호 잠금 (사이트 전체)
+# 관리자메뉴에서 켜고 끄는 설정 → 로컬 JSON 파일(비밀번호 평문 포함, git 추적 제외)에 저장.
+# ops_gate 와 달리 "실행 권한"이 아니라 "사이트 접속 자체"를 잠근다 — app.py 진입점에서 제일 먼저 호출.
+SITE_LOCK_PATH = Path(__file__).resolve().parent / "site_lock.json"
+
+
+def _load_site_lock() -> dict:
+    if SITE_LOCK_PATH.exists():
+        try:
+            return json.load(open(SITE_LOCK_PATH, encoding="utf-8"))
+        except Exception:
+            pass
+    return {"enabled": False, "password": ""}
+
+
+def _save_site_lock(cfg: dict) -> None:
+    with open(SITE_LOCK_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def site_gate() -> bool:
+    """사이트(메인화면) 전체 비밀번호 잠금. app.py 맨 위에서 ``if not C.site_gate(): st.stop()`` 로 호출.
+
+    관리자메뉴(render_run_ops)에서 사용/해제·비밀번호를 설정한다(site_lock.json).
+    잠금이 꺼져 있으면 항상 True. 세션 단위(브라우저별)로 해제 상태가 유지된다.
+    """
+    cfg = _load_site_lock()
+    if not cfg.get("enabled"):
+        return True
+    if st.session_state.get("site_unlocked"):
+        return True
+    st.markdown("### 🔒 Gascast — 비밀번호 접속")
+    st.caption("이 화면은 관리자가 접속 비밀번호를 설정했습니다. 비밀번호를 입력하세요.")
+    with st.form("site_gate_form"):
+        pw = st.text_input("비밀번호", type="password")
+        ok = st.form_submit_button("접속")
+    if ok:
+        if cfg.get("password") and pw == cfg["password"]:
+            st.session_state["site_unlocked"] = True
             st.rerun()
         else:
             st.error("비밀번호가 틀립니다.")

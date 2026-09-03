@@ -921,10 +921,34 @@ def _render_lowload_calib():
     st.divider()
 
 
+def _render_site_lock_panel():
+    """메인화면(사이트 전체) 비밀번호 접속 설정 — 관리자메뉴. site_lock.json 에 저장."""
+    cfg = C._load_site_lock()
+    with st.expander("🔒 메인화면 비밀번호 접속", expanded=False):
+        st.caption("켜면 사이트 첫 화면에서 비밀번호를 입력해야 전국/제주 어느 메뉴든 볼 수 있습니다. "
+                   "이 관리자메뉴 잠금(비밀번호 8888 등)과는 별개입니다.")
+        status = "🔓 사용 중 — 비밀번호 필요" if cfg.get("enabled") else "잠금 꺼짐 — 누구나 접속 가능"
+        st.info(status)
+        en = st.toggle("메인화면 비밀번호 사용", value=bool(cfg.get("enabled", False)), key="site_lock_en")
+        pw = st.text_input("비밀번호 설정/변경 (빈칸 = 기존 비밀번호 유지)", type="password", key="site_lock_pw")
+        if st.button("💾 저장", key="site_lock_save"):
+            if en and not pw and not cfg.get("password"):
+                st.error("사용을 켜려면 비밀번호를 한 번은 입력해야 합니다.")
+            else:
+                cfg["enabled"] = bool(en)
+                if pw:
+                    cfg["password"] = pw
+                C._save_site_lock(cfg)
+                st.success("저장됨. 다음 접속부터 적용됩니다(이미 열려 있는 브라우저 세션은 유지).")
+                st.rerun()
+    st.divider()
+
+
 def render_run_ops():
     """관리자메뉴 — 예측 체인·수집·브리핑 생성 수동 실행. 메뉴 전체가 비밀번호 잠금(C.ops_gate)."""
     if not C.ops_gate():
         return
+    _render_site_lock_panel()
     st.subheader("예측 실행 — 수요 → 신재생 → 가스")
     st.caption("기상 예보(forecast_horizon)를 입력으로 수요·신재생·가스 예측을 만들어 "
                "est_horizon_land 에 저장합니다. 서버가 매일 06:00에 자동 실행하는 것과 같은 작업입니다.")

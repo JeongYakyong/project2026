@@ -14,6 +14,9 @@ import common as C
 st.set_page_config(page_title="Gascast — 국가 가스수급 예측 플랫폼", page_icon="⚡", layout="wide")
 C.inject_style()
 
+if not C.site_gate():
+    st.stop()
+
 pg = st.navigation([
     st.Page("page_land.py", title="전국", icon=":material/public:", default=True),
     st.Page("page_jeju.py", title="제주", icon=":material/landscape:"),
