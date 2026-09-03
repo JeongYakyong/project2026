@@ -63,6 +63,9 @@ SERVE_CHAIN_LAND = ROOT / "7. land_gas_forecaster" / "serve_chain_land_new.py"
 COLLECT_FORECAST = DATA_DIR / "core" / "collect_forecast_new.py"   # 기상 예보 수집기
 COLLECT_LAND_HIST = DATA_DIR / "core" / "collect_data_land_new.py"  # 실측 수집기
 OPS_PASSWORD = os.getenv("OPS_PASSWORD", "8888")   # .env/systemd 의 OPS_PASSWORD 로 지정(미설정 시 fallback)
+# 기상개황 지도(weather_map.py) 배경 타일 — CARTO 가 최근 무인증 요청을 막아(래스터 타일 단계적 폐지) 발급 필수가 됨.
+# 무료 발급: https://carto.com/basemaps/apikey/ (월 500만 타일까지 무료) → systemd/.env 에 CARTO_API_KEY 로 지정.
+CARTO_API_KEY = os.getenv("CARTO_API_KEY", "")
 
 
 def run_script(script: Path, args: list[str], timeout: int = 3600,

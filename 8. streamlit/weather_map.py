@@ -516,7 +516,7 @@ const LEGEND = {
 
 const map = L.map("map", {zoomControl:false, scrollWheelZoom:false, zoomSnap:0.25, zoomDelta:0.5});
 L.control.zoom({position:'bottomright'}).addTo(map);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=__CARTO_KEY__",{
   subdomains:"abcd", maxZoom:18, attribution:"&copy; OpenStreetMap &copy; CARTO"}).addTo(map);
 
 /* hover 카드가 지도 가장자리에서 잘리지 않게 — 권역별로 '여는 방향'을 지정.
@@ -843,6 +843,7 @@ def build_html(day: pd.Timestamp, dplus: int, zones: dict, util: dict,
                  ("__GREEN__", GREEN), ("__OP_MIN__", str(OP_MIN)),
                  ("__OP_MAX__", str(OP_MAX)), ("__WIND_FULL__", str(WIND_FULL)),
                  ("__SA_MAX__", str(SA_MAX)), ("__WA_MAX__", str(WA_MAX)),
+                 ("__CARTO_KEY__", C.CARTO_API_KEY),
                  ("__GAS_PANEL__", _gas_panel_html(gas)),
                  ("__UTIL_CARDS__", _util_cards_html(util, util_act)),
                  ("__WX_STATS__", _wx_stats_html(tmax, tmin, humidity))]:
