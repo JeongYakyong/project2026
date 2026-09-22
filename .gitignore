@@ -46,6 +46,9 @@ __pycache__/
 venv/
 env/
 
+# ===== 서버 crontab wrapper 로그 (deploy/run_*.sh 가 매일 생성) =====
+deploy/logs/
+
 # ===== OS =====
 Thumbs.db
 desktop.ini
