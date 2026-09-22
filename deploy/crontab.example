@@ -125,7 +125,9 @@
 #      collect_forecast_v2_YYYYMM.log 로 남긴다(별도 리다이렉트 불필요).  wrapper 는 자체 flock
 #      (v2 전용)이라 운영 수집과 락은 다르지만, 07:30 은 운영 수집창(01:30~05:30) 밖이라 안 겹친다.
 # ※ ACSWDNB(누적 총일사)·cape/cinn/hpbl·80m 바람·직달/산란 컬럼이 함께 쌓인다(수집기 2026-07-05 갱신).
-# 30 7 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast_v2.sh --backfill 146 --region both --max-bases 33
+# (제거 2026-09-22) KMA 가 2026-10-01부로 GRIB 제공을 중단해 fetch_kimr_grib_long() 호출이 막힌다.
+# 격리 DB 전용 EDA/재훈련용 수집이라 서빙 영향은 없지만, 어차피 못 받으므로 줄 자체를 삭제.
+# 서버에서도 `crontab -e` 로 이 줄(30 7 * * * ... run_collect_forecast_v2.sh --backfill 146 ...)을 지울 것.
 
 
 # ════════════ (폐기) 기존 전국 줄 — 위 신규로 대체. 서버에서 제거할 것 ════════════

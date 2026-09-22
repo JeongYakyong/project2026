@@ -102,6 +102,7 @@ from _common import (
     rotate_kma_key,
     _log_http_error_once,
 )
+import api_fetchers_kim2 as k2   # NC(pt_txt2_std) 저수준 fetch 재사용 (기존 코드 무수정)
 
 load_dotenv()
 
@@ -375,6 +376,135 @@ def fetch_and_prepare(
             collected_at,
         ))
     return rows, len(items), dropped_unknown, dropped_window
+
+
+# ══════════════════════════════════════════════════════════════════════
+# NC(pt_txt2_std) 기반 KIMR met 수집 (2026-09-22, KMA GRIB 2026-10-01 중단 대응)
+# ══════════════════════════════════════════════════════════════════════
+# GRIB(위 BASE_URL=kim_grib_pt_tmfc.php)은 KMA 공지에 "(일시중단) 한국형수치예보모델
+# (KIM) 지역·국지예보모델... 수치모델 데이터 지점 조회서비스"로 돼 있다 -- 대체
+# 엔드포인트 안내는 없다("일시중단"이라 영구 폐지인지는 불명).  그래서 위 GRIB 함수
+# (fetch_one/fetch_and_prepare 등)는 지우지 않고 남겨둔다 -- 나중에 복구되면 되돌릴
+# 수 있게.  기본 경로는 이제 NC(pt_txt2_std, api_fetchers_kim2 가 육지에서 이미
+# 검증) 시간별 호출로 전환한다.
+#
+# 카테고리/단위는 CATEGORY_MAP 과 완전히 동일하게 맞춘다(TEMP/TEMP_SKIN=K raw,
+# REH/RAIN=원단위, 반올림 없음 -- GRIB store-raw 정책 그대로) -- kimr_one_point() 는
+# 무수정으로 두 소스 모두를 소비할 수 있다.
+#
+# 알려진 리스크(2026-07-05 v2 개발 당시 실측, REPORT_forecast_v2.md): NC per-hf
+# 호출은 혼잡한 밤 시간대에 base 1개 완주까지 40분+ 걸릴 수 있다(GRIB 시계열 1콜/
+# 지점은 이 문제에 면역이었음).  대안이 없어 감수한다 -- forecast_horizon 파이프
+# 라인은 이미 "불완전하면 다음 회차/backfill 이 채움" 구조라(deploy/crontab.example)
+# 일부 base 가 부분 수집돼도 자동 복구된다.
+JEJU_MET_NC_NAME = "T2,TSKIN,RH2,U10,V10,U80,V80,GUST,MCAPE,MCIN,PBLH,RAINC,RAINNC"
+# tcog/tcoh(대류일 보정 피처, 3. jeju_solarwind_forecaster/serve_solarwind_hybrid.py
+# 가 사용)의 NC 변수명은 kim_nc_list.pdf(KMA 공식 변수목록)의 GRIB 단축명을 그대로
+# 시도한다 -- pt_txt2_std 가 이 이름을 인식하는지는 미검증(2026-09-22).  메인 met
+# 콜과 별도 태스크로 분리해, 혹시 인식 실패해도 메인 met 은 영향받지 않는다(인식
+# 안 되면 그 카테고리만 조용히 빠짐 -- serve_solarwind_hybrid.py 는 이미 "tcog
+# 없으면 무보정"으로 우아하게 대응하므로 안전).
+JEJU_TCOG_NC_NAME = "tcog,tcoh"
+NC_WORKERS = MAX_WORKERS   # 기존 GRIB backfill 과 동일 동시성 정책 재사용 (=6)
+
+
+def derive_kimr_categories_nc(raw: dict[str, float]) -> dict[str, float]:
+    """NC(pt_txt2_std) 응답 -> CATEGORY_MAP 과 동일한 카테고리명/단위(store-raw).
+
+    GRIB store-raw 정책(TEMP/TEMP_SKIN=K, REH/RAIN=원단위, 반올림 없음)을 그대로
+    유지해 kimr_one_point() 가 두 소스에서 동일하게 동작하게 한다.
+    """
+    out: dict[str, float] = {}
+    if "T2" in raw:
+        out["TEMP"] = raw["T2"]
+    if "TSKIN" in raw:
+        out["TEMP_SKIN"] = raw["TSKIN"]
+    if "RH2" in raw:
+        out["REH"] = raw["RH2"]
+    for src, cat in (("U10", "WIND_U_10M"), ("V10", "WIND_V_10M"),
+                     ("U80", "WIND_U_80M"), ("V80", "WIND_V_80M")):
+        if src in raw:
+            out[cat] = raw[src]
+    if "GUST" in raw:
+        out["GUST"] = raw["GUST"]
+    if "MCAPE" in raw:
+        out["CAPE"] = raw["MCAPE"]
+    if "MCIN" in raw:
+        out["CINN"] = raw["MCIN"]
+    if "PBLH" in raw:
+        out["HPBL"] = raw["PBLH"]
+    if "RAINC" in raw:
+        out["RAIN_CONV"] = raw["RAINC"]
+    if "RAINNC" in raw:
+        out["RAIN_STRAT"] = raw["RAINNC"]
+    if "tcog" in raw:
+        out["TCOG"] = raw["tcog"]
+    if "tcoh" in raw:
+        out["TCOH"] = raw["tcoh"]
+    return out
+
+
+def fetch_kimr_nc_long(bases: list[datetime], workers: int = NC_WORKERS) -> pd.DataFrame:
+    """KIMR(R030) met 을 NC(pt_txt2_std) 시간별 호출로 -> long DF.
+
+    fetch_kimr_long()(collect_data_jeju.py)의 GRIB 구현을 대체.  출력 스키마(컬럼/
+    카테고리명)는 기존 GRIB 경로와 완전히 동일 -- build_wide/kimr_one_point 는
+    무수정으로 이 함수의 결과를 그대로 소비한다.
+
+    지점 순차 x hf 병렬(ThreadPoolExecutor) -- api_fetchers_kim2.fetch_model_long 과
+    동일한 안전 패턴("KIMG parallel-safe 규칙").  hf 당 메인 met 콜 + tcog/tcoh 콜을
+    별도 태스크로 나눠 발주(실패 격리 -- 하나가 깨져도 다른 하나는 무사).
+
+    FORECAST_DAYS(이 모듈의 글로벌, forecast_days_override 로 제어)를 그대로 읽어
+    윈도우 길이를 정한다.  발표시각별 R030 리드 상한은 k2.R030_MAX_HF 로 절단.
+    """
+    rows: list[tuple] = []
+    for base in bases:
+        base_kst = base.astimezone(KST)
+        base_dt_str = base_kst.strftime("%Y-%m-%d %H:%M")
+        base_label = base.strftime("%Y%m%d%H") + " UTC"
+        hf_list = k2.hf_range_1h(base, FORECAST_DAYS, k2.R030_MAX_HF)
+        if not hf_list:
+            print(f"  [WARN] KIMR-nc {base_label}: hf 윈도우 없음(발표시각 리드 상한 초과) -- skip")
+            continue
+        tasks: list[tuple[int, str]] = (
+            [(hf, JEJU_MET_NC_NAME) for hf in hf_list] +
+            [(hf, JEJU_TCOG_NC_NAME) for hf in hf_list]
+        )
+        for pt in k2.POINTS_JEJU_V2:
+            t0 = time.time()
+            failed = empty = n_kept = 0
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                fut_to_task = {
+                    ex.submit(k2.fetch_pt_std, "KIMR", "R030", name, base, hf,
+                              pt["lat"], pt["lon"], pt.get("x"), pt.get("y")): (hf, name)
+                    for hf, name in tasks
+                }
+                for fut in as_completed(fut_to_task):
+                    hf, name = fut_to_task[fut]
+                    body = fut.result()
+                    if body is None:
+                        failed += 1
+                        continue
+                    raw = k2.parse_pt_std(body)
+                    if not raw:
+                        empty += 1
+                        continue
+                    cats = derive_kimr_categories_nc(raw)
+                    fcst_dt_str = (base_kst + timedelta(hours=hf)).strftime("%Y-%m-%d %H:%M")
+                    for cat, val in cats.items():
+                        rows.append((base_dt_str, pt["name"], fcst_dt_str, cat, float(val)))
+                        n_kept += 1
+            print(f"  KIMR-nc {base_label} {pt['name']:<22} tasks={len(tasks):4d} "
+                  f"kept_rows={n_kept:5d} failed={failed:3d} empty={empty:3d} "
+                  f"({time.time() - t0:.1f}s)")
+    if not rows:
+        return pd.DataFrame(columns=[
+            "base_datetime", "point_name", "fcst_datetime", "category", "fcst_value"])
+    df = pd.DataFrame(rows, columns=[
+        "base_datetime", "point_name", "fcst_datetime", "category", "fcst_value"])
+    df["fcst_value"] = pd.to_numeric(df["fcst_value"], errors="coerce")
+    return df
 
 
 # ════════════════════════════════════════════════════════════════════════

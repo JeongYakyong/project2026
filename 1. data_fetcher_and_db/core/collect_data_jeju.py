@@ -150,67 +150,17 @@ class NoUsableForecastRows(Exception):
 
 # ── API → in-memory long DataFrame ──────────────────────────────────────
 def fetch_kimr_long(bases: list[datetime], workers: int = 1) -> pd.DataFrame:
-    """주어진 bases × POINTS 에 대해 KIM 지역 모델을 호출하고 long-format DF 반환.
+    """주어진 bases 에 대해 제주 KIMR(R030) met 을 받아 long-format DF 반환.
 
-    workers=1 은 순차, workers>1 은 (base,point) 페어 ThreadPoolExecutor.  병렬 모드는
-    collect_kimr.run_backfill 의 워커 스택과 동일 (shared Session + warmup + retry).
-    실패한 (base, point) 는 경고만 출력하고 건너뛴다 (전체 흐름은 계속).
+    2026-09-22: KMA GRIB 제공 중단(10-01) 대응으로 kim.fetch_kimr_nc_long()
+    (NC pt_txt2_std, hf-병렬)에 위임한다.  출력 스키마는 옛 GRIB 구현과 동일하므로
+    호출부(collect_data_jeju_new.build_forecast_wide, backfill_jeju_forecast.py)는
+    무수정.  workers 는 옛 (base,point)-병렬 의미였으나 실제 호출부가 모두 workers=1
+    이라 더는 쓰지 않는다(호환용으로만 유지) -- hf-내부 동시성은 kim.NC_WORKERS 로
+    자체 관리.  롤백: kim.fetch_and_prepare 기반 GRIB 구현은 api_fetchers_jeju.py 에
+    그대로 남아 있다(KMA 가 "일시중단"을 해제하면 여기를 되돌리면 됨).
     """
-    collected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    tasks = [(b, pt) for b in bases for pt in kim.POINTS]
-    rows: list[tuple] = []
-    n_ok = 0
-    n_fail = 0
-
-    def _one(base: datetime, pt: dict):
-        return base, pt, kim.fetch_and_prepare(base, pt, collected_at)
-
-    if workers <= 1:
-        for base, pt in tasks:
-            base_label = base.strftime("%Y%m%d%H") + " UTC"
-            try:
-                pt_rows, n_fetched, n_unknown, n_window = kim.fetch_and_prepare(
-                    base, pt, collected_at,
-                )
-            except Exception as e:
-                print(f"  [WARN] KIMR {base_label} {pt['name']}: {e}")
-                n_fail += 1
-                continue
-            rows.extend(pt_rows)
-            n_ok += 1
-            print(
-                f"  KIMR {base_label} {pt['name']:<18}  "
-                f"fetched={n_fetched:4d}  kept={len(pt_rows):4d}  "
-                f"dropped(unknown)={n_unknown:3d} (out-of-window)={n_window:4d}"
-            )
-    else:
-        kim.warmup()
-        print(f"  KIMR parallel: {len(tasks)} (base,point) pairs, workers={workers}")
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            fut_to_task = {ex.submit(_one, b, pt): (b, pt) for b, pt in tasks}
-            for fut in as_completed(fut_to_task):
-                base, pt = fut_to_task[fut]
-                try:
-                    _, _, (pt_rows, *_rest) = fut.result()
-                except Exception as e:
-                    print(f"  [WARN] KIMR {base.strftime('%Y%m%d%H')}UTC {pt['name']}: {e}")
-                    n_fail += 1
-                    continue
-                rows.extend(pt_rows)
-                n_ok += 1
-        print(f"  KIMR parallel done: ok={n_ok} fail={n_fail}")
-
-    if not rows:
-        return pd.DataFrame(
-            columns=["base_datetime", "point_name", "fcst_datetime",
-                     "category", "fcst_value"]
-        )
-    df = pd.DataFrame(rows, columns=[
-        "base_datetime", "fcst_datetime", "point_name", "x", "y",
-        "category", "fcst_value", "collected_at",
-    ])
-    df["fcst_value"] = pd.to_numeric(df["fcst_value"], errors="coerce")
-    return df[["base_datetime", "point_name", "fcst_datetime", "category", "fcst_value"]]
+    return kim.fetch_kimr_nc_long(bases)
 
 
 def _fetch_kimg_one_point(base: datetime, base_kst, base_dt_str: str,
@@ -547,9 +497,10 @@ def build(
     - n_bases: base=None 일 때 직전 몇 발표까지 받을지 (기본 2, safety re-fetch).
     - save: True 면 db_path 의 forecast 테이블에 UPSERT.  False 면 메모리 DF 만 반환.
     - db_path: 출력 SQLite 경로 (기본 data/input_data_jeju.db).
-    - kim_workers: KIMR fetch 병렬 수 (1 = sequential).  KIMG 는 항상 hf workers=6.
-    - forecast_days: 윈도우 길이(일).  None=기본 2일.  7 이면 D+1~D+5 는
-      KIMR 1h + D+6~D+7 은 KIMG 3h 행으로 채워진다 (forecast_days_override 참조).
+    - kim_workers: (미사용, 2026-09-22) KIMR(GRIB) fetch 제거로 더 이상 쓰이지 않음.
+      collect_forecast_runs.py 의 기존 호출 시그니처 호환을 위해 파라미터만 유지.
+    - forecast_days: 윈도우 길이(일).  None=기본 2일.  KIMR fetch 는 제거됐고
+      KIMG 만 채운다(forecast_days_override 참조).
     """
     with forecast_days_override(forecast_days):
         if forecast_days is not None:
@@ -564,16 +515,16 @@ def build(
             f"target table='{FORECAST_TABLE}' (UPSERT)"
         )
 
-        print("\n[1/3] fetch KIMR (regional)")
-        kimr_long = fetch_kimr_long(bases, workers=kim_workers)
-        print(
-            f"  KIMR long: {len(kimr_long):,} rows, "
-            f"{kimr_long['point_name'].nunique()} points, "
-            f"{kimr_long['category'].nunique()} categories, "
-            f"{kimr_long['base_datetime'].nunique()} bases"
+        # KIMR(지역모델) GRIB fetch 제거 (2026-09-22, KMA GRIB 제공 2026-10-01 중단 대응).
+        # 이 weather 출력은 2026-06-20 forecast 테이블 폐기 이후 이미 산출물이 없었다
+        # (날씨는 collect_forecast_new.py -> forecast_horizon 이 정본).  build_wide 는
+        # kimr_long 이 비어 있으면 KIMG 만으로 채우도록 이미 설계돼 있어 안전하다.
+        kimr_long = pd.DataFrame(
+            columns=["base_datetime", "point_name", "fcst_datetime",
+                     "category", "fcst_value"]
         )
 
-        print("\n[2/3] fetch KIMG (global)")
+        print("\n[1/2] fetch KIMG (global)")
         kimg_long = fetch_kimg_long(bases)
         if kimg_long.empty:
             print("  KIMG long: empty (radiation_*/cloud_* will be MISSING from output)")
@@ -585,7 +536,7 @@ def build(
                 f"{kimg_long['base_datetime'].nunique()} bases"
             )
 
-    print("\n[3/3] pivot to wide + post-processing")
+    print("\n[2/2] pivot to wide + post-processing")
     try:
         wide = build_wide(kimr_long, kimg_long, window_start, window_end)
     except NoUsableForecastRows as e:
