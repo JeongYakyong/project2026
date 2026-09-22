@@ -23,6 +23,13 @@
 30 2 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
 30 5 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
 
+# ①-보강 제주 결측 자동 복구 (2026-09-22 도입): 12z 발표(21:00 KST) 이후 KMA 파일 준비 지연
+#   (경험상 3~5시간) + NC(pt_txt2_std) 시간별 호출 전환으로 콜 수가 크게 늘어 ①의 두 차례
+#   (2:30/5:30)만으로 간헐적으로 못 채우는 경우를 대비한 3번째 체크.  --backfill 3 은 완결성
+#   검사라 이미 완전하면 API 호출 없이 그냥 skip(무비용) -- 불완전할 때만 재시도(low risk).
+#   앞뒤 collect_forecast 크론과 같은 flock 공유 -- 겹치면 조용히 skip, 안전.
+0 3 * * * /home/kimjourvanne/project2026/deploy/run_collect_forecast.sh --region jeju --backfill 3
+
 # ② 실측 + 미래 DA : run_collect_jeju.sh.  **forecast 테이블 폐기(2026-06-20, G-22)** 후
 #   build() 는 weather 를 더는 forecast 에 쓰지 않고, 미래 *_da(SMP D+1/D+2 DA 가격선·예상수요)만
 #   historical 에 컬럼단위 UPSERT(upsert_da_to_historical, 실측 보존).  build_historical 은 과거
